@@ -59,16 +59,17 @@ class DSPyOptimizer:
         self.settings = settings
         self.db = db_client
 
-        # Configure DSPy with OpenAI
+        # Configure DSPy with OpenAI (or OpenAI-compatible API)
         lm = dspy.OpenAI(
             model=settings.openai_model,
             api_key=settings.openai_api_key,
+            api_base=settings.openai_base_url,
             temperature=0.3,
         )
         dspy.settings.configure(lm=lm)
 
         self.categorizer = CategorizerModule()
-        logger.info("Initialized DSPy optimizer")
+        logger.info(f"Initialized DSPy optimizer with model: {settings.openai_model}")
 
     def prepare_training_data(
         self, content_items: list[WordPressContent], categories: list[str]

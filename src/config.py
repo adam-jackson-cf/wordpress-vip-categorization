@@ -17,9 +17,15 @@ class Settings(BaseSettings):
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_key: str = Field(..., description="Supabase service role key")
 
-    # OpenAI Configuration
+    # OpenAI Configuration (or OpenAI-compatible like OpenRouter)
     openai_api_key: str = Field(..., description="OpenAI API key")
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1", description="OpenAI API base URL"
+    )
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model to use")
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small", description="Embedding model to use"
+    )
     openai_batch_timeout: int = Field(
         default=86400, description="Batch API timeout in seconds (24 hours default)"
     )

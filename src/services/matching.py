@@ -30,9 +30,14 @@ class MatchingService:
         """
         self.settings = settings
         self.db = db_client
-        self.client = openai.OpenAI(api_key=settings.openai_api_key)
-        self.embedding_model = "text-embedding-3-small"
-        logger.info("Initialized matching service")
+        self.client = openai.OpenAI(
+            api_key=settings.openai_api_key, base_url=settings.openai_base_url
+        )
+        self.embedding_model = settings.openai_embedding_model
+        logger.info(
+            f"Initialized matching service with model: {self.embedding_model}, "
+            f"base URL: {settings.openai_base_url}"
+        )
 
     @retry(
         retry=retry_if_exception_type(openai.APIError),

@@ -33,8 +33,10 @@ class CategorizationService:
         """
         self.settings = settings
         self.db = db_client
-        self.client = openai.OpenAI(api_key=settings.openai_api_key)
-        logger.info("Initialized categorization service")
+        self.client = openai.OpenAI(
+            api_key=settings.openai_api_key, base_url=settings.openai_base_url
+        )
+        logger.info(f"Initialized categorization service with base URL: {settings.openai_base_url}")
 
     def create_categorization_prompt(self, content: WordPressContent, categories: list[str]) -> str:
         """Create prompt for content categorization.

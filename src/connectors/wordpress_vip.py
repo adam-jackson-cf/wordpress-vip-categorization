@@ -62,9 +62,7 @@ class WordPressVIPConnector:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    def _make_request(
-        self, endpoint: str, params: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Make HTTP request to WordPress API with retry logic.
 
         Args:
