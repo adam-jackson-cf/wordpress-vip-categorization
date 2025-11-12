@@ -254,7 +254,7 @@ class WordPressVIPConnector:
                     content = self._parse_wordpress_item(post_data, "post")
                     yield content
                     total_fetched += 1
-                    if progress_bar:
+                    if progress_bar is not None:
                         progress_bar.update(1)
                 except Exception as e:
                     logger.error(f"Error parsing post {post_data.get('id')}: {e}")
@@ -262,7 +262,7 @@ class WordPressVIPConnector:
 
             page += 1
 
-        if progress_bar:
+        if progress_bar is not None:
             progress_bar.close()
 
         logger.info(f"Fetched {total_fetched} posts from {self.site_url}")
@@ -301,7 +301,7 @@ class WordPressVIPConnector:
                     content = self._parse_wordpress_item(page_data, "page")
                     yield content
                     total_fetched += 1
-                    if progress_bar:
+                    if progress_bar is not None:
                         progress_bar.update(1)
                 except Exception as e:
                     logger.error(f"Error parsing page {page_data.get('id')}: {e}")
@@ -309,7 +309,7 @@ class WordPressVIPConnector:
 
             page += 1
 
-        if progress_bar:
+        if progress_bar is not None:
             progress_bar.close()
 
         logger.info(f"Fetched {total_fetched} pages from {self.site_url}")
