@@ -86,6 +86,7 @@ class WordPressVIPConnector:
         page: int = 1,
         per_page: int = 100,
         status: str = "publish",
+        modified_after: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Get posts from WordPress site.
 
@@ -104,6 +105,9 @@ class WordPressVIPConnector:
             "_embed": True,  # Include embedded data like featured images
         }
 
+        if modified_after:
+            params["after"] = modified_after.isoformat()
+
         try:
             data = self._make_request("posts", params)
             if isinstance(data, list):
@@ -120,6 +124,7 @@ class WordPressVIPConnector:
         page: int = 1,
         per_page: int = 100,
         status: str = "publish",
+        modified_after: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Get pages from WordPress site.
 
@@ -136,6 +141,9 @@ class WordPressVIPConnector:
             "per_page": min(per_page, 100),
             "status": status,
         }
+
+        if modified_after:
+            params["after"] = modified_after.isoformat()
 
         try:
             data = self._make_request("pages", params)
@@ -225,6 +233,7 @@ class WordPressVIPConnector:
         self,
         max_pages: int | None = None,
         show_progress: bool = True,
+        modified_after: datetime | None = None,
     ) -> Iterator[WordPressContent]:
         """Fetch all posts from the WordPress site.
 
@@ -246,7 +255,7 @@ class WordPressVIPConnector:
             if max_pages and page > max_pages:
                 break
 
-            posts = self.get_posts(page=page, per_page=100)
+            posts = self.get_posts(page=page, per_page=100, modified_after=modified_after)
             if not posts:
                 break
 
@@ -272,6 +281,7 @@ class WordPressVIPConnector:
         self,
         max_pages: int | None = None,
         show_progress: bool = True,
+        modified_after: datetime | None = None,
     ) -> Iterator[WordPressContent]:
         """Fetch all pages from the WordPress site.
 
@@ -293,7 +303,7 @@ class WordPressVIPConnector:
             if max_pages and page > max_pages:
                 break
 
-            pages = self.get_pages(page=page, per_page=100)
+            pages = self.get_pages(page=page, per_page=100, modified_after=modified_after)
             if not pages:
                 break
 
@@ -319,6 +329,7 @@ class WordPressVIPConnector:
         self,
         max_pages: int | None = None,
         show_progress: bool = True,
+        modified_after: datetime | None = None,
     ) -> Iterator[WordPressContent]:
         """Fetch all content (posts and pages) from the WordPress site.
 
@@ -330,10 +341,18 @@ class WordPressVIPConnector:
             WordPressContent objects.
         """
         # Fetch posts
-        yield from self.fetch_all_posts(max_pages=max_pages, show_progress=show_progress)
+        yield from self.fetch_all_posts(
+            max_pages=max_pages,
+            show_progress=show_progress,
+            modified_after=modified_after,
+        )
 
         # Fetch pages
-        yield from self.fetch_all_pages(max_pages=max_pages, show_progress=show_progress)
+        yield from self.fetch_all_pages(
+            max_pages=max_pages,
+            show_progress=show_progress,
+            modified_after=modified_after,
+        )
 
     def test_connection(self) -> bool:
         """Test connection to WordPress site.

@@ -112,13 +112,20 @@ python -m src.cli load-taxonomy
 python -m src.cli ingest
 python -m src.cli ingest --sites https://site1.com,https://site2.com
 python -m src.cli ingest --max-pages 10
+python -m src.cli ingest --resume                      # resume from per-site checkpoints
+python -m src.cli ingest --since 2025-11-01            # explicit cutoff window
 
 # Run cascading matching workflow (semantic → LLM fallback)
 python -m src.cli match                    # Full workflow (both stages)
 python -m src.cli match --threshold 0.80   # Custom semantic threshold
 python -m src.cli match --skip-llm         # Semantic matching only
 python -m src.cli match --skip-semantic    # LLM categorization only
-python -m src.cli match --no-batch         # Non-batch embedding mode
+python -m src.cli match --only-unmatched --force-llm   # Retry backlog in LLM stage only
+python -m src.cli match --taxonomy-ids <uuid,...>      # Targeted reruns
+python -m src.cli match --taxonomy-file subset.csv     # CSV-driven reruns
+
+# Full orchestration (taxonomy → ingest → match → export)
+python -m src.cli full-run --output redirects.csv
 
 # Export results to CSV
 python -m src.cli export --output results.csv

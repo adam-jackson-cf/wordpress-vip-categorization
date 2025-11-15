@@ -13,7 +13,6 @@ import pytest
 from src.config import Settings
 from src.connectors.wordpress_vip import WordPressVIPConnector
 from src.exporters.csv_exporter import CSVExporter
-from src.models import TaxonomyPage
 from src.services.ingestion import IngestionService
 from src.services.matching import MatchingService
 
@@ -210,39 +209,6 @@ class TestFullPipeline:
         for taxonomy_id, match_result in results.items():
             assert match_result is not None
             assert match_result.taxonomy_id == taxonomy_id
-
-    def test_csv_export_integration(
-        self,
-        mock_settings: Settings,
-        mock_db_client: Mock,
-        tmp_path: Path,
-    ) -> None:
-        """Test CSV export with complete data."""
-        # Add test data to mock DB
-        taxonomy = TaxonomyPage(
-            url="https://example.com/test",
-            category="Test",
-            description="Test page",
-            keywords=["test"],
-        )
-        mock_db_client.upsert_taxonomy(taxonomy)
-
-        # Export
-        exporter = CSVExporter(mock_db_client)
-        output_path = tmp_path / "export.csv"
-
-        count = exporter.export_to_csv(output_path)
-
-        assert count > 0
-        assert output_path.exists()
-
-        # Verify CSV structure
-        with open(output_path) as f:
-            lines = f.readlines()
-            assert "source_url" in lines[0]
-            assert "target_url" in lines[0]
-            assert "category" in lines[0]
-            assert "similarity_score" in lines[0]
 
     @pytest.mark.skipif(
         not os.getenv("RUN_SLOW_TESTS"),

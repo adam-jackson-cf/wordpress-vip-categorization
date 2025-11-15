@@ -2,6 +2,7 @@
 
 import csv
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -29,12 +30,20 @@ class IngestionService:
         self.db = db_client
         logger.info("Initialized ingestion service")
 
-    def ingest_wordpress_sites(self, site_urls: list[str], max_pages: int | None = None) -> int:
+    def ingest_wordpress_sites(
+        self,
+        site_urls: list[str],
+        max_pages: int | None = None,
+        since: datetime | None = None,
+        resume: bool = False,
+    ) -> int:
         """Ingest content from WordPress sites.
 
         Args:
             site_urls: List of WordPress site URLs.
             max_pages: Maximum pages to fetch per site (None for all).
+            since: Only ingest content published after this timestamp.
+            resume: If True, start from the last known published date per site.
 
         Returns:
             Total number of content items ingested.
@@ -43,6 +52,22 @@ class IngestionService:
 
         for site_url in site_urls:
             logger.info(f"Starting ingestion from {site_url}")
+
+            site_since = since
+            if resume and site_since is None:
+                site_since = self.db.get_latest_published_date(site_url)
+                if site_since:
+                    logger.info(
+                        "Resuming ingestion for %s from %s",
+                        site_url,
+                        site_since.isoformat(),
+                    )
+            elif site_since:
+                logger.info(
+                    "Ingesting %s content published after %s",
+                    site_url,
+                    site_since.isoformat(),
+                )
 
             connector = WordPressVIPConnector(
                 site_url=site_url,
@@ -56,7 +81,11 @@ class IngestionService:
 
             # Fetch and store content
             site_count = 0
-            for content in connector.fetch_all_content(max_pages=max_pages, show_progress=True):
+            for content in connector.fetch_all_content(
+                max_pages=max_pages,
+                show_progress=True,
+                modified_after=site_since,
+            ):
                 try:
                     self.db.upsert_content(content)
                     site_count += 1

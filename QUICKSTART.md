@@ -25,7 +25,7 @@ This will automatically:
 - ✅ Load your taxonomy (4 sample pages)
 - ✅ Ingest WordPress content (~10-20 posts from WordPress.org)
 - ✅ Run semantic matching with OpenRouter embeddings
-- ✅ Export results to `results.csv` and `unmatched.csv`
+- ✅ Export a single `results.csv` where unmatched rows simply have a blank `target_url`
 
 **Expected runtime:** 2-3 minutes
 **Expected cost:** < $0.01 (using free/low-cost models)
@@ -39,7 +39,7 @@ Open `results.csv` in your spreadsheet application:
 - **similarity_score**: Match confidence (0.0-1.0)
 - **category**: Category name
 
-**To find unmatched items:** Filter for empty `target_url` or open `unmatched.csv`
+**To find unmatched items:** Filter for empty `target_url` (or `match_stage == needs_human_review`).
 
 ## 📎 Next Steps
 

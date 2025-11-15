@@ -18,6 +18,13 @@ AI-powered content categorization system that ingests data from WordPress VIP, s
 
 Both AI stages can be toggled independently via environment variables or CLI flags.
 
+## Operator Shortcuts
+
+- `python -m src.cli full-run --output redirects.csv` chains taxonomy load → incremental ingestion → cascading matching → CSV export in one go.
+- `python -m src.cli ingest --resume` resumes each site from the last published date we captured; use `--since 2025-11-01` for explicit recovery windows.
+- `python -m src.cli match --only-unmatched --skip-semantic --force-llm` reruns only the backlog below the semantic threshold and forces new LLM judgments without touching previously matched rows.
+- Targeted fixes are supported via `--taxonomy-ids <uuid,...>` or by pointing `--taxonomy-file subset.csv` (expects a `url` column) at a hand-curated list of taxonomy entries.
+
 ## Get Started
 
 1. **Need a one-command experience?** Follow the [Quick Start](QUICKSTART.md) to create the schema and run `python run_setup.py`.

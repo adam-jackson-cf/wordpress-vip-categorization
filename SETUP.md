@@ -110,6 +110,12 @@ Limit pages for testing:
 python -m src.cli ingest --max-pages 2
 ```
 
+Resume from the last successful pull or provide an explicit window:
+```bash
+python -m src.cli ingest --resume              # per-site checkpoint
+python -m src.cli ingest --since 2025-11-01    # hard cutoff
+```
+
 ### Step 3: Perform Semantic Matching
 
 Match taxonomy pages to ingested content:
@@ -120,6 +126,18 @@ python -m src.cli match
 With custom threshold:
 ```bash
 python -m src.cli match --threshold 0.80
+```
+
+Targeted reruns:
+```bash
+# Retry just the backlog
+python -m src.cli match --only-unmatched --skip-semantic --force-llm
+
+# Focus on specific taxonomy rows
+python -m src.cli match --taxonomy-ids <uuid1,uuid2> --force-semantic
+
+# Feed a CSV with a `url` column
+python -m src.cli match --taxonomy-file data/review_subset.csv
 ```
 
 ### Step 4: Export Results
@@ -136,7 +154,7 @@ The CSV will contain:
 - `similarity_score` - Match confidence (0-1)
 - `confidence` - Categorization confidence (if categorized)
 
-Filter for empty `target_url` to find unmatched taxonomy pages.
+Filter for empty `target_url` / `match_stage == needs_human_review` to find unmatched taxonomy pages.
 
 ## 💰 Cost Management
 

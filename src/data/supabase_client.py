@@ -1,6 +1,7 @@
 """Supabase client for data persistence."""
 
 import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from src.config import Settings
 from src.models import (
     CategorizationResult,
     MatchingResult,
+    MatchStage,
     TaxonomyPage,
     WordPressContent,
 )
@@ -123,6 +125,30 @@ class SupabaseClient:
         )
         return [WordPressContent.model_validate(item) for item in result.data]
 
+    def get_latest_published_date(self, site_url: str) -> datetime | None:
+        """Return the most recent published_date for a site, if available."""
+
+        result = (
+            self.client.table("wordpress_content")
+            .select("published_date")
+            .eq("site_url", site_url)
+            .order("published_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not result.data:
+            return None
+
+        value = result.data[0].get("published_date")
+        if not value:
+            return None
+
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
     # Taxonomy operations
     def insert_taxonomy(self, taxonomy: TaxonomyPage) -> TaxonomyPage:
         """Insert taxonomy page into database.
@@ -159,6 +185,29 @@ class SupabaseClient:
             List of taxonomy pages.
         """
         result = self.client.table("taxonomy_pages").select("*").execute()
+        return [TaxonomyPage.model_validate(item) for item in result.data]
+
+    def get_taxonomy_by_ids(self, taxonomy_ids: list[UUID]) -> list[TaxonomyPage]:
+        """Get taxonomy pages by their UUIDs."""
+
+        if not taxonomy_ids:
+            return []
+
+        result = (
+            self.client.table("taxonomy_pages")
+            .select("*")
+            .in_("id", [str(tid) for tid in taxonomy_ids])
+            .execute()
+        )
+        return [TaxonomyPage.model_validate(item) for item in result.data]
+
+    def get_taxonomy_by_urls(self, urls: list[str]) -> list[TaxonomyPage]:
+        """Get taxonomy pages whose URLs are in the provided list."""
+
+        if not urls:
+            return []
+
+        result = self.client.table("taxonomy_pages").select("*").in_("url", urls).execute()
         return [TaxonomyPage.model_validate(item) for item in result.data]
 
     def get_taxonomy_by_id(self, taxonomy_id: UUID) -> TaxonomyPage | None:
@@ -316,6 +365,31 @@ class SupabaseClient:
         if result.data:
             return MatchingResult.model_validate(result.data[0])
         return None
+
+    def clear_matching_results(
+        self,
+        taxonomy_ids: list[UUID] | None = None,
+        stages: list[MatchStage] | None = None,
+    ) -> int:
+        """Delete matching results filtered by taxonomy IDs and/or stages."""
+
+        query = self.client.table("matching_results").delete()
+
+        if taxonomy_ids:
+            query = query.in_("taxonomy_id", [str(tid) for tid in taxonomy_ids])
+
+        if stages:
+            query = query.in_("match_stage", [stage.value for stage in stages])
+
+        result = query.execute()
+        deleted = len(result.data or [])
+        logger.info(
+            "Cleared %s matching results (taxonomy_ids=%s, stages=%s)",
+            deleted,
+            taxonomy_ids,
+            stages,
+        )
+        return deleted
 
     def bulk_insert(self, table: str, records: list[dict[str, Any]]) -> None:
         """Bulk insert records into a table.

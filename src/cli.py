@@ -1,18 +1,23 @@
 """Command-line interface for WordPress VIP categorization."""
 
+import csv
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 import click
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
 from src.exporters.csv_exporter import CSVExporter
+from src.models import MatchStage
 from src.optimization.dspy_optimizer import DSPyOptimizer
 from src.optimization.evaluator import Evaluator
 from src.services.categorization import CategorizationService
 from src.services.ingestion import IngestionService
+from src.services.matching import MatchingService
 from src.services.workflow import WorkflowService
 
 # Configure logging
@@ -29,6 +34,19 @@ def cli() -> None:
     pass
 
 
+def _load_taxonomy_urls(csv_path: Path) -> list[str]:
+    """Extract the `url` column from a taxonomy CSV file."""
+
+    with open(csv_path, encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or "url" not in reader.fieldnames:
+            raise click.ClickException("Expected 'url' column in taxonomy file")
+
+        urls = [row["url"].strip() for row in reader if row.get("url")]
+
+    return [url for url in urls if url]
+
+
 @cli.command()
 def init_db() -> None:
     """Initialize database schema."""
@@ -43,7 +61,20 @@ def init_db() -> None:
     help="Comma-separated list of WordPress sites to ingest (overrides config)",
 )
 @click.option("--max-pages", type=int, help="Maximum pages to fetch per site")
-def ingest(sites: str | None, max_pages: int | None) -> None:
+@click.option(
+    "--since",
+    type=click.DateTime(formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"]),
+    help="Only ingest content published after this timestamp",
+)
+@click.option(
+    "--resume/--no-resume", default=False, help="Resume per-site from last known published date"
+)
+def ingest(
+    sites: str | None,
+    max_pages: int | None,
+    since: datetime | None,
+    resume: bool,
+) -> None:
     """Ingest content from WordPress sites."""
     settings = get_settings()
     db = SupabaseClient(settings)
@@ -53,7 +84,17 @@ def ingest(sites: str | None, max_pages: int | None) -> None:
     site_urls = sites.split(",") if sites else settings.get_wordpress_sites()
 
     click.echo(f"Starting ingestion from {len(site_urls)} sites...")
-    total = ingestion_service.ingest_wordpress_sites(site_urls, max_pages=max_pages)
+    if resume and since:
+        click.echo(
+            "⚠ Both --resume and --since provided; --since will take precedence for all sites."
+        )
+
+    total = ingestion_service.ingest_wordpress_sites(
+        site_urls,
+        max_pages=max_pages,
+        since=since,
+        resume=resume,
+    )
     click.echo(f"✓ Ingested {total} content items")
 
 
@@ -138,12 +179,50 @@ def batch_status(batch_id: str) -> None:
 @click.option("--batch/--no-batch", default=True, help="Use batch embedding mode")
 @click.option("--skip-semantic", is_flag=True, help="Skip semantic matching stage")
 @click.option("--skip-llm", is_flag=True, help="Skip LLM categorization stage")
-def match(threshold: float | None, batch: bool, skip_semantic: bool, skip_llm: bool) -> None:
+@click.option(
+    "--taxonomy-ids",
+    help="Comma-separated list of taxonomy UUIDs to (re)process",
+)
+@click.option(
+    "--taxonomy-file",
+    type=click.Path(exists=True, path_type=Path),
+    help="CSV containing taxonomy rows (uses 'url' column) to (re)process",
+)
+@click.option(
+    "--only-unmatched",
+    is_flag=True,
+    help="Only reprocess taxonomy rows currently below the semantic threshold",
+)
+@click.option(
+    "--force-semantic",
+    is_flag=True,
+    help="Clear previous matching rows (all stages) for targeted taxonomy before rerun",
+)
+@click.option(
+    "--force-llm",
+    is_flag=True,
+    help="Clear previous LLM/human-review rows for targeted taxonomy before rerun",
+)
+def match(
+    threshold: float | None,
+    batch: bool,
+    skip_semantic: bool,
+    skip_llm: bool,
+    taxonomy_ids: str | None,
+    taxonomy_file: Path | None,
+    only_unmatched: bool,
+    force_semantic: bool,
+    force_llm: bool,
+) -> None:
     """Match taxonomy to content using cascading semantic + LLM workflow.
 
-    By default, runs both semantic matching and LLM categorization fallback.
-    Use flags to disable specific stages or configure via environment variables.
+    Supports targeted reruns via --taxonomy-ids/--taxonomy-file or --only-unmatched.
+    Use stage flags to disable/force semantic or LLM passes as needed.
     """
+    filters_selected = sum(bool(flag) for flag in [taxonomy_ids, taxonomy_file, only_unmatched])
+    if filters_selected > 1:
+        raise click.UsageError("Use at most one of --taxonomy-ids/--taxonomy-file/--only-unmatched")
+
     settings = get_settings()
     db = SupabaseClient(settings)
 
@@ -157,7 +236,63 @@ def match(threshold: float | None, batch: bool, skip_semantic: bool, skip_llm: b
     if threshold is not None:
         settings.similarity_threshold = threshold
 
-    workflow_service = WorkflowService(settings, db)
+    matching_service = MatchingService(settings, db)
+    workflow_service = WorkflowService(settings, db, matching_service=matching_service)
+
+    taxonomy_subset: list | None = None
+    target_ids: list[UUID] | None = None
+
+    if taxonomy_ids:
+        try:
+            parsed_ids = [UUID(value.strip()) for value in taxonomy_ids.split(",") if value.strip()]
+        except ValueError as exc:
+            raise click.BadParameter("Invalid UUID in --taxonomy-ids") from exc
+
+        taxonomy_subset = db.get_taxonomy_by_ids(parsed_ids)
+        target_ids = [tax.id for tax in taxonomy_subset]
+
+        if not taxonomy_subset:
+            click.echo("No taxonomy rows matched the provided IDs; nothing to do.")
+            return
+
+    elif taxonomy_file:
+        urls = _load_taxonomy_urls(taxonomy_file)
+        if not urls:
+            click.echo("No URLs found in taxonomy file; nothing to do.")
+            return
+
+        taxonomy_subset = db.get_taxonomy_by_urls(urls)
+        target_ids = [tax.id for tax in taxonomy_subset]
+
+        if not taxonomy_subset:
+            click.echo("None of the provided URLs exist in the database; aborting.")
+            return
+
+        missing_count = len(set(urls) - {str(tax.url) for tax in taxonomy_subset})
+        if missing_count:
+            click.echo(f"⚠ Skipping {missing_count} URL(s) not present in Supabase.")
+
+    elif only_unmatched:
+        taxonomy_subset = matching_service.get_unmatched_taxonomy(settings.similarity_threshold)
+        target_ids = [tax.id for tax in taxonomy_subset]
+
+        if not taxonomy_subset:
+            click.echo("All taxonomy pages currently have matches above the semantic threshold.")
+            return
+
+    if taxonomy_subset is not None:
+        click.echo(f"Targeting {len(taxonomy_subset)} taxonomy row(s) for this run")
+
+    if force_semantic:
+        deleted = db.clear_matching_results(target_ids, None)
+        click.echo(f"Cleared {deleted} matching rows prior to semantic stage re-run")
+
+    if force_llm:
+        deleted_llm = db.clear_matching_results(
+            target_ids,
+            [MatchStage.LLM_CATEGORIZED, MatchStage.NEEDS_HUMAN_REVIEW],
+        )
+        click.echo(f"Cleared {deleted_llm} LLM/review rows prior to fallback stage")
 
     click.echo("Starting cascading matching workflow...")
     click.echo(
@@ -167,7 +302,10 @@ def match(threshold: float | None, batch: bool, skip_semantic: bool, skip_llm: b
         f"- LLM categorization: {'enabled' if settings.enable_llm_categorization else 'disabled'} (threshold: {settings.llm_confidence_threshold})"
     )
 
-    stats = workflow_service.run_matching_workflow(batch_mode=batch)
+    stats = workflow_service.run_matching_workflow(
+        taxonomy_pages=taxonomy_subset,
+        batch_mode=batch,
+    )
 
     click.echo("\n=== Matching Results ===")
     click.echo(f"✓ Semantic matched: {stats['semantic_matched']}")
@@ -176,6 +314,122 @@ def match(threshold: float | None, batch: bool, skip_semantic: bool, skip_llm: b
     click.echo(
         f"Total processed: {stats['semantic_matched'] + stats['llm_categorized'] + stats['needs_review']}"
     )
+
+
+@cli.command(name="full-run")
+@click.option(
+    "--taxonomy-file",
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to taxonomy CSV file (defaults to config)",
+)
+@click.option(
+    "--sites",
+    help="Comma-separated list of WordPress sites to ingest (defaults to config)",
+)
+@click.option("--max-pages", type=int, help="Maximum pages to fetch per site during ingestion")
+@click.option(
+    "--since",
+    type=click.DateTime(formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"]),
+    help="Only ingest content published after this timestamp",
+)
+@click.option(
+    "--resume/--no-resume",
+    default=False,
+    help="Resume per-site ingestion from last known published date",
+)
+@click.option("--threshold", type=float, help="Minimum semantic similarity threshold")
+@click.option(
+    "--batch/--no-batch", default=True, help="Use batch embedding mode for semantic stage"
+)
+@click.option("--skip-semantic", is_flag=True, help="Skip semantic matching stage")
+@click.option("--skip-llm", is_flag=True, help="Skip LLM categorization stage")
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Destination CSV file for combined results",
+)
+@click.option(
+    "--min-similarity",
+    type=float,
+    help="Optional post-filter on similarity when writing the CSV",
+)
+def full_run(
+    taxonomy_file: Path | None,
+    sites: str | None,
+    max_pages: int | None,
+    since: datetime | None,
+    resume: bool,
+    threshold: float | None,
+    batch: bool,
+    skip_semantic: bool,
+    skip_llm: bool,
+    output: Path,
+    min_similarity: float | None,
+) -> None:
+    """Run taxonomy load → ingestion → matching → export with one command."""
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+
+    ingestion_service = IngestionService(settings, db)
+    exporter = CSVExporter(db)
+
+    # Step 1: Load taxonomy
+    csv_path = taxonomy_file or settings.taxonomy_file_path
+    click.echo(f"[1/4] Loading taxonomy from {csv_path}...")
+    loaded_count = ingestion_service.load_taxonomy_from_csv(csv_path)
+    click.echo(f"    ✓ Loaded {loaded_count} taxonomy pages")
+
+    # Step 2: Ingest content
+    site_list = sites.split(",") if sites else settings.get_wordpress_sites()
+    click.echo(f"[2/4] Ingesting content from {len(site_list)} site(s)...")
+    if resume and since:
+        click.echo(
+            "    ⚠ Both --resume and --since provided; --since takes precedence for all sites."
+        )
+    ingested_count = ingestion_service.ingest_wordpress_sites(
+        site_list,
+        max_pages=max_pages,
+        since=since,
+        resume=resume,
+    )
+    click.echo(f"    ✓ Ingested {ingested_count} content items")
+
+    # Step 3: Matching workflow with optional overrides
+    if skip_semantic:
+        settings.enable_semantic_matching = False
+    if skip_llm:
+        settings.enable_llm_categorization = False
+    if threshold is not None:
+        settings.similarity_threshold = threshold
+
+    workflow_service = WorkflowService(settings, db)
+
+    click.echo("[3/4] Running cascading matching workflow...")
+    click.echo(
+        f"    Semantic stage: {'enabled' if settings.enable_semantic_matching else 'disabled'} "
+        f"(threshold={settings.similarity_threshold})"
+    )
+    click.echo(
+        f"    LLM stage: {'enabled' if settings.enable_llm_categorization else 'disabled'} "
+        f"(threshold={settings.llm_confidence_threshold})"
+    )
+
+    stats = workflow_service.run_matching_workflow(batch_mode=batch)
+    click.echo(
+        "    ✓ Matching stats – "
+        f"semantic: {stats['semantic_matched']}, LLM: {stats['llm_categorized']}, review: {stats['needs_review']}"
+    )
+
+    # Step 4: Export combined CSV
+    click.echo(f"[4/4] Exporting combined results to {output}...")
+    row_count = exporter.export_to_csv(
+        output,
+        include_unmatched=True,
+        min_similarity=min_similarity,
+    )
+    click.echo(f"    ✓ Exported {row_count} rows to {output}")
 
 
 @cli.command()

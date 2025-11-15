@@ -8,12 +8,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
-from src.services.matching import MatchingService
 from src.exporters.csv_exporter import CSVExporter
+from src.services.matching import MatchingService
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -23,9 +22,9 @@ def main():
     settings = get_settings()
     db = SupabaseClient(settings)
 
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("WordPress VIP Categorization - Matching & Export")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     # Check what we have
     content_count = len(db.get_all_content())
@@ -43,21 +42,21 @@ def main():
         return 1
 
     # Run matching
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Running Semantic Matching")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         matching_service = MatchingService(settings, db)
         logger.info(f"Matching with threshold: {settings.similarity_threshold}")
 
         results = matching_service.match_all_taxonomy_batch(
-            min_threshold=settings.similarity_threshold,
-            store_results=True
+            min_threshold=settings.similarity_threshold, store_results=True
         )
 
         matched_count = sum(1 for r in results.values() if r and r.content_id)
         total_count = len(results)
+        unmatched_count = total_count - matched_count
 
         logger.info(f"\n✓ Matched {matched_count}/{total_count} taxonomy pages")
 
@@ -79,50 +78,50 @@ def main():
     except Exception as e:
         logger.error(f"Error during matching: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
     # Export results
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Exporting Results")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         exporter = CSVExporter(db)
 
-        # Export all results
+        # Export all results (unmatched rows will have empty target URLs)
         output_path = Path("results.csv")
         count = exporter.export_to_csv(output_path, include_unmatched=True)
-        logger.info(f"✓ Exported {count} rows to {output_path}")
-
-        # Export unmatched only
-        unmatched_path = Path("unmatched.csv")
-        unmatched_count = exporter.export_unmatched_only(unmatched_path)
-        logger.info(f"✓ Exported {unmatched_count} unmatched items to {unmatched_path}")
+        logger.info(
+            "✓ Exported %s rows to %s (filter blank target_url for manual review)",
+            count,
+            output_path,
+        )
 
     except Exception as e:
         logger.error(f"Error exporting: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
     # Success!
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("✅ SETUP COMPLETE!")
-    logger.info("="*70)
-    logger.info(f"\n📊 Summary:")
+    logger.info("=" * 70)
+    logger.info("\n📊 Summary:")
     logger.info(f"  - WordPress content: {content_count} items")
     logger.info(f"  - Taxonomy pages: {taxonomy_count} items")
     logger.info(f"  - Matched: {matched_count}/{total_count}")
     logger.info(f"  - Unmatched: {unmatched_count}")
 
-    logger.info("\n📁 Output files:")
-    logger.info("  - results.csv (all matches)")
-    logger.info("  - unmatched.csv (taxonomy pages without matches)")
+    logger.info("\n📁 Output file:")
+    logger.info("  - results.csv (all taxonomy rows; blank target_url => needs review)")
 
     logger.info("\n💡 Next steps:")
     logger.info("  1. Open results.csv in your spreadsheet application")
-    logger.info("  2. Filter by empty target_url to find unmatched items")
+    logger.info("  2. Filter by empty target_url / match_stage == needs_human_review")
     logger.info("  3. Review similarity scores")
     logger.info("  4. Adjust keywords in taxonomy.csv if needed")
     logger.info("  5. Re-run matching with: python -m src.cli match")

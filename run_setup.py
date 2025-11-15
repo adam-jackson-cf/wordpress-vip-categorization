@@ -8,22 +8,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
+from src.exporters.csv_exporter import CSVExporter
 from src.services.ingestion import IngestionService
 from src.services.matching import MatchingService
-from src.exporters.csv_exporter import CSVExporter
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 def check_database_tables(db):
     """Check if database tables exist."""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Checking database tables...")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         # Try to query each table
@@ -51,9 +50,9 @@ def check_database_tables(db):
             tables_ok = False
 
         if not tables_ok:
-            logger.error("\n" + "="*70)
+            logger.error("\n" + "=" * 70)
             logger.error("❌ DATABASE TABLES MISSING")
-            logger.error("="*70)
+            logger.error("=" * 70)
             logger.error("\nPlease initialize the database:")
             logger.error("1. Go to: https://supabase.com/dashboard/project/resciqkhyvnaxqpzabtb")
             logger.error("2. Click 'SQL Editor' in the left sidebar")
@@ -73,9 +72,9 @@ def check_database_tables(db):
 
 def load_taxonomy(settings, db):
     """Load taxonomy from CSV."""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Loading Taxonomy")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         ingestion_service = IngestionService(settings, db)
@@ -96,9 +95,9 @@ def load_taxonomy(settings, db):
 
 def ingest_content(settings, db):
     """Ingest WordPress content."""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Ingesting WordPress Content")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         ingestion_service = IngestionService(settings, db)
@@ -114,23 +113,23 @@ def ingest_content(settings, db):
     except Exception as e:
         logger.error(f"Error ingesting content: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
 def run_matching(settings, db):
     """Run semantic matching."""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Running Semantic Matching")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         matching_service = MatchingService(settings, db)
 
         logger.info(f"Matching with threshold: {settings.similarity_threshold}")
         results = matching_service.match_all_taxonomy_batch(
-            min_threshold=settings.similarity_threshold,
-            store_results=True
+            min_threshold=settings.similarity_threshold, store_results=True
         )
 
         matched_count = sum(1 for r in results.values() if r and r.content_id)
@@ -155,27 +154,27 @@ def run_matching(settings, db):
     except Exception as e:
         logger.error(f"Error running matching: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
 def export_results(db):
     """Export results to CSV."""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Exporting Results")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         exporter = CSVExporter(db)
         output_path = Path("results.csv")
 
         count = exporter.export_to_csv(output_path, include_unmatched=True)
-        logger.info(f"✓ Exported {count} rows to {output_path}")
-
-        # Also export unmatched
-        unmatched_path = Path("unmatched.csv")
-        unmatched_count = exporter.export_unmatched_only(unmatched_path)
-        logger.info(f"✓ Exported {unmatched_count} unmatched items to {unmatched_path}")
+        logger.info(
+            "✓ Exported %s rows to %s (filter blank target_url for items needing review)",
+            count,
+            output_path,
+        )
 
         return True
 
@@ -186,9 +185,9 @@ def export_results(db):
 
 def main():
     """Run complete setup workflow."""
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("WordPress VIP Categorization - Complete Setup")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         # Load configuration
@@ -231,15 +230,14 @@ def main():
             return 1
 
         # Success!
-        logger.info("\n" + "="*70)
+        logger.info("\n" + "=" * 70)
         logger.info("✅ SETUP COMPLETE!")
-        logger.info("="*70)
+        logger.info("=" * 70)
         logger.info("\nResults exported to:")
-        logger.info("  - results.csv (all matches)")
-        logger.info("  - unmatched.csv (taxonomy pages without matches)")
+        logger.info("  - results.csv (all taxonomy rows; blank target_url => needs review)")
         logger.info("\nYou can now:")
         logger.info("  1. Open results.csv in a spreadsheet")
-        logger.info("  2. Filter by empty target_url to find unmatched items")
+        logger.info("  2. Filter by empty target_url or match_stage == needs_human_review")
         logger.info("  3. Review similarity scores and adjust threshold if needed")
         logger.info("  4. Run more ingestion with: python -m src.cli ingest --sites <url>")
 
@@ -248,6 +246,7 @@ def main():
     except Exception as e:
         logger.error(f"\n❌ Setup failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
