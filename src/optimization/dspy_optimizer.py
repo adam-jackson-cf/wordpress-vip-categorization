@@ -23,6 +23,7 @@ PROMPT_OPT_DIR = Path("prompt-optimiser")
 MODELS_DIR = PROMPT_OPT_DIR / "models"
 CONFIGS_DIR = PROMPT_OPT_DIR / "configs"
 REPORTS_DIR = PROMPT_OPT_DIR / "reports"
+GEPA_LOG_DIR = PROMPT_OPT_DIR / "gepa_logs"
 
 
 class TaxonomyMatcher(dspy.Signature):
@@ -1000,13 +1001,15 @@ class DSPyOptimizer:
             budget_config["auto"] = budget_level
 
         # Set up GEPA optimizer
+        GEPA_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
         optimizer = GEPA(
             reflection_lm=reflection_lm,
             metric=self.accuracy_metric,
             num_threads=num_threads or self.settings.dspy_num_threads,
             failure_score=0.0,
             perfect_score=1.0,
-            log_dir="./gepa_logs",
+            log_dir=str(GEPA_LOG_DIR),
             track_stats=True,
             seed=self.settings.dspy_optimization_seed,
             use_merge=True,  # Combine successful program variants

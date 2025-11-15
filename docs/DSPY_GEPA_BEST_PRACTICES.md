@@ -263,7 +263,7 @@ optimizer = GEPA(
     num_threads=4,  # Parallel evaluation
     failure_score=0.0,  # Minimum acceptable score
     perfect_score=1.0,  # Target score
-    log_dir="./gepa_logs",
+    log_dir="prompt-optimiser/gepa_logs",
     track_stats=True,  # Comprehensive logging
     seed=42,  # Reproducibility
 )
