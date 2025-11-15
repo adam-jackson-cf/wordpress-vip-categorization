@@ -1,20 +1,34 @@
 """Unit tests for categorization service."""
 
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 from src.config import Settings
-from src.models import WordPressContent
+from src.models import TaxonomyPage, WordPressContent
 from src.services.categorization import CategorizationService
 
 
 class TestCategorizationService:
     """Tests for categorization service."""
 
-    def test_init(self, mock_settings: Settings, mock_supabase_client: Mock) -> None:
-        """Test service initialization."""
+    @patch("src.services.categorization.openai.OpenAI")
+    def test_init(
+        self, mock_openai_class: Mock, mock_settings: Settings, mock_supabase_client: Mock
+    ) -> None:
+        """Test service initialization patches OpenAI client."""
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
         service = CategorizationService(mock_settings, mock_supabase_client)
+
         assert service.settings == mock_settings
         assert service.db == mock_supabase_client
+        assert service.client == mock_client
+        mock_openai_class.assert_called_once_with(
+            api_key=mock_settings.llm_api_key,
+            base_url=mock_settings.llm_base_url,
+        )
 
     def test_create_categorization_prompt(
         self,
@@ -138,3 +152,158 @@ class TestCategorizationService:
 
         assert len(categories) == 1
         assert "Technology" in categories
+
+    def test_parse_batch_results_success(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+    ) -> None:
+        """parse_batch_results should return categorization models."""
+
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        fake_id = str(uuid4())
+        results = [
+            {
+                "custom_id": fake_id,
+                "response": {
+                    "body": {
+                        "choices": [
+                            {"message": {"content": '{"category": "Tech", "confidence": 0.91}'}}
+                        ]
+                    }
+                },
+            }
+        ]
+
+        parsed = service.parse_batch_results(results, "batch-123")
+
+        assert parsed[0].category == "Tech"
+        assert parsed[0].batch_id == "batch-123"
+
+    def test_categorize_content_batch_async(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """When wait=False no follow-up calls should occur."""
+
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service.prepare_batch_requests = Mock(return_value=[{}])
+        service.create_batch_file = Mock(return_value="/tmp/file.jsonl")
+        service.submit_batch = Mock(return_value="batch-42")
+        service.wait_for_batch_completion = Mock()
+
+        batch_id = service.categorize_content_batch(
+            [sample_wordpress_content], ["Tech"], wait=False
+        )
+
+        assert batch_id == "batch-42"
+        service.wait_for_batch_completion.assert_not_called()
+
+    def test_categorize_for_matching_records_match(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Ensure matched taxonomy rows are persisted with stage metadata."""
+
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service._find_best_match_llm = Mock(return_value=(sample_wordpress_content, 0.95))
+
+        stats = service.categorize_for_matching(
+            [sample_taxonomy_page],
+            [sample_wordpress_content],
+            min_confidence=0.9,
+        )
+
+        assert stats == {"matched": 1, "below_threshold": 0, "total": 1}
+        mock_supabase_client.upsert_matching.assert_called_once()
+
+    def test_categorize_for_matching_marks_review(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Items below confidence threshold should become needs_human_review."""
+
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service._find_best_match_llm = Mock(return_value=(None, 0.0))
+
+        stats = service.categorize_for_matching(
+            [sample_taxonomy_page],
+            [sample_wordpress_content],
+            min_confidence=0.9,
+        )
+
+        assert stats == {"matched": 0, "below_threshold": 1, "total": 1}
+        mock_supabase_client.upsert_matching.assert_called_once()
+
+    def test_find_best_match_llm_parses_response(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service.client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [
+            Mock(
+                message=Mock(
+                    content='{"best_match_index": 0, "confidence": 0.91, "reasoning": "match"}'
+                )
+            )
+        ]
+        service.client.chat.completions.create.return_value = mock_response
+
+        best_match, confidence = service._find_best_match_llm(
+            sample_taxonomy_page, [sample_wordpress_content]
+        )
+
+        assert best_match == sample_wordpress_content
+        assert confidence == 0.91
+
+    def test_find_best_match_llm_handles_no_match(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service.client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [
+            Mock(
+                message=Mock(
+                    content='{"best_match_index": -1, "confidence": 0.4, "reasoning": "none"}'
+                )
+            )
+        ]
+        service.client.chat.completions.create.return_value = mock_response
+
+        best_match, confidence = service._find_best_match_llm(
+            sample_taxonomy_page, [sample_wordpress_content]
+        )
+
+        assert best_match is None
+        assert confidence == 0.0
+
+    def test_coerce_datetime_parses_timestamp(self, mock_settings, mock_supabase_client) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        expected = service._coerce_datetime(1_700_000_000)
+        assert expected.year >= 2023
+
+    def test_extract_request_count_handles_missing(
+        self, mock_settings, mock_supabase_client
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        count = service._extract_request_count({"completed": 5}, "completed")
+        assert count == 5
+        assert service._extract_request_count(None, "completed") == 0

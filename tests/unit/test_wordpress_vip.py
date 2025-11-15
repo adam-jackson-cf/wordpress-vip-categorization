@@ -1,5 +1,6 @@
 """Unit tests for WordPress VIP connector."""
 
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import requests
@@ -104,3 +105,45 @@ class TestWordPressVIPConnector:
         result = connector.test_connection()
 
         assert result is False
+
+    def test_fetch_all_posts_respects_modified_after(
+        self,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Ensure fetch_all_posts forwards modified_after to get_posts."""
+
+        connector = WordPressVIPConnector("https://example.com")
+        cutoff = datetime(2024, 1, 1)
+
+        with (
+            patch.object(
+                connector,
+                "get_posts",
+                side_effect=[
+                    [
+                        {
+                            "id": 1,
+                            "link": "https://example.com/post",
+                            "title": {"rendered": "Title"},
+                            "content": {"rendered": "<p>Body</p>"},
+                        }
+                    ],
+                    [],
+                ],
+            ) as mock_get_posts,
+            patch.object(
+                connector,
+                "_parse_wordpress_item",
+                return_value=sample_wordpress_content,
+            ),
+        ):
+            list(
+                connector.fetch_all_posts(
+                    show_progress=False,
+                    modified_after=cutoff,
+                )
+            )
+
+        first_call_kwargs = mock_get_posts.call_args_list[0].kwargs
+        assert first_call_kwargs["page"] == 1
+        assert first_call_kwargs["modified_after"] == cutoff
