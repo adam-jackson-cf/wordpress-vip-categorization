@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-## Project Overview
+# Project Overview
 
 AI-powered content categorization system for WordPress VIP that uses a **cascading multi-stage workflow** to map taxonomy pages to WordPress content. The system ingests content from WordPress REST API, stores it in Supabase, and uses OpenAI-compatible APIs (OpenRouter) for embeddings-based semantic matching with LLM fallback.
 
@@ -234,7 +232,20 @@ All configuration via `.env` file (see `.env.example`):
 
 ## Quality Gates
 
-All commits must satisfy the full gate: Black formatting, Ruff linting, MyPy strict typing, and pytest with ≥54% coverage. `make quality-check` runs the exact sequence (`black --check src tests`, `ruff check src tests`, `mypy src`, and `pytest --cov=src --cov-report=term-missing --cov-report=html`).
+All commits must satisfy the full gate: Black formatting, Ruff linting, MyPy strict typing, and pytest with ≥80% coverage. `make quality-check` runs the exact sequence (`black --check src tests`, `ruff check src tests`, `mypy src`, and `pytest --cov=src --cov-report=term-missing --cov-report=html`).
+
+- Always run `black src tests` and keep imports grouped stdlib → third-party → local (alphabetically):
+  ```python
+  from datetime import datetime
+  from unittest.mock import Mock
+
+  import pytest
+
+  from src.models import TaxonomyPage
+  ```
+- When wiring repo scripts into tooling, reference them from the `code-research` root (e.g., `wordpress-vip-categorization/scripts/...`).
+- Only patch/mock attributes that actually exist in the target module—mock upstream dependencies like `openai.OpenAI` rather than removed classes.
+- For focused test runs, disable coverage (e.g., `pytest --no-cov tests/unit/test_x.py`) so the 80% gate only runs on the full suite.
 
 ### Pre-commit Hooks
 
@@ -278,13 +289,3 @@ The hook order is: housekeeping fixes (EOF, whitespace, large files) → Black a
 - Use `Field()` for defaults, validation, descriptions
 - Models serialize to JSON for Supabase storage
 - `model_config` sets serialization behavior
-
-## Important Notes
-
-- **Cascading workflow** runs semantic matching (0.85) → LLM categorization (0.9) → human review by default. Both stages configurable.
-- **Stage toggles** allow semantic-only, LLM-only, or both stages. Use CLI flags (`--skip-semantic`, `--skip-llm`) or environment variables.
-- **LLM fallback** works with OpenRouter (uses chat completions API). Batch categorization requires OpenAI API.
-- **Database initialization** must be done manually via Supabase SQL Editor (run `schema.sql` once)
-- **Service role key** required for Supabase (anon key needs RLS policies configured)
-- **WordPress REST API** must be enabled on target sites (`/wp-json/wp/v2/` endpoint)
-- **Match stage metadata** stored in database and exported to CSV for tracking workflow progress
