@@ -491,32 +491,37 @@ def evaluate() -> None:
 @cli.command()
 @click.option("--num-trials", type=int, help="Number of optimization trials")
 def optimize_prompts(num_trials: int | None) -> None:
-    """Optimize categorization prompts using DSPy."""
+    """Optimize taxonomy-to-content matching prompts using DSPy."""
     settings = get_settings()
     db = SupabaseClient(settings)
     optimizer = DSPyOptimizer(settings, db)
 
-    # Get content with existing categorizations for training
+    # Get content items for training data preparation
     content_items = db.get_all_content()
-    categories = db.get_all_taxonomy()
 
-    if not content_items or not categories:
-        click.echo(
-            "Error: Need both content and taxonomy data. Run ingest and load-taxonomy first."
-        )
+    if not content_items:
+        click.echo("Error: No content found. Run 'ingest' first.")
         sys.exit(1)
 
-    click.echo("Preparing training data...")
-    training_data = optimizer.prepare_training_data(content_items, [c.category for c in categories])
+    click.echo("Preparing training data from matching results...")
+    training_data = optimizer.prepare_training_data(content_items)
 
     if len(training_data) < 10:
         click.echo("Warning: Very few training examples. Results may not be optimal.")
+        click.echo("Run 'match' command first to generate matching results for training.")
+
+    if not training_data:
+        click.echo(
+            "Error: No training data available. "
+            "Run 'match' command first to generate matching results."
+        )
+        sys.exit(1)
 
     click.echo(f"Optimizing with {len(training_data)} examples...")
     optimized_model = optimizer.optimize(training_data, max_labeled_demos=num_trials or 8)
 
     # Save optimized model
-    model_path = "optimized_categorizer.json"
+    model_path = "optimized_matcher.json"
     optimizer.save_optimized_model(optimized_model, model_path)
 
     click.echo(f"✓ Optimization complete. Model saved to {model_path}")

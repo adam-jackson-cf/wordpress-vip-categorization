@@ -243,24 +243,24 @@ class TestCategorizationService:
         assert stats == {"matched": 0, "below_threshold": 1, "total": 1}
         mock_supabase_client.upsert_matching.assert_called_once()
 
+    @patch("src.services.categorization.Path.exists")
+    @patch("src.services.categorization.DSPyOptimizer")
     def test_find_best_match_llm_parses_response(
         self,
+        mock_dspy_optimizer_class: Mock,
+        mock_path_exists: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
+        """Test that _find_best_match_llm correctly parses DSPy response."""
+        mock_dspy_optimizer = Mock()
+        mock_dspy_optimizer.predict_match.return_value = (0, 0.91)
+        mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
+        mock_path_exists.return_value = False
+
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service.client = Mock()
-        mock_response = Mock()
-        mock_response.choices = [
-            Mock(
-                message=Mock(
-                    content='{"best_match_index": 0, "confidence": 0.91, "reasoning": "match"}'
-                )
-            )
-        ]
-        service.client.chat.completions.create.return_value = mock_response
 
         best_match, confidence = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
@@ -268,25 +268,28 @@ class TestCategorizationService:
 
         assert best_match == sample_wordpress_content
         assert confidence == 0.91
+        mock_dspy_optimizer.predict_match.assert_called_once_with(
+            sample_taxonomy_page, [sample_wordpress_content]
+        )
 
+    @patch("src.services.categorization.Path.exists")
+    @patch("src.services.categorization.DSPyOptimizer")
     def test_find_best_match_llm_handles_no_match(
         self,
+        mock_dspy_optimizer_class: Mock,
+        mock_path_exists: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
+        """Test that _find_best_match_llm handles no match case."""
+        mock_dspy_optimizer = Mock()
+        mock_dspy_optimizer.predict_match.return_value = (-1, 0.4)
+        mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
+        mock_path_exists.return_value = False
+
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service.client = Mock()
-        mock_response = Mock()
-        mock_response.choices = [
-            Mock(
-                message=Mock(
-                    content='{"best_match_index": -1, "confidence": 0.4, "reasoning": "none"}'
-                )
-            )
-        ]
-        service.client.chat.completions.create.return_value = mock_response
 
         best_match, confidence = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
@@ -294,6 +297,9 @@ class TestCategorizationService:
 
         assert best_match is None
         assert confidence == 0.0
+        mock_dspy_optimizer.predict_match.assert_called_once_with(
+            sample_taxonomy_page, [sample_wordpress_content]
+        )
 
     def test_coerce_datetime_parses_timestamp(self, mock_settings, mock_supabase_client) -> None:
         service = CategorizationService(mock_settings, mock_supabase_client)

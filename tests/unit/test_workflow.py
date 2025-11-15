@@ -1,6 +1,6 @@
 """Unit tests for WorkflowService."""
 
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -88,7 +88,10 @@ def sample_content_items() -> list[WordPressContent]:
     ]
 
 
-def test_workflow_service_initialization(mock_settings: Settings, mock_db: MagicMock) -> None:
+@patch("src.services.categorization.DSPyOptimizer")
+def test_workflow_service_initialization(
+    mock_dspy_optimizer_class: MagicMock, mock_settings: Settings, mock_db: MagicMock
+) -> None:
     """Test workflow service initialization."""
     service = WorkflowService(mock_settings, mock_db)
 

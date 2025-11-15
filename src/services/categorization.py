@@ -1,4 +1,4 @@
-"""Content categorization service using OpenAI Batch API."""
+"""Content categorization service using OpenAI Batch API and DSPy-optimized matching."""
 
 import json
 import logging
@@ -21,6 +21,7 @@ from src.models import (
     TaxonomyPage,
     WordPressContent,
 )
+from src.optimization.dspy_optimizer import DSPyOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,21 @@ class CategorizationService:
         self.settings = settings
         self.db = db_client
         self.client = openai.OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+
+        # Initialize DSPy optimizer for matching
+        self.dspy_optimizer = DSPyOptimizer(settings, db_client)
+
+        # Try to load optimized model if it exists
+        model_path = Path("optimized_matcher.json")
+        if model_path.exists():
+            try:
+                self.dspy_optimizer.load_optimized_model(str(model_path))
+                logger.info("Loaded optimized DSPy matching model")
+            except Exception as e:
+                logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
+        else:
+            logger.info("No optimized model found, using unoptimized DSPy module")
+
         logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
 
     @staticmethod
@@ -49,7 +65,7 @@ class CategorizationService:
         """Convert API timestamp formats into datetime."""
         if isinstance(value, datetime):
             return value
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return datetime.fromtimestamp(value)
         if isinstance(value, str):
             try:
@@ -456,15 +472,10 @@ The confidence should be a number between 0 and 1.
             "total": len(taxonomy_pages),
         }
 
-    @retry(
-        retry=retry_if_exception_type(openai.APIError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-    )
     def _find_best_match_llm(
         self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
     ) -> tuple[WordPressContent | None, float]:
-        """Use LLM to find best matching content for a taxonomy page.
+        """Use DSPy-optimized LLM to find best matching content for a taxonomy page.
 
         Args:
             taxonomy: Taxonomy page to match.
@@ -473,59 +484,18 @@ The confidence should be a number between 0 and 1.
         Returns:
             Tuple of (best_match, confidence) or (None, 0.0) if no good match.
         """
-        # Create content summaries for LLM
-        content_summaries = []
-        for i, content in enumerate(content_items):
-            summary = f"{i}. Title: {content.title}\n   URL: {content.url}\n   Preview: {content.content[:200]}..."
-            content_summaries.append(summary)
-
-        content_list = "\n\n".join(content_summaries)
-
-        prompt = f"""You are matching a taxonomy page to the most relevant content page.
-
-Taxonomy Page:
-- Category: {taxonomy.category}
-- Description: {taxonomy.description}
-- Keywords: {', '.join(taxonomy.keywords) if taxonomy.keywords else 'None'}
-- URL: {taxonomy.url}
-
-Available Content Pages:
-{content_list}
-
-Analyze the taxonomy page and find the BEST matching content page based on semantic relevance.
-Respond with a JSON object in this exact format:
-{{
-  "best_match_index": <index number of best match, or -1 if no good match>,
-  "confidence": <confidence score 0-1>,
-  "reasoning": "brief explanation"
-}}
-
-The confidence should reflect how well the content matches the taxonomy's category, description, and keywords."""
-
         try:
-            response = self.client.chat.completions.create(
-                model=self.settings.llm_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a content matching assistant. Always respond with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.3,
+            # Use DSPy optimizer to get prediction
+            best_match_index, confidence = self.dspy_optimizer.predict_match(
+                taxonomy, content_items
             )
 
-            message_content = response.choices[0].message.content or "{}"
-            result = json.loads(message_content)
-            best_match_index = result.get("best_match_index", -1)
-            confidence = float(result.get("confidence", 0.0))
-
+            # Validate index and return result
             if best_match_index >= 0 and best_match_index < len(content_items):
                 return content_items[best_match_index], confidence
             else:
                 return None, 0.0
 
         except Exception as e:
-            logger.error(f"Error in LLM matching for taxonomy {taxonomy.url}: {e}")
-            return None, 0.0
+            logger.error(f"Error in DSPy matching for taxonomy {taxonomy.url}: {e}")
+            raise  # Raise exception rather than falling back to hardcoded prompt
