@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automate Supabase reinitialization + pipeline smoke tests."""
+"""Automate Supabase reinitialization with optional live validation."""
 
 from __future__ import annotations
 
@@ -10,10 +10,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-DEFAULT_TESTS = [
-    "tests/unit/test_full_pipeline_mock.py::TestFullPipeline::test_ingestion_with_public_site",
-    "tests/unit/test_full_pipeline_mock.py::TestFullPipeline::test_semantic_matching_integration",
-]
+LIVE_INTEGRATION_TEST = "tests/integration/test_full_pipeline.py::test_full_e2e_pipeline_live"
 
 
 def run_step(description: str, command: Sequence[str], env: dict[str, str] | None = None) -> None:
@@ -44,12 +41,9 @@ def main() -> None:
     parser.add_argument("--skip-ingest", action="store_true", help="Skip ingestion")
     parser.add_argument("--skip-match", action="store_true", help="Skip match workflow")
     parser.add_argument(
-        "--run-tests", action="store_true", help="Run integration smoke tests after matching"
-    )
-    parser.add_argument(
-        "--include-slow-test",
+        "--run-tests",
         action="store_true",
-        help="Include the slow full E2E pipeline test (requires RUN_SLOW_TESTS=1)",
+        help="Run the live Supabase-backed integration test after matching",
     )
     args = parser.parse_args()
 
@@ -81,13 +75,14 @@ def main() -> None:
         run_step("Run cascading match workflow", build_cli_command(*match_cmd))
 
     if args.run_tests:
-        tests = list(DEFAULT_TESTS)
-        if args.include_slow_test:
-            tests.append("tests/integration/test_full_pipeline.py::test_full_e2e_pipeline_live")
         env = os.environ.copy()
-        if args.include_slow_test:
-            env["RUN_SLOW_TESTS"] = "1"
-        run_step("Run integration smoke tests", ["pytest", "-n", "0", *tests], env=env)
+        env.setdefault("SUPABASE_TESTING", "1")
+        env.setdefault("RUN_SLOW_TESTS", "1")
+        run_step(
+            "Run live Supabase integration test",
+            ["pytest", "-n", "0", LIVE_INTEGRATION_TEST],
+            env=env,
+        )
 
     print("\nAll steps completed successfully.")
 
