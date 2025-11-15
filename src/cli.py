@@ -688,6 +688,10 @@ def optimize_dataset(
     - Medium: Moderate metric calls and generations
     - Heavy: Comprehensive search with higher cost
     """
+    # Validate train split early so argument errors trigger before loading settings/env vars
+    if train_split is not None and not 0 < train_split < 1:
+        raise click.BadParameter("Train split must be between 0 and 1", param_hint="--train-split")
+
     # Validate budget options (exactly one must be provided for GEPA)
     if optimizer.lower() == "gepa":
         budget_count = sum(bool(x) for x in [budget, max_full_evals, max_metric_calls])
@@ -737,8 +741,6 @@ def optimize_dataset(
 
     # Override train split if provided
     if train_split is not None:
-        if not 0 < train_split < 1:
-            raise click.BadParameter("Train split must be between 0 and 1")
         settings.dspy_train_split_ratio = train_split
 
     # Override seed if provided

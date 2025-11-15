@@ -226,8 +226,8 @@ class TestOptimizeWithGEPA:
 
         result = mock_dspy_optimizer.optimize_with_gepa(training_examples, budget="light")
 
-        # For robustness, optimizer falls back to the base matcher on failure
-        assert result == mock_dspy_optimizer.matcher
+        # Successful optimization should return the compiled matcher instance
+        assert result == mock_optimized_module
         mock_gepa.assert_called_once()
 
     @patch("src.optimization.dspy_optimizer.GEPA")

@@ -32,6 +32,7 @@ Use progressive disclosure - only review the below indexed documents when your t
 - Initialize database: run `src/data/schema.sql` in Supabase (or use `python -m src.cli init-db`), then run the CLI `full-run` command with an output file (e.g., `python -m src.cli full-run --output results/results.csv`)
 - Run full quality gate: `make quality-check`
 - Run tests only: `pytest`
+- Run pre-commit checks: `pre-commit run --all-files` (mirrors the git hook)
 - CLI help and commands: `python -m src.cli --help`
 
 ## Architecture Overview

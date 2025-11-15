@@ -68,3 +68,6 @@ Thumbs.db
 results/
 exports/
 *.out
+
+# Editor / tooling docs
+.cursor/docs/

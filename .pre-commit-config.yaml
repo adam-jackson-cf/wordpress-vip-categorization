@@ -24,6 +24,6 @@ repos:
     hooks:
       - id: make-quality-check
         name: make quality-check (format-check → ruff → mypy → pytest w/ coverage)
-        entry: wordpress-vip-categorization/scripts/make_quality_check.sh
+        entry: scripts/make_quality_check.sh
         language: script
         pass_filenames: false
