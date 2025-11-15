@@ -1,5 +1,0 @@
-source_url,target_url,category,similarity_score,confidence
-https://example.com/wordpress,https://wordpress.org/about/,WordPress,0.8348,0.0000
-https://example.com/technology,,Technology,0.0000,0.0000
-https://example.com/development,,Development,0.0000,0.0000
-https://example.com/community,https://wordpress.org/state-of-the-word/,Community,0.7401,0.0000

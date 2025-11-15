@@ -1,5 +1,7 @@
 """CLI-level regression tests."""
 
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock
 
 from click.testing import CliRunner
@@ -8,6 +10,56 @@ from src.cli import cli
 from src.models import MatchStage
 
 runner = CliRunner()
+
+
+def test_init_db_success_via_rpc(mocker) -> None:
+    """init-db should call Supabase SQL RPC and succeed on 200."""
+
+    mock_settings = mocker.Mock()
+    mock_settings.supabase_url = "https://projectref.supabase.co"
+    mock_settings.supabase_key = "test-key"
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+
+    mock_client = mocker.Mock()
+    mock_response = mocker.Mock(status_code=200)
+    mock_client.post.return_value = mock_response
+
+    class DummyClient:
+        def __enter__(self):
+            return mock_client
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    mocker.patch("src.cli.httpx.Client", return_value=DummyClient())
+
+    result = runner.invoke(cli, ["init-db"])
+
+    assert result.exit_code == 0
+    mock_client.post.assert_called_once()
+
+
+def test_init_db_falls_back_on_rpc_failure(mocker) -> None:
+    """init-db should fall back to manual instructions when RPC fails."""
+
+    mock_settings = mocker.Mock()
+    mock_settings.supabase_url = "https://projectref.supabase.co"
+    mock_settings.supabase_key = "test-key"
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+
+    class FailingClient:
+        def __enter__(self):
+            raise Exception("network error")
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    mocker.patch("src.cli.httpx.Client", return_value=FailingClient())
+
+    result = runner.invoke(cli, ["init-db"])
+
+    assert result.exit_code == 0
+    assert "DATABASE INITIALIZATION REQUIRED" in result.output
 
 
 def test_match_conflicting_filters_returns_error() -> None:
@@ -75,3 +127,144 @@ def test_match_only_unmatched_triggers_llm_retry(
         taxonomy_pages=[sample_taxonomy_page],
         batch_mode=True,
     )
+
+
+def test_optimize_dataset_success(mocker, tmp_path) -> None:
+    """Test optimize-dataset command with valid dataset."""
+    # Create a test dataset file
+    dataset_file = tmp_path / "dataset.csv"
+    with open(dataset_file, "w", newline="", encoding="utf-8") as f:
+        import csv
+
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "taxonomy_category",
+                "taxonomy_description",
+                "taxonomy_keywords",
+                "content_summaries",
+                "best_match_index",
+                "confidence",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "taxonomy_category": "Tech",
+                "taxonomy_description": "Tech content",
+                "taxonomy_keywords": "tech",
+                "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
+                "best_match_index": "0",
+                "confidence": "0.9",
+            }
+        )
+
+    mock_settings = mocker.Mock()
+    mock_settings.dspy_train_split_ratio = 0.2
+    mock_settings.dspy_optimization_seed = 42
+    mock_settings.dspy_num_threads = 1
+    mock_settings.dspy_display_table = 5
+    mock_settings.dspy_optimization_budget = "medium"
+    mock_settings.dspy_reflection_model = ""
+    mock_settings.llm_model = "gpt-4o-mini"
+    mock_settings.llm_base_url = "https://api.openai.com/v1"
+    mock_settings.llm_api_key = "test-key"
+
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+
+    mock_db = Mock()
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+
+    mock_optimizer = mocker.Mock()
+    mock_examples = [mocker.Mock()] * 5
+    mock_optimizer.load_training_dataset.return_value = mock_examples
+    mock_optimized_model = mocker.Mock()
+    mock_optimizer.optimize_with_dataset.return_value = mock_optimized_model
+    mocker.patch("src.cli.DSPyOptimizer", return_value=mock_optimizer)
+
+    result = runner.invoke(
+        cli,
+        [
+            "optimize-dataset",
+            "--dataset",
+            str(dataset_file),
+            "--optimizer",
+            "gepa",
+            "--budget",
+            "light",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_optimizer.load_training_dataset.assert_called_once_with(dataset_file)
+    mock_optimizer.optimize_with_dataset.assert_called_once()
+
+
+def test_optimize_dataset_file_not_found() -> None:
+    """Test optimize-dataset command with non-existent dataset file."""
+    result = runner.invoke(
+        cli,
+        [
+            "optimize-dataset",
+            "--dataset",
+            "nonexistent.csv",
+        ],
+    )
+
+    assert result.exit_code != 0
+    # Click validates path existence before our code runs
+    assert "does not exist" in result.output
+
+
+def test_optimize_dataset_invalid_budget_combination() -> None:
+    """Test optimize-dataset command with conflicting budget options."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("taxonomy_category,taxonomy_description,content_summaries,best_match_index\n")
+        f.write("Tech,Tech content,Summaries,0\n")
+        dataset_path = f.name
+
+    try:
+        result = runner.invoke(
+            cli,
+            [
+                "optimize-dataset",
+                "--dataset",
+                dataset_path,
+                "--optimizer",
+                "gepa",
+                "--budget",
+                "light",
+                "--max-full-evals",
+                "10",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "exactly one of" in result.output.lower()
+    finally:
+        Path(dataset_path).unlink()
+
+
+def test_optimize_dataset_invalid_train_split() -> None:
+    """Test optimize-dataset command with invalid train split."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("taxonomy_category,taxonomy_description,content_summaries,best_match_index\n")
+        f.write("Tech,Tech content,Summaries,0\n")
+        dataset_path = f.name
+
+    try:
+        result = runner.invoke(
+            cli,
+            [
+                "optimize-dataset",
+                "--dataset",
+                dataset_path,
+                "--train-split",
+                "1.5",  # Invalid: > 1
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Train split must be between 0 and 1" in result.output
+    finally:
+        Path(dataset_path).unlink()

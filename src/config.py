@@ -84,6 +84,32 @@ class Settings(BaseSettings):
         default="accuracy", description="DSPy optimization metric"
     )
     dspy_num_trials: int = Field(default=50, description="Number of DSPy optimization trials")
+    dspy_optimization_budget: str = Field(
+        default="medium",
+        description="GEPA optimization budget (light/medium/heavy)",
+    )
+    dspy_train_split_ratio: float = Field(
+        default=0.2, description="Training set split ratio for prompt optimizers"
+    )
+    dspy_optimization_seed: int = Field(
+        default=42, description="Random seed for DSPy optimization reproducibility"
+    )
+    dspy_reflection_model: str = Field(
+        default="",
+        description="Model for GEPA reflection (defaults to llm_model if empty)",
+    )
+    dspy_num_threads: int = Field(
+        default=1, description="Parallel evaluation threads for DSPy optimization"
+    )
+    dspy_display_table: int = Field(
+        default=5, description="Number of example results to display in evaluation (0 disables)"
+    )
+    dspy_max_full_evals: int | None = Field(
+        default=None, description="Explicit GEPA budget: max full evaluations"
+    )
+    dspy_max_metric_calls: int | None = Field(
+        default=None, description="Explicit GEPA budget: max metric calls"
+    )
 
     @field_validator("wordpress_vip_sites", mode="before")
     @classmethod
@@ -112,6 +138,22 @@ class Settings(BaseSettings):
         """Validate LLM confidence threshold is between 0 and 1."""
         if not 0 <= v <= 1:
             raise ValueError("LLM confidence threshold must be between 0 and 1")
+        return v
+
+    @field_validator("dspy_train_split_ratio")
+    @classmethod
+    def validate_train_split(cls, v: float) -> float:
+        """Validate training split ratio is between 0 and 1."""
+        if not 0 < v < 1:
+            raise ValueError("Training split ratio must be between 0 and 1")
+        return v
+
+    @field_validator("dspy_optimization_budget")
+    @classmethod
+    def validate_budget(cls, v: str) -> str:
+        """Validate GEPA budget is one of the allowed values."""
+        if v not in ("light", "medium", "heavy"):
+            raise ValueError("GEPA budget must be one of: light, medium, heavy")
         return v
 
 

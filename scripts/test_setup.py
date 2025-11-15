@@ -49,7 +49,7 @@ def test_supabase_connection(settings):
             logger.info(f"✓ Supabase connection verified (found {len(content)} content items)")
         except Exception as e:
             logger.warning(
-                "⚠ Tables may not exist yet. Please run schema.sql in Supabase SQL editor."
+                "⚠ Tables may not exist yet. Please run src/data/schema.sql in Supabase SQL editor."
             )
             logger.warning(f"  Error: {e}")
 
@@ -141,11 +141,13 @@ def main():
         logger.info("✓ ALL TESTS PASSED!")
         logger.info("=" * 70)
         logger.info("\nNext steps:")
-        logger.info("1. Run the schema.sql file in your Supabase SQL Editor to create tables")
+        logger.info(
+            "1. Run the src/data/schema.sql file in your Supabase SQL Editor to create tables"
+        )
         logger.info("2. Load taxonomy: python -m src.cli load-taxonomy")
         logger.info("3. Ingest content: python -m src.cli ingest")
         logger.info("4. Perform matching: python -m src.cli match")
-        logger.info("5. Export results: python -m src.cli export --output results.csv")
+        logger.info("5. Export results: python -m src.cli export --output results/results.csv")
 
         return 0
 

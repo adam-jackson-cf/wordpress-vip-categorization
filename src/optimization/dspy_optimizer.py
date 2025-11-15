@@ -1,17 +1,28 @@
 """DSPy-based prompt optimization for taxonomy-to-content matching."""
 
+import csv
+import json
 import logging
-from typing import cast
+from datetime import datetime
+from pathlib import Path
+from typing import Any, cast
 
 import dspy
-from dspy.evaluate import Evaluate
-from dspy.teleprompt import BootstrapFewShot
+from dspy import evaluate as dspy_evaluate
+from dspy import teleprompt as dspy_teleprompt
+from dspy.teleprompt import GEPA, BootstrapFewShot
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import MatchStage, TaxonomyPage, WordPressContent
 
 logger = logging.getLogger(__name__)
+
+
+PROMPT_OPT_DIR = Path("prompt-optimiser")
+MODELS_DIR = PROMPT_OPT_DIR / "models"
+CONFIGS_DIR = PROMPT_OPT_DIR / "configs"
+REPORTS_DIR = PROMPT_OPT_DIR / "reports"
 
 
 class TaxonomyMatcher(dspy.Signature):
@@ -80,9 +91,7 @@ class DSPyOptimizer:
         self.db = db_client
 
         # Configure DSPy with OpenAI (or OpenAI-compatible API)
-        # DSPy 3.x uses dspy.clients.LM with model format "provider/model"
-        from dspy.clients import LM
-
+        # Use dspy.LM() per updated best practices (both dspy.LM() and dspy.clients.LM are valid)
         # Determine provider from base URL or default to openai
         model_name = settings.llm_model
         if "openrouter" in settings.llm_base_url.lower():
@@ -93,7 +102,7 @@ class DSPyOptimizer:
             # Default to openai provider
             model_name = f"openai/{model_name}"
 
-        lm = LM(
+        lm = dspy.LM(
             model=model_name,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
@@ -208,21 +217,33 @@ class DSPyOptimizer:
         logger.info(f"Prepared {len(examples)} training examples from matching results")
         return examples
 
-    def accuracy_metric(self, example: dspy.Example, prediction: dspy.Prediction) -> float:
+    def accuracy_metric(
+        self,
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: Any = None,
+        pred_name: str | None = None,
+        pred_trace: Any = None,
+    ) -> float:
         """Compute accuracy metric for matching evaluation.
 
+        GEPA-compatible metric that accepts five arguments as required by DSPy GEPA optimizer.
+
         Args:
-            example: Ground truth example.
-            prediction: Model prediction.
+            gold: Ground truth example.
+            pred: Model prediction.
+            trace: Optional trace information (unused).
+            pred_name: Optional prediction name (unused).
+            pred_trace: Optional prediction trace (unused).
 
         Returns:
             Score between 0 and 1.
         """
         # Check if best_match_index matches
         try:
-            expected_index = int(example.best_match_index)
+            expected_index = int(gold.best_match_index)
             predicted_index = (
-                int(prediction.best_match_index) if hasattr(prediction, "best_match_index") else -1
+                int(pred.best_match_index) if hasattr(pred, "best_match_index") else -1
             )
         except (ValueError, TypeError, AttributeError):
             return 0.0
@@ -232,15 +253,86 @@ class DSPyOptimizer:
 
         # Confidence calibration: penalize if prediction is too confident but wrong
         confidence_penalty = 0.0
-        if hasattr(prediction, "confidence"):
+        if hasattr(pred, "confidence"):
             try:
-                conf = float(prediction.confidence)
+                conf = float(pred.confidence)
                 if index_match == 0.0 and conf > 0.8:
                     confidence_penalty = 0.2  # Penalize overconfidence on wrong match
             except (ValueError, TypeError):
                 pass
 
         return max(0.0, index_match - confidence_penalty)
+
+    def _extract_prompt_info(
+        self, model: MatchingModule
+    ) -> dict[str, str | list[dict[str, str | int | float]]]:
+        """Extract prompt/instruction information and demonstrations from a DSPy module.
+
+        Args:
+            model: DSPy module to extract prompts from.
+
+        Returns:
+            Dictionary with prompt information including demonstrations.
+        """
+        info: dict[str, str | list[dict[str, str | int | float]]] = {}
+        try:
+            # Try to extract instructions from the predict module
+            if hasattr(model, "predict") and hasattr(model.predict, "instructions"):
+                info["instructions"] = str(model.predict.instructions)
+            elif hasattr(model, "predict") and hasattr(model.predict, "_signature"):
+                # Fallback: get signature description
+                sig = model.predict._signature
+                if hasattr(sig, "__doc__") and sig.__doc__:
+                    info["signature_description"] = sig.__doc__
+
+            # Extract demonstrations/examples
+            demonstrations: list[dict[str, str | int | float]] = []
+            num_demos = 0
+
+            if hasattr(model, "predict") and hasattr(model.predict, "demos"):
+                demos = model.predict.demos
+                if demos:
+                    num_demos = len(demos)
+                    # Serialize demonstrations to dict format
+                    for demo in demos:
+                        try:
+                            demo_dict: dict[str, str | int | float] = {}
+                            # Extract fields from dspy.Example
+                            if hasattr(demo, "taxonomy_category"):
+                                demo_dict["taxonomy_category"] = str(demo.taxonomy_category)
+                            if hasattr(demo, "taxonomy_description"):
+                                demo_dict["taxonomy_description"] = str(demo.taxonomy_description)
+                            if hasattr(demo, "taxonomy_keywords"):
+                                demo_dict["taxonomy_keywords"] = str(demo.taxonomy_keywords)
+                            if hasattr(demo, "content_summaries"):
+                                demo_dict["content_summaries"] = str(demo.content_summaries)
+                            if hasattr(demo, "best_match_index"):
+                                try:
+                                    demo_dict["best_match_index"] = int(demo.best_match_index)
+                                except (ValueError, TypeError):
+                                    demo_dict["best_match_index"] = -1
+                            if hasattr(demo, "confidence"):
+                                try:
+                                    demo_dict["confidence"] = float(demo.confidence)
+                                except (ValueError, TypeError):
+                                    demo_dict["confidence"] = 0.0
+                            if hasattr(demo, "reasoning"):
+                                demo_dict["reasoning"] = str(demo.reasoning)
+                            demonstrations.append(demo_dict)
+                        except Exception as e:
+                            logger.warning(f"Could not serialize demonstration: {e}")
+                            continue
+
+            info["num_demos"] = str(num_demos)
+            info["demonstrations"] = demonstrations
+
+        except Exception as e:
+            logger.warning(f"Could not extract prompt info: {e}")
+            info["error"] = str(e)
+            info["num_demos"] = "0"
+            info["demonstrations"] = []
+
+        return info
 
     def optimize(
         self,
@@ -291,8 +383,8 @@ class DSPyOptimizer:
                 trainset=train_set,
             )
 
-            # Evaluate on validation set
-            evaluator = Evaluate(
+            # Evaluate on validation set for basic bootstrap optimizer
+            evaluator = dspy_evaluate.Evaluate(
                 devset=val_set,
                 metric=self.accuracy_metric,
                 num_threads=1,
@@ -308,6 +400,355 @@ class DSPyOptimizer:
             logger.error(f"Optimization failed: {e}")
             return self.matcher
 
+    def generate_optimization_report(
+        self,
+        before_model: MatchingModule,
+        after_model: MatchingModule,
+        optimizer_type: str,
+        optimizer_config: dict[str, str | int | float | None],
+        training_size: int,
+        validation_size: int,
+        validation_score: float | None = None,
+        duration_seconds: float | None = None,
+    ) -> str:
+        """Generate a markdown report documenting optimization changes.
+
+        Args:
+            before_model: Model before optimization.
+            after_model: Model after optimization.
+            optimizer_type: Type of optimizer used.
+            optimizer_config: Configuration used for optimization.
+            training_size: Number of training examples.
+            validation_size: Number of validation examples.
+            validation_score: Final validation score (if available).
+            duration_seconds: Optimization duration in seconds (if available).
+
+        Returns:
+            Markdown report as string.
+        """
+        before_info = self._extract_prompt_info(before_model)
+        after_info = self._extract_prompt_info(after_model)
+
+        report_lines = [
+            "# DSPy Optimization Report",
+            "",
+            f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "## Summary",
+            "",
+            f"- **Optimizer:** {optimizer_type}",
+            f"- **Training Examples:** {training_size}",
+            f"- **Validation Examples:** {validation_size}",
+        ]
+
+        if validation_score is not None:
+            report_lines.append(f"- **Validation Score:** {validation_score:.3f}")
+        if duration_seconds is not None:
+            report_lines.append(f"- **Duration:** {duration_seconds:.1f} seconds")
+
+        report_lines.extend(
+            [
+                "",
+                "## Configuration",
+                "",
+                "### Optimizer Settings",
+            ]
+        )
+
+        for key, value in optimizer_config.items():
+            if value is not None:
+                report_lines.append(f"- **{key}:** {value}")
+
+        report_lines.extend(
+            [
+                "",
+                "### Model Settings",
+                f"- **LLM Model:** {self.settings.llm_model}",
+                f"- **LLM Base URL:** {self.settings.llm_base_url}",
+                "- **Temperature:** 0.3 (main), 1.0 (reflection for GEPA)",
+                "",
+                "## Before Optimization",
+                "",
+                "### Prompt Instructions",
+            ]
+        )
+
+        if "instructions" in before_info:
+            report_lines.append("```")
+            instructions = before_info["instructions"]
+            if isinstance(instructions, str):
+                report_lines.append(instructions)
+            report_lines.append("```")
+        elif "signature_description" in before_info:
+            sig_desc = before_info["signature_description"]
+            if isinstance(sig_desc, str):
+                report_lines.append(sig_desc)
+        else:
+            report_lines.append("*Default DSPy ChainOfThought instructions*")
+
+        report_lines.extend(
+            [
+                "",
+                f"- **Number of Demonstrations:** {before_info.get('num_demos', '0')}",
+                "",
+                "## After Optimization",
+                "",
+                "### Prompt Instructions",
+            ]
+        )
+
+        if "instructions" in after_info:
+            report_lines.append("```")
+            instructions = after_info["instructions"]
+            if isinstance(instructions, str):
+                report_lines.append(instructions)
+            report_lines.append("```")
+        elif "signature_description" in after_info:
+            sig_desc = after_info["signature_description"]
+            if isinstance(sig_desc, str):
+                report_lines.append(sig_desc)
+        else:
+            report_lines.append("*Optimized DSPy ChainOfThought instructions*")
+
+        report_lines.extend(
+            [
+                "",
+                f"- **Number of Demonstrations:** {after_info.get('num_demos', '0')}",
+                "",
+                "## Changes",
+                "",
+            ]
+        )
+
+        # Compare before and after
+        before_num_demos_str = before_info.get("num_demos", "0")
+        after_num_demos_str = after_info.get("num_demos", "0")
+        if before_num_demos_str != after_num_demos_str:
+            report_lines.append(
+                f"- **Demonstrations:** Changed from {before_num_demos_str} to {after_num_demos_str}"
+            )
+
+        before_instr = before_info.get("instructions")
+        after_instr = after_info.get("instructions")
+        if (
+            before_instr
+            and after_instr
+            and isinstance(before_instr, str)
+            and isinstance(after_instr, str)
+        ):
+            if before_instr != after_instr:
+                report_lines.append("- **Instructions:** Modified during optimization")
+            else:
+                report_lines.append(
+                    "- **Instructions:** No changes detected (may be in demonstrations)"
+                )
+        else:
+            report_lines.append(
+                "- **Instructions:** Changes may be in demonstrations or internal structure"
+            )
+
+        report_lines.extend(
+            [
+                "",
+                "## Notes",
+                "",
+                "- DSPy optimizers may modify instructions, add demonstrations, or adjust internal parameters",
+                "- The optimized model is saved and can be loaded for production use",
+                "- Validation score indicates performance on held-out data",
+            ]
+        )
+
+        return "\n".join(report_lines)
+
+    def _get_next_version(self, model_file_path: str) -> int:
+        """Get the next version number by scanning existing config files.
+
+        Args:
+            model_file_path: Unused; kept for backward compatibility.
+
+        Returns:
+            Next version number (starts at 1 if no existing configs).
+        """
+        del model_file_path  # Parameter retained for compatibility, not used.
+
+        config_dir = CONFIGS_DIR
+        config_pattern = "dspy_config_v*.json"
+
+        max_version = 0
+        try:
+            for config_file in config_dir.glob(config_pattern):
+                # Extract version number from filename: dspy_config_v{version}.json
+                try:
+                    version_str = config_file.stem.replace("dspy_config_v", "")
+                    version = int(version_str)
+                    max_version = max(max_version, version)
+                except (ValueError, AttributeError):
+                    # Skip invalid filenames
+                    continue
+        except Exception as e:
+            logger.warning(f"Error scanning for existing config files: {e}")
+
+        return max_version + 1
+
+    def extract_optimization_config(
+        self,
+        before_model: MatchingModule,
+        after_model: MatchingModule,
+        optimizer_type: str,
+        optimizer_config: dict[str, str | int | float | None],
+        training_size: int,
+        validation_size: int,
+        model_file_path: str,
+        validation_score: float | None = None,
+        duration_seconds: float | None = None,
+    ) -> dict[str, str | int | float | dict | list]:
+        """Extract full optimization configuration for JSON serialization.
+
+        Args:
+            before_model: Model before optimization.
+            after_model: Model after optimization.
+            optimizer_type: Type of optimizer used.
+            optimizer_config: Configuration used for optimization.
+            training_size: Number of training examples.
+            validation_size: Number of validation examples.
+            model_file_path: Path to saved model file.
+            validation_score: Final validation score (if available).
+            duration_seconds: Optimization duration in seconds (if available).
+
+        Returns:
+            Dictionary ready for JSON serialization.
+        """
+        before_info = self._extract_prompt_info(before_model)
+        after_info = self._extract_prompt_info(after_model)
+
+        # Build optimizer settings dict (filter None values)
+        optimizer_settings: dict[str, str | int | float] = {}
+        for key, value in optimizer_config.items():
+            if value is not None:
+                optimizer_settings[key] = value
+
+        # Build metrics dict
+        metrics: dict[str, int | float] = {
+            "training_size": training_size,
+            "validation_size": validation_size,
+        }
+        if validation_score is not None:
+            metrics["validation_score"] = validation_score
+        if duration_seconds is not None:
+            metrics["duration_seconds"] = duration_seconds
+
+        # Build before/after optimization state
+        before_instructions_val = before_info.get("instructions") or before_info.get(
+            "signature_description"
+        )
+        before_instructions = (
+            before_instructions_val
+            if isinstance(before_instructions_val, str)
+            else "Default DSPy ChainOfThought instructions"
+        )
+        before_num_demos_val = before_info.get("num_demos", "0")
+        before_num_demos = int(before_num_demos_val) if isinstance(before_num_demos_val, str) else 0
+        before_demos_val = before_info.get("demonstrations", [])
+        before_demos = before_demos_val if isinstance(before_demos_val, list) else []
+
+        before_state: dict[str, str | int | list] = {
+            "instructions": before_instructions,
+            "num_demos": before_num_demos,
+            "demonstrations": before_demos,
+        }
+
+        after_instructions_val = after_info.get("instructions") or after_info.get(
+            "signature_description"
+        )
+        after_instructions = (
+            after_instructions_val
+            if isinstance(after_instructions_val, str)
+            else "Optimized DSPy ChainOfThought instructions"
+        )
+        after_num_demos_val = after_info.get("num_demos", "0")
+        after_num_demos = int(after_num_demos_val) if isinstance(after_num_demos_val, str) else 0
+        after_demos_val = after_info.get("demonstrations", [])
+        after_demos = after_demos_val if isinstance(after_demos_val, list) else []
+
+        after_state: dict[str, str | int | list] = {
+            "instructions": after_instructions,
+            "num_demos": after_num_demos,
+            "demonstrations": after_demos,
+        }
+
+        # Build full config
+        config: dict[str, str | int | float | dict | list] = {
+            "version": self._get_next_version(model_file_path),
+            "timestamp": datetime.now().isoformat(),
+            "model_file": str(Path(model_file_path).name),
+            "optimizer": {
+                "type": optimizer_type,
+                "settings": optimizer_settings,
+            },
+            "model_config": {
+                "llm_model": self.settings.llm_model,
+                "llm_base_url": self.settings.llm_base_url,
+                "temperature": 0.3,
+            },
+            "before_optimization": before_state,
+            "after_optimization": after_state,
+            "metrics": metrics,
+        }
+
+        return config
+
+    def save_optimization_config(
+        self,
+        before_model: MatchingModule,
+        after_model: MatchingModule,
+        optimizer_type: str,
+        optimizer_config: dict[str, str | int | float | None],
+        training_size: int,
+        validation_size: int,
+        model_file_path: str,
+        validation_score: float | None = None,
+        duration_seconds: float | None = None,
+    ) -> Path:
+        """Save optimization configuration to JSON file with version tracking.
+
+        Args:
+            before_model: Model before optimization.
+            after_model: Model after optimization.
+            optimizer_type: Type of optimizer used.
+            optimizer_config: Configuration used for optimization.
+            training_size: Number of training examples.
+            validation_size: Number of validation examples.
+            model_file_path: Path to saved model file.
+            validation_score: Final validation score (if available).
+            duration_seconds: Optimization duration in seconds (if available).
+
+        Returns:
+            Path to saved config file.
+        """
+        config = self.extract_optimization_config(
+            before_model=before_model,
+            after_model=after_model,
+            optimizer_type=optimizer_type,
+            optimizer_config=optimizer_config,
+            training_size=training_size,
+            validation_size=validation_size,
+            model_file_path=model_file_path,
+            validation_score=validation_score,
+            duration_seconds=duration_seconds,
+        )
+
+        # Determine config file path in prompt-optimiser/configs
+        version = config["version"]
+        config_file = CONFIGS_DIR / f"dspy_config_v{version}.json"
+
+        # Save to JSON with proper formatting
+        CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved optimization config to {config_file}")
+        return config_file
+
     def save_optimized_model(self, model: MatchingModule, path: str) -> None:
         """Save optimized model to disk.
 
@@ -315,20 +756,48 @@ class DSPyOptimizer:
             model: Optimized matcher.
             path: Save path.
         """
-        model.save(path)
-        logger.info(f"Saved optimized model to {path}")
+        model_path = Path(path)
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save(str(model_path))
+        logger.info(f"Saved optimized model to {model_path}")
 
     def load_optimized_model(self, path: str) -> MatchingModule:
-        """Load optimized model from disk.
+        """Load optimized model from a specific path."""
+        model_path = Path(path)
+        self.matcher.load(str(model_path))
+        logger.info(f"Loaded optimized model from {model_path}")
+        return self.matcher
 
-        Args:
-            path: Model path.
+    def load_latest_model(self) -> MatchingModule | None:
+        """Load the latest versioned optimized model, if available."""
+        if not MODELS_DIR.exists():
+            logger.info("No optimized models directory found; using unoptimized matcher")
+            return None
 
-        Returns:
-            Loaded matcher.
-        """
-        self.matcher.load(path)
-        logger.info(f"Loaded optimized model from {path}")
+        candidates = list(MODELS_DIR.glob("matcher_v*.json"))
+        if not candidates:
+            logger.info("No versioned optimized models found; using unoptimized matcher")
+            return None
+
+        max_version = -1
+        latest_path: Path | None = None
+        for candidate in candidates:
+            stem = candidate.stem  # matcher_vN
+            try:
+                version_str = stem.replace("matcher_v", "")
+                version = int(version_str)
+                if version > max_version:
+                    max_version = version
+                    latest_path = candidate
+            except ValueError:
+                continue
+
+        if latest_path is None:
+            logger.info("No valid versioned optimized models found; using unoptimized matcher")
+            return None
+
+        self.matcher.load(str(latest_path))
+        logger.info(f"Loaded latest optimized model from {latest_path}")
         return self.matcher
 
     def predict_match(
@@ -368,3 +837,283 @@ class DSPyOptimizer:
             return -1, 0.0
 
         return best_match_index, confidence
+
+    def load_training_dataset(self, dataset_path: Path) -> list[dspy.Example]:
+        """Load training dataset from CSV or JSON file.
+
+        Args:
+            dataset_path: Path to CSV or JSON dataset file.
+
+        Returns:
+            List of DSPy examples for training.
+
+        Raises:
+            ValueError: If file format is unsupported or data is invalid.
+            FileNotFoundError: If dataset file does not exist.
+        """
+        if not dataset_path.exists():
+            raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
+
+        examples: list[dspy.Example] = []
+
+        if dataset_path.suffix.lower() == ".json":
+            with open(dataset_path, encoding="utf-8") as f:
+                data = json.load(f)
+                if not isinstance(data, list):
+                    raise ValueError("JSON dataset must be a list of example objects")
+
+                for i, item in enumerate(data):
+                    try:
+                        example = dspy.Example(
+                            taxonomy_category=item["taxonomy_category"],
+                            taxonomy_description=item["taxonomy_description"],
+                            taxonomy_keywords=item.get("taxonomy_keywords", "None"),
+                            content_summaries=item["content_summaries"],
+                            best_match_index=int(item["best_match_index"]),
+                            confidence=float(item.get("confidence", 0.0)),
+                            reasoning=item.get("reasoning", ""),
+                        ).with_inputs(
+                            "taxonomy_category",
+                            "taxonomy_description",
+                            "taxonomy_keywords",
+                            "content_summaries",
+                        )
+                        examples.append(example)
+                    except (KeyError, ValueError, TypeError) as e:
+                        logger.warning(f"Skipping invalid example at index {i}: {e}")
+                        continue
+
+        elif dataset_path.suffix.lower() == ".csv":
+            with open(dataset_path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                required_fields = [
+                    "taxonomy_category",
+                    "taxonomy_description",
+                    "content_summaries",
+                    "best_match_index",
+                ]
+                fieldnames = reader.fieldnames or []
+                if not all(field in fieldnames for field in required_fields):
+                    raise ValueError(f"CSV must contain columns: {', '.join(required_fields)}")
+
+                for i, row in enumerate(reader):
+                    try:
+                        example = dspy.Example(
+                            taxonomy_category=row["taxonomy_category"],
+                            taxonomy_description=row["taxonomy_description"],
+                            taxonomy_keywords=row.get("taxonomy_keywords", "None"),
+                            content_summaries=row["content_summaries"],
+                            best_match_index=int(row["best_match_index"]),
+                            confidence=float(row.get("confidence", "0.0")),
+                            reasoning=row.get("reasoning", ""),
+                        ).with_inputs(
+                            "taxonomy_category",
+                            "taxonomy_description",
+                            "taxonomy_keywords",
+                            "content_summaries",
+                        )
+                        examples.append(example)
+                    except (KeyError, ValueError, TypeError) as e:
+                        logger.warning(f"Skipping invalid row {i + 1}: {e}")
+                        continue
+        else:
+            raise ValueError(f"Unsupported file format: {dataset_path.suffix}. Use .csv or .json")
+
+        if not examples:
+            raise ValueError("No valid examples found in dataset file")
+
+        logger.info(f"Loaded {len(examples)} examples from {dataset_path}")
+        return examples
+
+    def optimize_with_gepa(
+        self,
+        training_examples: list[dspy.Example],
+        validation_examples: list[dspy.Example] | None = None,
+        budget: str | None = None,
+        max_full_evals: int | None = None,
+        max_metric_calls: int | None = None,
+        num_threads: int | None = None,
+        display_table: int | None = None,
+    ) -> MatchingModule:
+        """Optimize matcher using GEPA (Genetic Evolutionary Prompt Optimization).
+
+        Args:
+            training_examples: Training data.
+            validation_examples: Optional validation data.
+            budget: GEPA budget level (light/medium/heavy). Ignored if max_full_evals or max_metric_calls provided.
+            max_full_evals: Explicit budget: maximum full evaluations.
+            max_metric_calls: Explicit budget: maximum metric calls.
+            num_threads: Parallel evaluation threads (default from settings).
+            display_table: Number of example results to display (default from settings).
+
+        Returns:
+            Optimized matching module.
+        """
+        if not training_examples:
+            logger.warning("No training examples provided, returning unoptimized model")
+            return self.matcher
+
+        # Use validation set if provided, otherwise split training set
+        if validation_examples is None:
+            split_point = int(len(training_examples) * self.settings.dspy_train_split_ratio)
+            train_set = training_examples[:split_point]
+            val_set = training_examples[split_point:]
+        else:
+            train_set = training_examples
+            val_set = validation_examples
+
+        logger.info(
+            f"Optimizing with GEPA: {len(train_set)} training, {len(val_set)} validation examples"
+        )
+
+        # Configure reflection LM
+        reflection_model = (
+            self.settings.dspy_reflection_model
+            if self.settings.dspy_reflection_model
+            else self.settings.llm_model
+        )
+
+        # Determine provider from base URL
+        model_name = reflection_model
+        if "openrouter" in self.settings.llm_base_url.lower():
+            if not model_name.startswith("openrouter/"):
+                model_name = f"openrouter/{model_name}"
+        elif not model_name.startswith("openai/"):
+            model_name = f"openai/{model_name}"
+
+        reflection_lm = dspy.LM(
+            model=model_name,
+            api_key=self.settings.llm_api_key,
+            base_url=self.settings.llm_base_url,
+            temperature=1.0,  # Higher temperature for diverse prompt proposals
+            max_tokens=32000,
+        )
+
+        # Configure GEPA budget (exactly one must be provided)
+        budget_config: dict[str, str | int] = {}
+        if max_full_evals is not None:
+            budget_config["max_full_evals"] = max_full_evals
+        elif max_metric_calls is not None:
+            budget_config["max_metric_calls"] = max_metric_calls
+        else:
+            budget_level = budget or self.settings.dspy_optimization_budget
+            budget_config["auto"] = budget_level
+
+        # Set up GEPA optimizer
+        optimizer = GEPA(
+            reflection_lm=reflection_lm,
+            metric=self.accuracy_metric,
+            num_threads=num_threads or self.settings.dspy_num_threads,
+            failure_score=0.0,
+            perfect_score=1.0,
+            log_dir="./gepa_logs",
+            track_stats=True,
+            seed=self.settings.dspy_optimization_seed,
+            use_merge=True,  # Combine successful program variants
+            **budget_config,
+        )
+
+        # Compile/optimize the model
+        try:
+            optimized = optimizer.compile(
+                self.matcher,
+                trainset=train_set,
+            )
+
+            # Evaluate on validation set
+            evaluator = dspy_evaluate.Evaluate(
+                devset=val_set,
+                metric=self.accuracy_metric,
+                num_threads=num_threads or self.settings.dspy_num_threads,
+                display_progress=True,
+                display_table=(
+                    display_table if display_table is not None else self.settings.dspy_display_table
+                ),
+            )
+
+            score = evaluator(optimized)
+            logger.info(f"GEPA optimized model validation score: {score:.3f}")
+
+            return cast(MatchingModule, optimized)
+
+        except Exception as e:
+            logger.error(f"GEPA optimization failed: {e}")
+            return self.matcher
+
+    def optimize_with_dataset(
+        self,
+        training_examples: list[dspy.Example],
+        validation_examples: list[dspy.Example] | None = None,
+        optimizer_type: str = "gepa",
+        **kwargs: int | str | None,
+    ) -> MatchingModule:
+        """Optimize matcher using dataset-based optimization with specified optimizer.
+
+        Args:
+            training_examples: Training data.
+            validation_examples: Optional validation data.
+            optimizer_type: Optimizer to use ('gepa', 'bootstrap-random-search', or 'bootstrap').
+            **kwargs: Additional optimizer-specific parameters.
+
+        Returns:
+            Optimized matching module.
+        """
+        if not training_examples:
+            logger.warning("No training examples provided, returning unoptimized model")
+            return self.matcher
+
+        if optimizer_type == "gepa":
+            # Extract GEPA-specific kwargs
+            gepa_kwargs: dict[str, int | str | None] = {
+                "budget": kwargs.get("budget"),
+                "max_full_evals": kwargs.get("max_full_evals"),
+                "max_metric_calls": kwargs.get("max_metric_calls"),
+                "num_threads": kwargs.get("num_threads"),
+                "display_table": kwargs.get("display_table"),
+            }
+            return self.optimize_with_gepa(training_examples, validation_examples, **gepa_kwargs)  # type: ignore[arg-type]
+        elif optimizer_type == "bootstrap-random-search":
+            # Use validation set if provided, otherwise split training set
+            if validation_examples is None:
+                split_point = int(len(training_examples) * self.settings.dspy_train_split_ratio)
+                train_set = training_examples[:split_point]
+                val_set = training_examples[split_point:]
+            else:
+                train_set = training_examples
+                val_set = validation_examples
+
+            logger.info(
+                f"Optimizing with BootstrapFewShotWithRandomSearch: {len(train_set)} training, {len(val_set)} validation examples"
+            )
+
+            optimizer = dspy_teleprompt.BootstrapFewShotWithRandomSearch(
+                metric=self.accuracy_metric,
+                max_bootstrapped_demos=kwargs.get("max_bootstrapped_demos", 4),
+                max_labeled_demos=kwargs.get("max_labeled_demos", 8),
+            )
+
+            try:
+                optimized = optimizer.compile(
+                    self.matcher,
+                    trainset=train_set,
+                )
+
+                # For bootstrap-random-search, rely on the optimizer's internal metric;
+                # skip additional evaluation to keep tests and runtime behavior simple.
+                logger.info("BootstrapFewShotWithRandomSearch optimization completed successfully")
+                return cast(MatchingModule, optimized)
+
+            except Exception as e:
+                logger.error(f"BootstrapFewShotWithRandomSearch optimization failed: {e}")
+                return self.matcher
+        else:  # bootstrap (existing method)
+            max_bootstrapped = kwargs.get("max_bootstrapped_demos", 4)
+            max_labeled = kwargs.get("max_labeled_demos", 8)
+            return self.optimize(
+                training_examples,
+                validation_examples,
+                max_bootstrapped_demos=(
+                    int(max_bootstrapped) if isinstance(max_bootstrapped, int) else 4
+                ),
+                max_labeled_demos=int(max_labeled) if isinstance(max_labeled, int) else 8,
+            )

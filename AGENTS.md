@@ -4,292 +4,122 @@ AI-powered content categorization system for WordPress VIP that uses a **cascadi
 
 **Key workflow:** Load taxonomy → Ingest WordPress content → Cascading matching (semantic 0.85 → LLM 0.9 → human review) → Export results
 
-**Cascading stages:**
-1. Semantic matching (threshold: 0.85) - embedding-based similarity
-2. LLM categorization (threshold: 0.9) - fallback for items below semantic threshold
-3. Human review - items failing both stages exported with blank target URLs
+## Documentation Index
 
+Use progressive disclosure - only review the below indexed documents when your task requires it, otherwise skip them:
 
-## Project Structure
+| Task | Reference |
+|------|-----------|
+| Testing patterns & fixtures | [tests/AGENTS.md](tests/AGENTS.md) |
+| Database schema | [src/data/schema.sql](src/data/schema.sql) |
+| DSPy optimization quick start | [docs/OPTIMIZATION_QUICKSTART.md](docs/OPTIMIZATION_QUICKSTART.md) |
+| DSPy/GEPA best practices | [docs/DSPY_GEPA_BEST_PRACTICES.md](docs/DSPY_GEPA_BEST_PRACTICES.md) |
+| Project DSPy implementation | [docs/DSPY_IMPLEMENTATION.md](docs/DSPY_IMPLEMENTATION.md) |
+| Environment setup | [docs/SETUP.md](docs/SETUP.md) |
+| Quick start | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 
-```
-wordpress-vip-categorization/
-├── src/
-│   ├── __init__.py
-│   ├── cli.py                    # Command-line interface
-│   ├── config.py                 # Configuration management
-│   ├── models.py                 # Pydantic data models
-│   ├── data/
-│   │   ├── __init__.py
-│   │   └── supabase_client.py   # Supabase integration
-│   ├── connectors/
-│   │   ├── __init__.py
-│   │   └── wordpress_vip.py     # WordPress VIP API connector
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── categorization.py    # OpenAI Batch categorization
-│   │   ├── matching.py          # Semantic matching
-│   │   └── ingestion.py         # Content ingestion orchestration
-│   ├── optimization/
-│   │   ├── __init__.py
-│   │   ├── dspy_optimizer.py    # DSPy prompt optimization
-│   │   └── evaluator.py         # Evaluation framework
-│   └── exporters/
-│       ├── __init__.py
-│       └── csv_exporter.py      # CSV export functionality
-├── tests/
-│   ├── unit/
-│   │   ├── test_wordpress_vip.py
-│   │   ├── test_categorization.py
-│   │   ├── test_matching.py
-│   │   └── test_supabase_client.py
-│   ├── integration/
-│   │   ├── test_full_pipeline.py
-│   │   └── test_batch_processing.py
-│   └── conftest.py              # Pytest fixtures
-├── data/
-│   └── taxonomy.csv.example     # Example taxonomy file
-├── pyproject.toml               # Project configuration
-├── README.md                    # This file
-└── .env.example                 # Environment variables template
-```
+## Project Structure (High Level)
 
-## Development Commands
+- `src/` – Core application code (CLI, config, models, services, connectors, exporters, DSPy optimization).
+- `tests/` – Unit and integration tests with shared fixtures.
+- `data/` – Example taxonomy CSV and other input/output artifacts.
+- Root files – `pyproject.toml` and related tooling scripts.
 
-### Setup & Installation
+## Build & Test
 
-```bash
-# Install dependencies
-pip install -e ".[dev]"
+- Install: `pip install -e ".[dev]"`
+- Verify setup: `python scripts/test_setup.py`
+- Initialize database: run `src/data/schema.sql` in Supabase (or use `python -m src.cli init-db`), then run the CLI `full-run` command with an output file (e.g., `python -m src.cli full-run --output results/results.csv`)
+- Run full quality gate: `make quality-check`
+- Run tests only: `pytest`
+- CLI help and commands: `python -m src.cli --help`
 
-# Verify setup (checks Supabase, OpenRouter, WordPress connections)
-python test_setup.py
+## Architecture Overview
 
-# One-time database initialization: Run schema.sql in Supabase SQL Editor
-# Then run automated setup:
-python run_setup.py
-```
+- **Ingestion** (`IngestionService`) fetches WordPress REST API content and stores it in Supabase.
+- **Matching workflow** (`WorkflowService`) runs cascading semantic → LLM → human-review matching via `MatchingService` and `CategorizationService`.
+- **Export** (`CSVExporter`) reads from the `export_results` view to produce analyst-friendly CSVs.
 
-### Testing
+Key modules:
 
-```bash
-# Run entire suite (54% coverage gate enforced via pytest.ini)
-pytest
+- `src/config.py` – Pydantic `Settings` and workflow thresholds/toggles.
+- `src/models.py` – Pydantic v2 models, including `MatchStage`.
+- `src/data/supabase_client.py` – Typed Supabase CRUD wrapper.
+- `src/connectors/wordpress_vip.py` – WordPress VIP `/wp-json/wp/v2/posts` connector.
+- `src/services/workflow.py` / `matching.py` / `categorization.py` – Workflow orchestration, semantic matching, and LLM categorization.
 
-# Generate an HTML coverage report
-pytest --cov=src --cov-report=html
+Database highlights (see `src/data/schema.sql` for details):
 
-# Focus on units vs. integration
-pytest tests/unit/ -v
-pytest tests/integration/ -v -m integration
-
-# Exercise a single test file (example)
-pytest tests/test_categorization.py
-```
-
-### Code Quality
-
-```bash
-# Run all quality checks (must pass before commits)
-make quality-check
-
-# Individual checks
-black src tests           # Format code
-black --check src tests   # Check formatting without changes
-ruff check src tests      # Lint code
-mypy src                  # Type check (strict mode)
-```
-
-### CLI Commands
-
-```bash
-# Load taxonomy from CSV
-python -m src.cli load-taxonomy
-
-# Ingest WordPress content
-python -m src.cli ingest
-python -m src.cli ingest --sites https://site1.com,https://site2.com
-python -m src.cli ingest --max-pages 10
-python -m src.cli ingest --resume                      # resume from per-site checkpoints
-python -m src.cli ingest --since 2025-11-01            # explicit cutoff window
-
-# Run cascading matching workflow (semantic → LLM fallback)
-python -m src.cli match                    # Full workflow (both stages)
-python -m src.cli match --threshold 0.80   # Custom semantic threshold
-python -m src.cli match --skip-llm         # Semantic matching only
-python -m src.cli match --skip-semantic    # LLM categorization only
-python -m src.cli match --only-unmatched --force-llm   # Retry backlog in LLM stage only
-python -m src.cli match --taxonomy-ids <uuid,...>      # Targeted reruns
-python -m src.cli match --taxonomy-file subset.csv     # CSV-driven reruns
-
-# Full orchestration (taxonomy → ingest → match → export)
-python -m src.cli full-run --output redirects.csv
-
-# Export results to CSV
-python -m src.cli export --output results.csv
-
-# View statistics
-python -m src.cli stats
-
-# Evaluate matching quality
-python -m src.cli evaluate
-```
-
-## Architecture
-
-### Core Data Flow
-
-1. **Ingestion** (`IngestionService`): Fetches content from WordPress REST API → stores in Supabase
-2. **Cascading Matching** (`WorkflowService`): Orchestrates multi-stage matching workflow
-   - Stage 1: Semantic matching (0.85 threshold) via `MatchingService`
-   - Stage 2: LLM categorization (0.9 threshold) via `CategorizationService` for unmatched items
-   - Stage 3: Mark remaining items as needs human review
-3. **Export** (`CSVExporter`): Queries database → exports matches with stage metadata to CSV
-
-### Key Components
-
-- **`src/config.py`**: Pydantic Settings for environment configuration. Uses `.env` file. All settings validated at startup. Includes stage toggles and thresholds.
-- **`src/models.py`**: Pydantic models for all data structures. Includes `MatchStage` enum for tracking workflow stages.
-- **`src/data/supabase_client.py`**: Database client wrapping Supabase SDK. Handles all CRUD operations with type-safe models.
-- **`src/connectors/wordpress_vip.py`**: WordPress REST API connector. Uses `/wp-json/wp/v2/posts` endpoint with pagination.
-- **`src/services/workflow.py`**: Orchestrates cascading semantic → LLM workflow with configurable stages
-- **`src/services/matching.py`**: Semantic matching using embeddings. Includes `get_unmatched_taxonomy()` for fallback stage.
-- **`src/services/categorization.py`**: LLM categorization with confidence thresholding. Includes `categorize_for_matching()` for workflow integration.
-- **`src/cli.py`**: Click-based CLI with all user-facing commands
-
-### Database Schema (Supabase)
-
-- **`wordpress_content`** – Ingested WordPress posts/pages plus metadata used during matching.
-  - Fields: `id` (uuid PK), `url` (unique text), `title`, `content`, `site_url`, `published_date`, `metadata` (jsonb for arbitrary post data), `created_at`.
-
-- **`taxonomy_pages`** – Source taxonomy entries that must be matched to WordPress content.
-  - Fields: `id` (uuid PK), `url` (unique text), `category`, `description`, `keywords` (if present in CSV), `created_at`.
-
-- **`categorization_results`** – Stores AI categorization metadata, primarily when the OpenAI/OpenRouter fallback workflows are run asynchronously.
-  - Fields: `id` (uuid PK), `content_id` (uuid FK → `wordpress_content`), `category`, `confidence` (float), `batch_id` (text identifier if batches are used), `created_at`.
-
-- **`matching_results`** – Canonical junction table holding semantic similarity scores and final match metadata for the cascading workflow.
-  - Fields: `id` (uuid PK), `taxonomy_id` (uuid FK → `taxonomy_pages`), `content_id` (uuid FK → `wordpress_content`, nullable when items need review), `similarity_score` (float), `match_stage` (`semantic_matched`, `llm_categorized`, `needs_human_review`), `failed_at_stage`, `created_at`.
-
-- **`export_results`** (view) – Pre-joined projection of taxonomy + content + match metadata for reporting/CSV export. Columns include `source_url`, `target_url`, `category`, `similarity_score`, `confidence`, and stage metadata, ensuring downstream analysts never query raw tables directly.
-
-### OpenRouter Integration
-
-The project uses OpenRouter (OpenAI-compatible API) for cost-effective embeddings:
-
-- **Chat model**: `google/gemini-2.0-flash-exp:free` (for future categorization)
-- **Embedding model**: `qwen/qwen3-embedding-0.6b` (1024-dimensional vectors)
-- **Base URL**: `https://openrouter.ai/api/v1`
-
-**Important:** OpenRouter does NOT support OpenAI Batch API for batch categorization. However, the LLM fallback stage uses standard chat completions API which works with OpenRouter.
-
-### Cascading Matching Workflow
-
-**Stage 1: Semantic Matching** (threshold: 0.85)
-1. Create text representations:
-   - Taxonomy: `Category: {cat}\nDescription: {desc}\nKeywords: {kw1, kw2, ...}`
-   - Content: `Title: {title}\n\nContent: {first_1000_chars}`
-2. Generate embeddings via OpenRouter API (batch mode for efficiency)
-3. Compute cosine similarity between taxonomy and content embeddings
-4. Items ≥ 0.85 → store with `match_stage=semantic_matched`
-5. Items < 0.85 → proceed to Stage 2
-
-**Stage 2: LLM Categorization** (threshold: 0.9)
-1. For each unmatched taxonomy page, LLM evaluates all content items
-2. LLM returns best match index and confidence score
-3. Items with confidence ≥ 0.9 → store with `match_stage=llm_categorized`
-4. Items < 0.9 → proceed to Stage 3
-
-**Stage 3: Human Review**
-1. Items failing both stages → store with `match_stage=needs_human_review`, `content_id=NULL`
-2. Export to CSV with blank `target_url` for manual review
+- `wordpress_content` – Ingested posts/pages and metadata.
+- `taxonomy_pages` – Source taxonomy URLs and descriptors.
+- `categorization_results` – LLM categorization metadata and confidence.
+- `matching_results` – Canonical matches and stage metadata.
+- `export_results` – View joining taxonomy, content, and match data.
 
 ## Configuration
 
-All configuration via `.env` file (see `.env.example`):
+All configuration is via `.env` (see `.env.example`):
 
-- **Required**: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITES`
-- **Semantic embeddings**: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`
-- **LLM categorization**: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`
-- **Matching Workflow**:
-  - `SIMILARITY_THRESHOLD` (0-1, default: 0.85) - Semantic matching threshold
-  - `LLM_CONFIDENCE_THRESHOLD` (0-1, default: 0.9) - LLM categorization threshold
-  - `ENABLE_SEMANTIC_MATCHING` (true/false, default: true) - Toggle semantic stage
-  - `ENABLE_LLM_CATEGORIZATION` (true/false, default: true) - Toggle LLM fallback stage
-- **Taxonomy**: `TAXONOMY_FILE_PATH` (default: `./data/taxonomy.csv`)
+- Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITES`
+- Semantic embeddings: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`
+- LLM categorization: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`
+- Matching workflow:
+  - `SIMILARITY_THRESHOLD` (default 0.85)
+  - `LLM_CONFIDENCE_THRESHOLD` (default 0.9)
+  - `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`
+- Taxonomy file: `TAXONOMY_FILE_PATH` (default `./data/taxonomy.csv`)
 
-`OPENAI_*` variables remain as fallbacks for backward compatibility but should be phased out in favor of the dedicated semantic/LLM settings.
+`OPENAI_*` variables exist for backward compatibility but should be replaced with the semantic/LLM settings above.
 
-## Testing Strategy
+## Testing & Quality Gates
 
-- **Unit tests** (`tests/unit/`): Mock external APIs (Supabase, OpenRouter, WordPress). Test individual services in isolation.
-- **Integration tests** (`tests/integration/`): Marked with `@pytest.mark.integration`. Test full pipeline with real dependencies.
-- **Fixtures** (`tests/conftest.py`): Shared fixtures for settings, mock clients, sample data
+- Target: ≥80% coverage (enforced by pytest).
+- Unit tests in `tests/unit/` mock external dependencies.
+- Integration tests in `tests/integration/` are marked `@pytest.mark.integration` and are **not** included in the default `make quality-check` gate.
+- Slow tests should be marked `@pytest.mark.slow` and run explicitly, not as part of automated gates.
+- `make quality-check` runs Black (check), Ruff, MyPy (strict on `src`), and pytest with coverage over **non-integration, non-slow** tests.
 
-**Coverage requirements:**
-- Minimum: 54% (enforced by pytest)
-- Excluded: CLI (`src/cli.py`), DSPy optimization modules (require LLM mocks)
+## Critical Requirements - Never Violate
 
-## Quality Gates
+### Quality Gate Compliance
 
-All commits must satisfy the full gate: Black formatting, Ruff linting, MyPy strict typing, and pytest with ≥80% coverage. `make quality-check` runs the exact sequence (`black --check src tests`, `ruff check src tests`, `mypy src`, and `pytest --cov=src --cov-report=term-missing --cov-report=html`).
+All commits must pass: `black --check`, `ruff check`, `mypy src`, `pytest --cov-fail-under=80`
+Never bypass, suppress, or alter quality gates
+Never use `--skip`, `--no-verify`, or disable checks
+Never comment out or conditionally disable failing code
+Fix root cause - do not work around quality gates
 
-### Pre-commit Hooks
+### No Placeholders in Production
 
-Install the bundled hooks to enforce formatting, linting, typing, and tests before every commit:
+Never use placeholders, TODOs, or stubs outside test contexts
+Never use hardcoded values, mock data, or temporary workarounds in production
+All code must be complete and production-ready
 
-```bash
-pre-commit install
-```
+### Security Requirements
 
-You can run the entire chain on demand with:
+Never commit secrets, API keys, or credentials
+Never expose sensitive info in logs or database
+Never use string concatenation for SQL - always parameterized queries
+Load all env vars from `.env` via `pydantic-settings`
 
-```bash
-pre-commit run --all-files
-```
+## Development Practices
 
-The hook order is: housekeeping fixes (EOF, whitespace, large files) → Black auto-format → Ruff lint/fix → `make quality-check`. Commits are blocked until each stage succeeds.
+- Keep imports grouped and alphabetized: stdlib → third-party → local.
+- Remove unused imports/variables (e.g., via `ruff check --fix`).
+- Prefer modern `isinstance(value, int | float)` syntax.
+- Only mock attributes that exist; mock upstream clients like `openai.OpenAI` or HTTP layers rather than internal details.
+- For focused debugging runs, you can disable coverage (e.g., `pytest --no-cov tests/unit/test_x.py`).
 
-## Common Development Patterns
+### CLI & Service Patterns
 
-### Coding rules (reoccuring linter issues)
+- New CLI commands live in `src/cli.py`, use `@cli.command()` and `@click.option`, and should construct `Settings` → `SupabaseClient` → service instances.
+- New services in `src/services/`:
+  - Accept `Settings` and `SupabaseClient` in `__init__`.
+  - Use `tenacity` `@retry` for external calls.
+  - Are fully type hinted and use module-level loggers.
 
-- Always keep imports grouped stdlib → third-party → local (alphabetically):
-  ```python
-  from datetime import datetime
-  from unittest.mock import Mock
+### Pydantic Models
 
-  import pytest
-
-  from src.models import TaxonomyPage
-  ```
-- Remove unused imports and variables—run `ruff check --fix` to auto-remove unused imports (F401) and unused variables (F841).
-- Use modern isinstance syntax: `isinstance(value, int | float)` instead of `isinstance(value, (int, float))` (UP038).
-- When wiring repo scripts into tooling, reference them from the `code-research` root (e.g., `wordpress-vip-categorization/scripts/...`).
-- Only patch/mock attributes that actually exist in the target module—mock upstream dependencies like `openai.OpenAI` rather than removed classes.
-- For focused test runs, disable coverage (e.g., `pytest --no-cov tests/unit/test_x.py`) so the 80% gate only runs on the full suite.
-
-### Adding a new CLI command
-
-1. Add command function in `src/cli.py` decorated with `@cli.command()`
-2. Import required services
-3. Initialize Settings → SupabaseClient → Service(s)
-4. Use click decorators for options (`@click.option()`)
-5. Add unit test in `tests/unit/test_cli.py` (if exists) or integration test
-
-### Adding a new service
-
-1. Create service class in `src/services/`
-2. Accept `Settings` and `SupabaseClient` in `__init__`
-3. Use `@retry` decorator from `tenacity` for external API calls
-4. Type hint all parameters and return values
-5. Add logging via `logger = logging.getLogger(__name__)`
-6. Write unit tests with mocked dependencies
-
-### Working with Pydantic models
-
-- All models in `src/models.py` use Pydantic v2
-- Use `HttpUrl` for URL validation
-- Use `Field()` for defaults, validation, descriptions
-- Models serialize to JSON for Supabase storage
-- `model_config` sets serialization behavior
+- All models in `src/models.py` use Pydantic v2.
+- Use `HttpUrl` for URLs and `Field()` for defaults/validation.
+- Models should serialize cleanly for Supabase JSON storage via `model_config`.

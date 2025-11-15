@@ -47,16 +47,15 @@ class CategorizationService:
         # Initialize DSPy optimizer for matching
         self.dspy_optimizer = DSPyOptimizer(settings, db_client)
 
-        # Try to load optimized model if it exists
-        model_path = Path("optimized_matcher.json")
-        if model_path.exists():
-            try:
-                self.dspy_optimizer.load_optimized_model(str(model_path))
-                logger.info("Loaded optimized DSPy matching model")
-            except Exception as e:
-                logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
-        else:
-            logger.info("No optimized model found, using unoptimized DSPy module")
+        # Try to load latest optimized model if it exists
+        try:
+            loaded = self.dspy_optimizer.load_latest_model()
+            if loaded is not None:
+                logger.info("Loaded latest optimized DSPy matching model")
+            else:
+                logger.info("No optimized model found, using unoptimized DSPy module")
+        except Exception as e:
+            logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
 
         logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
 

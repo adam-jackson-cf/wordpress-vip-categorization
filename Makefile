@@ -17,13 +17,13 @@ install:
 	pip install -e ".[dev]"
 
 test:
-	pytest --cov=src --cov-report=term-missing --cov-report=html
+	pytest
 
 test-unit:
-	pytest tests/unit/ -v
+	pytest --no-cov -m "not integration and not slow" tests/unit
 
 test-integration:
-	pytest tests/integration/ -v -m integration
+	pytest --no-cov tests/integration -m integration
 
 lint:
 	ruff check src tests
@@ -37,7 +37,8 @@ format-check:
 type-check:
 	mypy src
 
-quality-check: format-check lint type-check test
+quality-check: format-check lint type-check
+	pytest -n 4 --cov=src --cov-report=term-missing --cov-fail-under=80 -m "not integration and not slow"
 	@echo "✓ All quality checks passed!"
 
 clean:

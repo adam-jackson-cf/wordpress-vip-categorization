@@ -27,16 +27,24 @@ Both AI stages can be toggled independently via environment variables or CLI fla
 
 ## Get Started
 
-1. **Need a one-command experience?** Follow the [Quick Start](QUICKSTART.md) to create the schema and run `python run_setup.py`.
-2. **Want the full install + CLI workflow?** Use the detailed [Setup Guide](SETUP.md) for prerequisites, environment configuration, and command recipes.
+1. **Need a one-command experience?** Follow the [Quick Start](docs/QUICKSTART.md) to create the schema and run `python -m src.cli full-run --output results/results.csv`.
+2. **Want the full install + CLI workflow?** Use the detailed [Setup Guide](docs/SETUP.md) for prerequisites, environment configuration, and command recipes.
 3. **Building or extending the system?** Read [AGENTS.md](AGENTS.md) for architecture, component responsibilities, and development guidelines.
+
+### Core Setup Commands
+
+- `python -m src.cli init-db` – Apply `src/data/schema.sql` to your Supabase project (uses SQL RPC when available, otherwise prints copy-paste instructions).
+- `python scripts/test_setup.py` – Dry-run verification of environment, Supabase connectivity, WordPress connector, and embeddings.
+- `python -m src.cli full-run --output results/results.csv` – One-shot taxonomy load → ingestion → cascading matching → CSV export.
 
 ## Documentation Map
 
-- [QUICKSTART.md](QUICKSTART.md) – Fast path: Supabase SQL, automated ingestion/matching, and quick validation.
-- [SETUP.md](SETUP.md) – Deep dive into environment variables, CLI commands, customization, cost management, and troubleshooting.
+- [QUICKSTART.md](docs/QUICKSTART.md) – Fast path: Supabase SQL, automated ingestion/matching, and quick validation.
+- [SETUP.md](docs/SETUP.md) – Deep dive into environment variables, CLI commands, customization, cost management, and troubleshooting.
 - [AGENTS.md](AGENTS.md) – Authoritative reference for architecture, services, database schema, and quality expectations.
-- [schema.sql](schema.sql) – Canonical Supabase schema (also reproduced inside the quick start guide).
+- [CODE_REVIEW.md](CODE_REVIEW.md) – Code standards and review checklist.
+- [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) – AI/human review workflow.
+- [src/data/schema.sql](src/data/schema.sql) – Canonical Supabase schema (also reproduced inside the quick start guide).
 
 ## Quality & Tooling
 
@@ -46,4 +54,4 @@ Both AI stages can be toggled independently via environment variables or CLI fla
 
 ## Need Help?
 
-Troubleshooting tips (Supabase auth, OpenRouter limits, low match quality, etc.) live in [SETUP.md](SETUP.md). If something fails outside that scope, open an issue with the command output and environment details.
+Troubleshooting tips (Supabase auth, OpenRouter limits, low match quality, etc.) live in [SETUP.md](docs/SETUP.md).

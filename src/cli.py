@@ -8,12 +8,13 @@ from pathlib import Path
 from uuid import UUID
 
 import click
+import httpx
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
 from src.exporters.csv_exporter import CSVExporter
 from src.models import MatchStage
-from src.optimization.dspy_optimizer import DSPyOptimizer
+from src.optimization.dspy_optimizer import MODELS_DIR, DSPyOptimizer
 from src.optimization.evaluator import Evaluator
 from src.services.categorization import CategorizationService
 from src.services.ingestion import IngestionService
@@ -47,12 +48,70 @@ def _load_taxonomy_urls(csv_path: Path) -> list[str]:
     return [url for url in urls if url]
 
 
-@cli.command()
+@cli.command(name="init-db")
 def init_db() -> None:
-    """Initialize database schema."""
-    click.echo("Database initialization should be done via Supabase dashboard.")
-    click.echo("Please run the schema.sql file in your Supabase SQL editor.")
-    click.echo("See: schema.sql")
+    """Initialize database schema from schema.sql.
+
+    Attempts to execute the schema via Supabase's SQL RPC endpoint using your
+    configured `SUPABASE_URL` and `SUPABASE_KEY`. If direct execution is not
+    available, the SQL is printed with clear instructions for manual execution
+    in the Supabase SQL editor.
+    """
+    settings = get_settings()
+    schema_path = Path(__file__).resolve().parent / "data" / "schema.sql"
+
+    if not schema_path.exists():
+        raise click.ClickException(f"schema.sql not found at {schema_path}")
+
+    schema_sql = schema_path.read_text(encoding="utf-8")
+
+    click.echo("Initializing database schema from schema.sql...")
+    click.echo("Attempting to execute via Supabase SQL RPC endpoint...")
+
+    # Derive project ref from Supabase URL: https://<project-ref>.supabase.co/...
+    try:
+        project_ref = settings.supabase_url.split("//", maxsplit=1)[1].split(".", maxsplit=1)[0]
+    except Exception as exc:  # pragma: no cover - defensive
+        raise click.ClickException(
+            f"Unable to derive project ref from SUPABASE_URL: {exc}"
+        ) from exc
+
+    sql_url = f"https://{project_ref}.supabase.co/rest/v1/rpc/exec_sql"
+    headers = {
+        "apikey": settings.supabase_key,
+        "Authorization": f"Bearer {settings.supabase_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(sql_url, headers=headers, json={"query": schema_sql})
+
+        if response.status_code == 200:
+            click.echo("✓ Tables created successfully via Supabase SQL RPC.")
+            return
+
+        click.echo(
+            f"⚠ Direct SQL execution via RPC returned status {response.status_code}; "
+            "falling back to manual instructions."
+        )
+    except Exception as exc:  # pragma: no cover - network/remote failure
+        click.echo(f"⚠ RPC-based SQL execution failed: {exc}")
+        click.echo("Falling back to manual instructions.")
+
+    # Manual fallback: print clear instructions and schema for copy-paste
+    click.echo("\n" + "=" * 70)
+    click.echo("DATABASE INITIALIZATION REQUIRED")
+    click.echo("=" * 70)
+    click.echo("\n1. Open your Supabase project dashboard.")
+    click.echo("2. Click 'SQL Editor' in the left sidebar.")
+    click.echo("3. Click 'New Query'.")
+    click.echo("4. Copy and paste the following SQL, then click 'RUN':\n")
+    click.echo("-" * 70)
+    click.echo(schema_sql)
+    click.echo("-" * 70)
+    click.echo("\nOnce the schema has been applied, you can run:")
+    click.echo("  python -m src.cli full-run --output results/results.csv")
 
 
 @cli.command()
@@ -491,7 +550,10 @@ def evaluate() -> None:
 @cli.command()
 @click.option("--num-trials", type=int, help="Number of optimization trials")
 def optimize_prompts(num_trials: int | None) -> None:
-    """Optimize taxonomy-to-content matching prompts using DSPy."""
+    """Quick optimization using BootstrapFewShot (uses existing matching results from database).
+
+    For thorough dataset-based optimization, use 'optimize-dataset' command instead.
+    """
     settings = get_settings()
     db = SupabaseClient(settings)
     optimizer = DSPyOptimizer(settings, db)
@@ -520,11 +582,267 @@ def optimize_prompts(num_trials: int | None) -> None:
     click.echo(f"Optimizing with {len(training_data)} examples...")
     optimized_model = optimizer.optimize(training_data, max_labeled_demos=num_trials or 8)
 
-    # Save optimized model
-    model_path = "optimized_matcher.json"
-    optimizer.save_optimized_model(optimized_model, model_path)
+    # Determine next version and save optimized model
+    next_version = optimizer._get_next_version("unused")
+    model_path = MODELS_DIR / f"matcher_v{next_version}.json"
+    optimizer.save_optimized_model(optimized_model, str(model_path))
 
     click.echo(f"✓ Optimization complete. Model saved to {model_path}")
+
+
+@cli.command(name="optimize-dataset")
+@click.option(
+    "--dataset",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Path to CSV or JSON training dataset file",
+)
+@click.option(
+    "--optimizer",
+    type=click.Choice(["gepa", "bootstrap-random-search", "bootstrap"], case_sensitive=False),
+    default="gepa",
+    help="Optimizer to use (default: gepa)",
+)
+@click.option(
+    "--budget",
+    type=click.Choice(["light", "medium", "heavy"], case_sensitive=False),
+    help="GEPA budget level (ignored if --max-full-evals or --max-metric-calls provided)",
+)
+@click.option(
+    "--max-full-evals",
+    type=int,
+    help="Explicit GEPA budget: maximum full evaluations",
+)
+@click.option(
+    "--max-metric-calls",
+    type=int,
+    help="Explicit GEPA budget: maximum metric calls",
+)
+@click.option(
+    "--train-split",
+    type=float,
+    help="Training set split ratio (default: 0.2 for prompt optimizers)",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    help="Optional path to save optimized model (default: prompt-optimiser/models/matcher_vN.json)",
+)
+@click.option(
+    "--save-program",
+    is_flag=True,
+    help="Save entire program structure (for complex optimizations)",
+)
+@click.option(
+    "--num-threads",
+    type=int,
+    help="Parallel evaluation threads (default: 1, recommend 4-24 for production)",
+)
+@click.option(
+    "--display-table",
+    type=int,
+    help="Number of example results to display (default: 5, 0 disables)",
+)
+@click.option(
+    "--seed",
+    type=int,
+    help="Random seed for reproducibility",
+)
+@click.option(
+    "--report",
+    type=click.Path(path_type=Path),
+    help="Path to save optimization report markdown file (optional)",
+)
+@click.option(
+    "--no-save-config",
+    is_flag=True,
+    default=False,
+    help="Disable automatic saving of optimization config JSON file",
+)
+def optimize_dataset(
+    dataset: Path,
+    optimizer: str,
+    budget: str | None,
+    max_full_evals: int | None,
+    max_metric_calls: int | None,
+    train_split: float | None,
+    output: Path,
+    save_program: bool,
+    num_threads: int | None,
+    display_table: int | None,
+    seed: int | None,
+    report: Path | None,
+    no_save_config: bool,
+) -> None:
+    """Optimize prompts using dataset-based optimization (expensive by nature).
+
+    This command performs thorough optimization using a provided dataset file.
+    The process is expensive due to multiple iterations, metric evaluations, and LLM calls.
+
+    Dataset format:
+    - CSV: Must contain columns: taxonomy_category, taxonomy_description, content_summaries, best_match_index
+    - JSON: Array of objects with same fields as CSV columns
+
+    Example budget costs (GEPA):
+    - Light: ~500-1600 metric calls, 6-12 full evaluations
+    - Medium: Moderate metric calls and generations
+    - Heavy: Comprehensive search with higher cost
+    """
+    # Validate budget options (exactly one must be provided for GEPA)
+    if optimizer.lower() == "gepa":
+        budget_count = sum(bool(x) for x in [budget, max_full_evals, max_metric_calls])
+        if budget_count == 0:
+            # Use default from settings
+            pass
+        elif budget_count > 1:
+            raise click.UsageError(
+                "For GEPA optimizer, provide exactly one of: --budget, --max-full-evals, or --max-metric-calls"
+            )
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    optimizer_instance = DSPyOptimizer(settings, db)
+
+    click.echo(f"Loading dataset from {dataset}...")
+    try:
+        training_data = optimizer_instance.load_training_dataset(dataset)
+    except (FileNotFoundError, ValueError) as e:
+        click.echo(f"Error loading dataset: {e}", err=True)
+        sys.exit(1)
+
+    if len(training_data) < 10:
+        click.echo(
+            "Warning: Very few training examples. Results may not be optimal.",
+            err=True,
+        )
+        click.echo("Recommend at least 50 examples, optimal for 300+ examples.")
+
+    click.echo(f"Optimizing with {len(training_data)} examples using {optimizer} optimizer...")
+    click.echo(
+        "⚠ This process is expensive by nature (multiple iterations, metric evaluations, LLM calls)."
+    )
+
+    # Prepare optimizer kwargs (typed for mypy)
+    optimizer_kwargs: dict[str, int | str | None] = {}
+    if budget:
+        optimizer_kwargs["budget"] = budget.lower()
+    if max_full_evals is not None:
+        optimizer_kwargs["max_full_evals"] = max_full_evals
+    if max_metric_calls is not None:
+        optimizer_kwargs["max_metric_calls"] = max_metric_calls
+    if num_threads is not None:
+        optimizer_kwargs["num_threads"] = num_threads
+    if display_table is not None:
+        optimizer_kwargs["display_table"] = display_table
+
+    # Override train split if provided
+    if train_split is not None:
+        if not 0 < train_split < 1:
+            raise click.BadParameter("Train split must be between 0 and 1")
+        settings.dspy_train_split_ratio = train_split
+
+    # Override seed if provided
+    if seed is not None:
+        settings.dspy_optimization_seed = seed
+
+    # Build optimizer config dict for reporting/config saving
+    train_split_ratio = train_split or settings.dspy_train_split_ratio
+    optimizer_config = {
+        "optimizer": optimizer,
+        "budget": budget,
+        "max_full_evals": max_full_evals,
+        "max_metric_calls": max_metric_calls,
+        "train_split": train_split_ratio,
+        "num_threads": num_threads or settings.dspy_num_threads,
+        "seed": seed or settings.dspy_optimization_seed,
+    }
+
+    # Determine version for this run and capture before state
+    import time
+
+    # Create a copy of the initial model for comparison
+    from copy import deepcopy
+
+    next_version = optimizer_instance._get_next_version("unused")
+    if output is None:
+        output = MODELS_DIR / f"matcher_v{next_version}.json"
+
+    before_model = deepcopy(optimizer_instance.matcher)
+    start_time = time.time()
+
+    try:
+        # Calculate train/val split for report
+        train_size = int(len(training_data) * train_split_ratio)
+        val_size = len(training_data) - train_size
+
+        optimized_model = optimizer_instance.optimize_with_dataset(
+            training_data,
+            optimizer_type=optimizer.lower(),
+            **optimizer_kwargs,  # type: ignore[arg-type]
+        )
+
+        duration = time.time() - start_time
+
+        # Evaluate to get validation score
+        validation_score: float | None = None
+        try:
+            from dspy.evaluate import Evaluate
+
+            split_point = int(len(training_data) * train_split_ratio)
+            val_set = training_data[split_point:]
+            evaluator = Evaluate(
+                devset=val_set,
+                metric=optimizer_instance.accuracy_metric,
+                num_threads=1,
+                display_progress=False,
+            )
+            validation_score = evaluator(optimized_model)
+        except Exception as e:
+            logger.warning(f"Could not compute validation score: {e}")
+
+        # Save optimized model
+        optimizer_instance.save_optimized_model(optimized_model, str(output))
+        click.echo(f"✓ Optimization complete. Model saved to {output}")
+
+        # Save optimization config (unless disabled)
+        if not no_save_config:
+            try:
+                config_file = optimizer_instance.save_optimization_config(
+                    before_model=before_model,
+                    after_model=optimized_model,
+                    optimizer_type=optimizer.lower(),
+                    optimizer_config=optimizer_config,
+                    training_size=train_size,
+                    validation_size=val_size,
+                    model_file_path=str(output),
+                    validation_score=validation_score,
+                    duration_seconds=duration,
+                )
+                click.echo(f"✓ Optimization config saved to {config_file.name}")
+            except Exception as e:
+                logger.warning(f"Could not save optimization config: {e}")
+                click.echo(f"⚠ Warning: Could not save optimization config: {e}", err=True)
+
+        # Generate report if requested
+        if report:
+            report_content = optimizer_instance.generate_optimization_report(
+                before_model=before_model,
+                after_model=optimized_model,
+                optimizer_type=optimizer.lower(),
+                optimizer_config=optimizer_config,
+                training_size=train_size,
+                validation_size=val_size,
+                validation_score=validation_score,
+                duration_seconds=duration,
+            )
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text(report_content, encoding="utf-8")
+            click.echo(f"✓ Optimization report saved to {report}")
+
+    except Exception as e:
+        click.echo(f"Error during optimization: {e}", err=True)
+        logger.exception("Optimization failed")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

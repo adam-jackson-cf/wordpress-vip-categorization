@@ -21,7 +21,7 @@
 1. Go to your Supabase project dashboard
 2. Navigate to **SQL Editor**
 3. Create a new query
-4. Copy and paste the contents of `schema.sql`
+4. Copy and paste the contents of `src/data/schema.sql`
 5. Click **RUN** to execute
 
 This will create the following tables:
@@ -66,7 +66,7 @@ pip install -e ".[dev]"
 ### 4. Verify Setup
 
 ```bash
-python test_setup.py
+python scripts/test_setup.py
 ```
 
 You should see:
@@ -144,7 +144,7 @@ python -m src.cli match --taxonomy-file data/review_subset.csv
 
 Export to CSV for review:
 ```bash
-python -m src.cli export --output results.csv
+python -m src.cli export --output results/results.csv
 ```
 
 The CSV will contain:
@@ -252,8 +252,11 @@ wordpress-vip-categorization/
 │       └── csv_exporter.py       # Results export
 ├── data/
 │   └── taxonomy.csv              # Your taxonomy
-├── schema.sql                    # Database schema
-├── test_setup.py                 # Setup verification
+├── src/
+│   └── data/
+│       └── schema.sql            # Database schema
+├── scripts/
+│   └── test_setup.py             # Setup verification
 └── .env                          # Your credentials
 ```
 
