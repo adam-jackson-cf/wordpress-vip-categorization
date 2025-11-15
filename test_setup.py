@@ -26,9 +26,10 @@ def test_configuration():
         settings = get_settings()
         logger.info("✓ Configuration loaded successfully")
         logger.info(f"  - Supabase URL: {settings.supabase_url}")
-        logger.info(f"  - OpenAI Base URL: {settings.openai_base_url}")
-        logger.info(f"  - Model: {settings.openai_model}")
-        logger.info(f"  - Embedding Model: {settings.openai_embedding_model}")
+        logger.info(
+            f"  - Semantic API: {settings.semantic_embedding_model} @ {settings.semantic_base_url}"
+        )
+        logger.info(f"  - LLM API: {settings.llm_model} @ {settings.llm_base_url}")
         return settings
     except Exception as e:
         logger.error(f"✗ Configuration failed: {e}")
@@ -88,8 +89,8 @@ def test_wordpress_connector(settings):
 
 
 def test_openrouter_embeddings(settings, db):
-    """Test OpenRouter embeddings API."""
-    logger.info("\nTesting OpenRouter embeddings...")
+    """Test embeddings API for semantic matching."""
+    logger.info("\nTesting semantic embeddings...")
     try:
         matching_service = MatchingService(settings, db)
         logger.info(
@@ -113,9 +114,7 @@ def test_openrouter_embeddings(settings, db):
         return matching_service
     except Exception as e:
         logger.error(f"✗ OpenRouter embeddings failed: {e}")
-        logger.error(
-            "  Note: Make sure your OpenRouter API key is valid and has credit/access to embeddings"
-        )
+        logger.error("  Note: Verify your semantic provider credentials and model access.")
         raise
 
 

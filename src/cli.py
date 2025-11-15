@@ -13,7 +13,7 @@ from src.optimization.dspy_optimizer import DSPyOptimizer
 from src.optimization.evaluator import Evaluator
 from src.services.categorization import CategorizationService
 from src.services.ingestion import IngestionService
-from src.services.matching import MatchingService
+from src.services.workflow import WorkflowService
 
 # Configure logging
 logging.basicConfig(
@@ -136,25 +136,46 @@ def batch_status(batch_id: str) -> None:
 @cli.command()
 @click.option("--threshold", type=float, help="Minimum similarity threshold (default from config)")
 @click.option("--batch/--no-batch", default=True, help="Use batch embedding mode")
-def match(threshold: float | None, batch: bool) -> None:
-    """Match taxonomy to content using semantic similarity."""
+@click.option("--skip-semantic", is_flag=True, help="Skip semantic matching stage")
+@click.option("--skip-llm", is_flag=True, help="Skip LLM categorization stage")
+def match(threshold: float | None, batch: bool, skip_semantic: bool, skip_llm: bool) -> None:
+    """Match taxonomy to content using cascading semantic + LLM workflow.
+
+    By default, runs both semantic matching and LLM categorization fallback.
+    Use flags to disable specific stages or configure via environment variables.
+    """
     settings = get_settings()
     db = SupabaseClient(settings)
-    matching_service = MatchingService(settings, db)
 
-    click.echo("Starting semantic matching...")
+    # Override config with CLI flags if provided
+    if skip_semantic:
+        settings.enable_semantic_matching = False
+    if skip_llm:
+        settings.enable_llm_categorization = False
 
-    if batch:
-        results = matching_service.match_all_taxonomy_batch(
-            min_threshold=threshold, store_results=True
-        )
-    else:
-        results = matching_service.match_all_taxonomy(min_threshold=threshold, store_results=True)
+    # Override semantic threshold if provided
+    if threshold is not None:
+        settings.similarity_threshold = threshold
 
-    matched_count = sum(1 for r in results.values() if r and r.content_id)
-    total_count = len(results)
+    workflow_service = WorkflowService(settings, db)
 
-    click.echo(f"✓ Matching complete: {matched_count}/{total_count} taxonomy pages matched")
+    click.echo("Starting cascading matching workflow...")
+    click.echo(
+        f"- Semantic matching: {'enabled' if settings.enable_semantic_matching else 'disabled'} (threshold: {settings.similarity_threshold})"
+    )
+    click.echo(
+        f"- LLM categorization: {'enabled' if settings.enable_llm_categorization else 'disabled'} (threshold: {settings.llm_confidence_threshold})"
+    )
+
+    stats = workflow_service.run_matching_workflow(batch_mode=batch)
+
+    click.echo("\n=== Matching Results ===")
+    click.echo(f"✓ Semantic matched: {stats['semantic_matched']}")
+    click.echo(f"✓ LLM categorized: {stats['llm_categorized']}")
+    click.echo(f"⚠ Needs review: {stats['needs_review']}")
+    click.echo(
+        f"Total processed: {stats['semantic_matched'] + stats['llm_categorized'] + stats['needs_review']}"
+    )
 
 
 @cli.command()

@@ -48,7 +48,7 @@ class SupabaseClient:
         data = content.model_dump(mode="json")
         result = self.client.table("wordpress_content").insert(data).execute()
         logger.debug(f"Inserted content: {content.url}")
-        return WordPressContent(**result.data[0])
+        return WordPressContent.model_validate(result.data[0])
 
     def upsert_content(self, content: WordPressContent) -> WordPressContent:
         """Upsert WordPress content (insert or update if exists).
@@ -62,7 +62,7 @@ class SupabaseClient:
         data = content.model_dump(mode="json")
         result = self.client.table("wordpress_content").upsert(data, on_conflict="url").execute()
         logger.debug(f"Upserted content: {content.url}")
-        return WordPressContent(**result.data[0])
+        return WordPressContent.model_validate(result.data[0])
 
     def get_content_by_url(self, url: str) -> WordPressContent | None:
         """Get content by URL.
@@ -75,7 +75,7 @@ class SupabaseClient:
         """
         result = self.client.table("wordpress_content").select("*").eq("url", url).execute()
         if result.data:
-            return WordPressContent(**result.data[0])
+            return WordPressContent.model_validate(result.data[0])
         return None
 
     def get_content_by_id(self, content_id: UUID) -> WordPressContent | None:
@@ -91,7 +91,7 @@ class SupabaseClient:
             self.client.table("wordpress_content").select("*").eq("id", str(content_id)).execute()
         )
         if result.data:
-            return WordPressContent(**result.data[0])
+            return WordPressContent.model_validate(result.data[0])
         return None
 
     def get_all_content(self, limit: int | None = None) -> list[WordPressContent]:
@@ -107,7 +107,7 @@ class SupabaseClient:
         if limit:
             query = query.limit(limit)
         result = query.execute()
-        return [WordPressContent(**item) for item in result.data]
+        return [WordPressContent.model_validate(item) for item in result.data]
 
     def get_content_by_site(self, site_url: str) -> list[WordPressContent]:
         """Get all content from a specific site.
@@ -121,7 +121,7 @@ class SupabaseClient:
         result = (
             self.client.table("wordpress_content").select("*").eq("site_url", site_url).execute()
         )
-        return [WordPressContent(**item) for item in result.data]
+        return [WordPressContent.model_validate(item) for item in result.data]
 
     # Taxonomy operations
     def insert_taxonomy(self, taxonomy: TaxonomyPage) -> TaxonomyPage:
@@ -136,7 +136,7 @@ class SupabaseClient:
         data = taxonomy.model_dump(mode="json")
         result = self.client.table("taxonomy_pages").insert(data).execute()
         logger.debug(f"Inserted taxonomy: {taxonomy.url}")
-        return TaxonomyPage(**result.data[0])
+        return TaxonomyPage.model_validate(result.data[0])
 
     def upsert_taxonomy(self, taxonomy: TaxonomyPage) -> TaxonomyPage:
         """Upsert taxonomy page.
@@ -150,7 +150,7 @@ class SupabaseClient:
         data = taxonomy.model_dump(mode="json")
         result = self.client.table("taxonomy_pages").upsert(data, on_conflict="url").execute()
         logger.debug(f"Upserted taxonomy: {taxonomy.url}")
-        return TaxonomyPage(**result.data[0])
+        return TaxonomyPage.model_validate(result.data[0])
 
     def get_all_taxonomy(self) -> list[TaxonomyPage]:
         """Get all taxonomy pages.
@@ -159,7 +159,7 @@ class SupabaseClient:
             List of taxonomy pages.
         """
         result = self.client.table("taxonomy_pages").select("*").execute()
-        return [TaxonomyPage(**item) for item in result.data]
+        return [TaxonomyPage.model_validate(item) for item in result.data]
 
     def get_taxonomy_by_id(self, taxonomy_id: UUID) -> TaxonomyPage | None:
         """Get taxonomy by ID.
@@ -174,7 +174,7 @@ class SupabaseClient:
             self.client.table("taxonomy_pages").select("*").eq("id", str(taxonomy_id)).execute()
         )
         if result.data:
-            return TaxonomyPage(**result.data[0])
+            return TaxonomyPage.model_validate(result.data[0])
         return None
 
     # Categorization results operations
@@ -190,7 +190,7 @@ class SupabaseClient:
         data = result.model_dump(mode="json")
         db_result = self.client.table("categorization_results").insert(data).execute()
         logger.debug(f"Inserted categorization for content: {result.content_id}")
-        return CategorizationResult(**db_result.data[0])
+        return CategorizationResult.model_validate(db_result.data[0])
 
     def get_categorizations_by_content(self, content_id: UUID) -> list[CategorizationResult]:
         """Get categorization results for a content item.
@@ -207,7 +207,7 @@ class SupabaseClient:
             .eq("content_id", str(content_id))
             .execute()
         )
-        return [CategorizationResult(**item) for item in result.data]
+        return [CategorizationResult.model_validate(item) for item in result.data]
 
     def get_categorizations_by_batch(self, batch_id: str) -> list[CategorizationResult]:
         """Get all categorization results for a batch.
@@ -224,7 +224,7 @@ class SupabaseClient:
             .eq("batch_id", batch_id)
             .execute()
         )
-        return [CategorizationResult(**item) for item in result.data]
+        return [CategorizationResult.model_validate(item) for item in result.data]
 
     # Matching results operations
     def insert_matching(self, result: MatchingResult) -> MatchingResult:
@@ -241,7 +241,7 @@ class SupabaseClient:
         logger.debug(
             f"Inserted matching: taxonomy={result.taxonomy_id}, content={result.content_id}"
         )
-        return MatchingResult(**db_result.data[0])
+        return MatchingResult.model_validate(db_result.data[0])
 
     def upsert_matching(self, result: MatchingResult) -> MatchingResult:
         """Upsert matching result.
@@ -258,7 +258,7 @@ class SupabaseClient:
             .upsert(data, on_conflict="taxonomy_id,content_id")
             .execute()
         )
-        return MatchingResult(**db_result.data[0])
+        return MatchingResult.model_validate(db_result.data[0])
 
     def get_matchings_by_taxonomy(self, taxonomy_id: UUID) -> list[MatchingResult]:
         """Get matching results for a taxonomy page.
@@ -276,7 +276,7 @@ class SupabaseClient:
             .order("similarity_score", desc=True)
             .execute()
         )
-        return [MatchingResult(**item) for item in result.data]
+        return [MatchingResult.model_validate(item) for item in result.data]
 
     def get_all_matchings(self) -> list[MatchingResult]:
         """Get all matching results.
@@ -290,7 +290,7 @@ class SupabaseClient:
             .order("similarity_score", desc=True)
             .execute()
         )
-        return [MatchingResult(**item) for item in result.data]
+        return [MatchingResult.model_validate(item) for item in result.data]
 
     def get_best_match_for_taxonomy(
         self, taxonomy_id: UUID, min_score: float = 0.0
@@ -314,7 +314,7 @@ class SupabaseClient:
             .execute()
         )
         if result.data:
-            return MatchingResult(**result.data[0])
+            return MatchingResult.model_validate(result.data[0])
         return None
 
     def bulk_insert(self, table: str, records: list[dict[str, Any]]) -> None:

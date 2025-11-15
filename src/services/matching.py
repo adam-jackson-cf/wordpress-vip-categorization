@@ -9,7 +9,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
-from src.models import MatchingResult, TaxonomyPage, WordPressContent
+from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +31,12 @@ class MatchingService:
         self.settings = settings
         self.db = db_client
         self.client = openai.OpenAI(
-            api_key=settings.openai_api_key, base_url=settings.openai_base_url
+            api_key=settings.semantic_api_key, base_url=settings.semantic_base_url
         )
-        self.embedding_model = settings.openai_embedding_model
+        self.embedding_model = settings.semantic_embedding_model
         logger.info(
             f"Initialized matching service with model: {self.embedding_model}, "
-            f"base URL: {settings.openai_base_url}"
+            f"base URL: {settings.semantic_base_url}"
         )
 
     @retry(
@@ -174,12 +174,53 @@ class MatchingService:
 
         return None
 
+    def get_unmatched_taxonomy(self, min_threshold: float | None = None) -> list[TaxonomyPage]:
+        """Get taxonomy pages that are below the matching threshold.
+
+        Args:
+            min_threshold: Minimum similarity threshold (uses settings default if None).
+
+        Returns:
+            List of taxonomy pages that have no match or are below threshold.
+        """
+        if min_threshold is None:
+            min_threshold = self.settings.similarity_threshold
+
+        # Get all taxonomy pages
+        taxonomy_pages = self.db.get_all_taxonomy()
+
+        # Get all matching results
+        all_matches = self.db.get_all_matchings()
+
+        # Build map of taxonomy_id to matching result
+        matches_map = {match.taxonomy_id: match for match in all_matches}
+
+        # Filter for unmatched or below threshold
+        unmatched = []
+        for taxonomy in taxonomy_pages:
+            match = matches_map.get(taxonomy.id)
+            if not match or not match.content_id or match.similarity_score < min_threshold:
+                unmatched.append(taxonomy)
+
+        logger.info(
+            f"Found {len(unmatched)}/{len(taxonomy_pages)} taxonomy pages "
+            f"below threshold {min_threshold}"
+        )
+
+        return unmatched
+
     def match_all_taxonomy(
-        self, min_threshold: float | None = None, store_results: bool = True
-    ) -> dict[UUID, MatchingResult | None]:
+        self,
+        taxonomy_pages: list[TaxonomyPage] | None = None,
+        content_items: list[WordPressContent] | None = None,
+        min_threshold: float | None = None,
+        store_results: bool = True,
+    ) -> dict[UUID, MatchingResult]:
         """Match all taxonomy pages to content.
 
         Args:
+            taxonomy_pages: Optional list of taxonomy pages. If None, loads from database.
+            content_items: Optional list of content items. If None, loads from database.
             min_threshold: Minimum similarity threshold.
             store_results: Whether to store results in database.
 
@@ -189,15 +230,17 @@ class MatchingService:
         if min_threshold is None:
             min_threshold = self.settings.similarity_threshold
 
-        # Get all taxonomy pages and content
-        taxonomy_pages = self.db.get_all_taxonomy()
-        content_items = self.db.get_all_content()
+        # Get all taxonomy pages and content if not provided
+        if taxonomy_pages is None:
+            taxonomy_pages = self.db.get_all_taxonomy()
+        if content_items is None:
+            content_items = self.db.get_all_content()
 
         logger.info(
             f"Matching {len(taxonomy_pages)} taxonomy pages to {len(content_items)} content items"
         )
 
-        results = {}
+        results: dict[UUID, MatchingResult] = {}
 
         for taxonomy in taxonomy_pages:
             best_match = self.find_best_match(taxonomy, content_items, min_threshold)
@@ -208,6 +251,7 @@ class MatchingService:
                     taxonomy_id=taxonomy.id,
                     content_id=content.id,
                     similarity_score=score,
+                    match_stage=MatchStage.SEMANTIC_MATCHED,
                 )
 
                 if store_results:
@@ -223,6 +267,8 @@ class MatchingService:
                     taxonomy_id=taxonomy.id,
                     content_id=None,
                     similarity_score=0.0,
+                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+                    failed_at_stage="semantic_matching",
                 )
 
                 if store_results:
@@ -233,8 +279,11 @@ class MatchingService:
                     f"No match found for taxonomy {taxonomy.url} above threshold {min_threshold}"
                 )
 
+        matched_count = len(
+            [result for result in results.values() if result.content_id is not None]
+        )
         logger.info(
-            f"Completed matching: {sum(1 for r in results.values() if r and r.content_id)} "
+            f"Completed matching: {matched_count} "
             f"out of {len(taxonomy_pages)} taxonomy pages matched"
         )
 
@@ -264,13 +313,19 @@ class MatchingService:
         return all_embeddings
 
     def match_all_taxonomy_batch(
-        self, min_threshold: float | None = None, store_results: bool = True
-    ) -> dict[UUID, MatchingResult | None]:
+        self,
+        taxonomy_pages: list[TaxonomyPage] | None = None,
+        content_items: list[WordPressContent] | None = None,
+        min_threshold: float | None = None,
+        store_results: bool = True,
+    ) -> dict[UUID, MatchingResult]:
         """Match all taxonomy pages to content using batch embeddings.
 
         More efficient version that batches embedding requests.
 
         Args:
+            taxonomy_pages: Optional list of taxonomy pages. If None, loads from database.
+            content_items: Optional list of content items. If None, loads from database.
             min_threshold: Minimum similarity threshold.
             store_results: Whether to store results in database.
 
@@ -280,9 +335,11 @@ class MatchingService:
         if min_threshold is None:
             min_threshold = self.settings.similarity_threshold
 
-        # Get all taxonomy pages and content
-        taxonomy_pages = self.db.get_all_taxonomy()
-        content_items = self.db.get_all_content()
+        # Get all taxonomy pages and content if not provided
+        if taxonomy_pages is None:
+            taxonomy_pages = self.db.get_all_taxonomy()
+        if content_items is None:
+            content_items = self.db.get_all_content()
 
         logger.info(
             f"Batch matching {len(taxonomy_pages)} taxonomy pages "
@@ -300,7 +357,7 @@ class MatchingService:
         content_embeddings = self.batch_get_embeddings(content_texts)
 
         # Match each taxonomy to all content
-        results = {}
+        results: dict[UUID, MatchingResult] = {}
 
         for i, taxonomy in enumerate(taxonomy_pages):
             taxonomy_emb = taxonomy_embeddings[i]
@@ -320,6 +377,7 @@ class MatchingService:
                     taxonomy_id=taxonomy.id,
                     content_id=best_content.id,
                     similarity_score=best_score,
+                    match_stage=MatchStage.SEMANTIC_MATCHED,
                 )
 
                 if store_results:
@@ -335,6 +393,8 @@ class MatchingService:
                     taxonomy_id=taxonomy.id,
                     content_id=None,
                     similarity_score=best_score,
+                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+                    failed_at_stage="semantic_matching",
                 )
 
                 if store_results:
@@ -346,7 +406,9 @@ class MatchingService:
                     f"(best score: {best_score:.3f}, threshold: {min_threshold})"
                 )
 
-        matched_count = sum(1 for r in results.values() if r and r.content_id)
+        matched_count = len(
+            [result for result in results.values() if result.content_id is not None]
+        )
         logger.info(
             f"Completed batch matching: {matched_count}/{len(taxonomy_pages)} "
             f"taxonomy pages matched"

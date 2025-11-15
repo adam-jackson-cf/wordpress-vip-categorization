@@ -24,8 +24,12 @@ def mock_settings() -> Settings:
         {
             "SUPABASE_URL": "https://test.supabase.co",
             "SUPABASE_KEY": "test-key",
-            "OPENAI_API_KEY": "test-openai-key",
-            "OPENAI_MODEL": "gpt-4o-mini",
+            "SEMANTIC_API_KEY": "test-semantic-key",
+            "SEMANTIC_BASE_URL": "https://semantic.example.com/v1",
+            "SEMANTIC_EMBEDDING_MODEL": "text-embedding-3-small",
+            "LLM_API_KEY": "test-llm-key",
+            "LLM_BASE_URL": "https://llm.example.com/v1",
+            "LLM_MODEL": "gpt-4o-mini",
             "WORDPRESS_VIP_SITES": "https://test1.com,https://test2.com",
             "TAXONOMY_FILE_PATH": "./data/taxonomy.csv",
         }

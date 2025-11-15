@@ -1,7 +1,7 @@
 """DSPy-based prompt optimization for categorization."""
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import dspy
 from dspy.evaluate import Evaluate
@@ -61,15 +61,15 @@ class DSPyOptimizer:
 
         # Configure DSPy with OpenAI (or OpenAI-compatible API)
         lm = dspy.OpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            api_base=settings.openai_base_url,
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_base_url,
             temperature=0.3,
         )
         dspy.settings.configure(lm=lm)
 
         self.categorizer = CategorizerModule()
-        logger.info(f"Initialized DSPy optimizer with model: {settings.openai_model}")
+        logger.info(f"Initialized DSPy optimizer with model: {settings.llm_model}")
 
     def prepare_training_data(
         self, content_items: list[WordPressContent], categories: list[str]
@@ -192,7 +192,7 @@ class DSPyOptimizer:
             score = evaluator(optimized)
             logger.info(f"Optimized model validation score: {score:.3f}")
 
-            return optimized
+            return cast(CategorizerModule, optimized)
 
         except Exception as e:
             logger.error(f"Optimization failed: {e}")

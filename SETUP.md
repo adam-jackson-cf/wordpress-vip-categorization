@@ -39,13 +39,16 @@ Update `.env` with your credentials:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-service-role-key-here
 
-# OpenRouter API
-OPENAI_API_KEY=sk-or-v1-your-key-here
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
+# Semantic Matching (Embeddings)
+SEMANTIC_API_KEY=sk-semantic-key
+SEMANTIC_BASE_URL=https://openrouter.ai/api/v1
+SEMANTIC_EMBEDDING_MODEL=qwen/qwen3-embedding-0.6b
 
-# Models (using free options)
-OPENAI_MODEL=google/gemini-2.0-flash-exp:free
-OPENAI_EMBEDDING_MODEL=qwen/qwen3-embedding-0.6b
+# LLM Categorization (Chat)
+LLM_API_KEY=sk-llm-key
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=google/gemini-2.0-flash-exp:free
+LLM_BATCH_TIMEOUT=86400
 
 # WordPress sites to ingest (comma-separated)
 WORDPRESS_VIP_SITES=https://wordpress.org/news

@@ -1,10 +1,19 @@
 """Pydantic models for data validation and serialization."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+
+
+class MatchStage(str, Enum):
+    """Stages in the matching workflow."""
+
+    SEMANTIC_MATCHED = "semantic_matched"
+    LLM_CATEGORIZED = "llm_categorized"
+    NEEDS_HUMAN_REVIEW = "needs_human_review"
 
 
 class WordPressContent(BaseModel):
@@ -75,6 +84,12 @@ class MatchingResult(BaseModel):
     taxonomy_id: UUID
     content_id: UUID | None = None
     similarity_score: float = Field(ge=0.0, le=1.0)
+    match_stage: MatchStage | None = Field(
+        default=None, description="Stage where match was determined"
+    )
+    failed_at_stage: str | None = Field(
+        default=None, description="Stage where matching failed (for debugging)"
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -88,6 +103,8 @@ class ExportRow(BaseModel):
     confidence: float
     category: str
     similarity_score: float
+    match_stage: str | None = None
+    failed_at_stage: str | None = None
 
 
 class BatchJobStatus(BaseModel):

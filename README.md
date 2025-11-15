@@ -2,16 +2,6 @@
 
 AI-powered content categorization system that ingests data from WordPress VIP API, uses OpenAI Batch API for categorization, and semantically matches content to taxonomy pages.
 
-## Architecture
-
-This application:
-1. Ingests content from WordPress VIP sites using REST API
-2. Stores data persistently in Supabase (works across different local machines)
-3. Uses OpenAI Batch API for cost-effective LLM categorization
-4. Implements semantic matching between source taxonomy pages and target content
-5. Uses DSPy for prompt optimization and evaluation
-6. Exports results as CSV for manual review
-
 ## Features
 
 - **WordPress VIP Integration**: OSS connector for WordPress VIP API
@@ -22,13 +12,33 @@ This application:
 - **Quality Gates**: Comprehensive testing and code quality checks
 - **CSV Export**: Simple spreadsheet-based review workflow
 
+## Architecture
+
+This application uses a **cascading multi-stage workflow** for matching taxonomy pages to WordPress content:
+
+1. **Stage 1: Semantic Matching** (threshold: 0.85)
+   - Uses OpenAI-compatible embeddings to compute semantic similarity
+   - Matches taxonomy pages to content based on category, description, and keywords
+   - Items above 0.85 similarity are marked as matched
+
+2. **Stage 2: LLM Categorization Fallback** (threshold: 0.9)
+   - For items below semantic threshold, uses LLM to evaluate matches
+   - LLM analyzes taxonomy page against all content to find best match
+   - Items with confidence ≥ 0.9 are marked as matched
+
+3. **Stage 3: Human Review**
+   - Items failing both stages are marked for human review
+   - Exported to CSV with blank target URLs for manual processing
+
+Both stages can be enabled/disabled via configuration or CLI flags.
+
 ## Installation
 
 ### Prerequisites
 
 - Python 3.10 or higher
 - Supabase account and project
-- OpenAI API key
+- API access for both semantic embeddings and LLM categorization (OpenRouter/OpenAI-compatible)
 - WordPress VIP API access
 
 ### Setup
@@ -62,27 +72,29 @@ python -m src.cli init-db
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+Update `.env` with credentials for Supabase plus both AI providers (they can be the same service or separate):
 
 ```env
-# Supabase Configuration
+# Supabase
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-service-role-key
 
-# OpenAI Configuration
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_BATCH_TIMEOUT=86400  # 24 hours
+# Semantic matching (embeddings)
+SEMANTIC_API_KEY=sk-your-semantic-key
+SEMANTIC_BASE_URL=https://openrouter.ai/api/v1
+SEMANTIC_EMBEDDING_MODEL=qwen/qwen3-embedding-0.6b
 
-# WordPress VIP Configuration
-WORDPRESS_VIP_SITES=["https://site1.com", "https://site2.com"]
-WORDPRESS_VIP_AUTH_TOKEN=your-auth-token  # Optional
+# LLM categorization (chat completions)
+LLM_API_KEY=sk-your-llm-key
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=google/gemini-2.0-flash-exp:free
+LLM_BATCH_TIMEOUT=86400
 
-# Application Configuration
-TAXONOMY_FILE_PATH=./data/taxonomy.csv
-BATCH_SIZE=1000
-LOG_LEVEL=INFO
+# WordPress ingest targets
+WORDPRESS_VIP_SITES=https://wordpress.org/news
 ```
+
+Legacy `OPENAI_*` variables are still read as fallbacks, but new deployments should use the `SEMANTIC_*` and `LLM_*` names to keep the two stages configurable.
 
 ## Usage
 
@@ -101,19 +113,31 @@ https://example.com/page2,Business,Business content
 python -m src.cli ingest --sites https://site1.com,https://site2.com
 ```
 
-### 3. Run Categorization
+### 3. Run Cascading Matching Workflow
 
 ```bash
-python -m src.cli categorize --batch
-```
-
-### 4. Perform Semantic Matching
-
-```bash
+# Run full cascading workflow (semantic → LLM fallback)
 python -m src.cli match
+
+# Run with custom thresholds
+python -m src.cli match --threshold 0.80
+
+# Run semantic matching only (skip LLM stage)
+python -m src.cli match --skip-llm
+
+# Run LLM categorization only (skip semantic stage)
+python -m src.cli match --skip-semantic
+
+# Use non-batch mode for embeddings (slower, lower memory)
+python -m src.cli match --no-batch
 ```
 
-### 5. Export Results
+The `match` command runs the cascading workflow:
+1. **Semantic matching** finds matches above 0.85 similarity (configurable)
+2. **LLM categorization** evaluates remaining items (confidence ≥ 0.9)
+3. **Unmatched items** are stored for human review
+
+### 4. Export Results
 
 ```bash
 python -m src.cli export --output results.csv
@@ -122,135 +146,18 @@ python -m src.cli export --output results.csv
 The exported CSV will contain:
 - `source_url`: Taxonomy page URL
 - `target_url`: Matched WordPress content URL (empty if no match)
-- `confidence`: Match confidence score
-- `category`: Assigned category
+- `category`: Category from taxonomy
+- `similarity_score`: Semantic similarity score (0-1) or LLM confidence
+- `confidence`: Categorization confidence (if categorized)
+- `match_stage`: Stage where match was determined (`semantic_matched`, `llm_categorized`, or `needs_human_review`)
+- `failed_at_stage`: Stage where matching failed (for debugging)
 
-Filter for empty `target_url` to find unmatched taxonomy pages.
-
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Run specific test file
-pytest tests/test_categorization.py
-
-# Run integration tests only
-pytest tests/integration/
-```
-
-### Code Quality
-
-```bash
-# Format code
-black src tests
-
-# Lint code
-ruff src tests
-
-# Type checking
-mypy src
-```
-
-### Quality Gates
-
-The project enforces:
-- ✅ 80%+ test coverage
-- ✅ Type hints on all functions
-- ✅ Linting with ruff
-- ✅ Code formatting with black
-- ✅ All tests passing
-
-## Project Structure
-
-```
-wordpress-vip-categorization/
-├── src/
-│   ├── __init__.py
-│   ├── cli.py                    # Command-line interface
-│   ├── config.py                 # Configuration management
-│   ├── models.py                 # Pydantic data models
-│   ├── data/
-│   │   ├── __init__.py
-│   │   └── supabase_client.py   # Supabase integration
-│   ├── connectors/
-│   │   ├── __init__.py
-│   │   └── wordpress_vip.py     # WordPress VIP API connector
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── categorization.py    # OpenAI Batch categorization
-│   │   ├── matching.py          # Semantic matching
-│   │   └── ingestion.py         # Content ingestion orchestration
-│   ├── optimization/
-│   │   ├── __init__.py
-│   │   ├── dspy_optimizer.py    # DSPy prompt optimization
-│   │   └── evaluator.py         # Evaluation framework
-│   └── exporters/
-│       ├── __init__.py
-│       └── csv_exporter.py      # CSV export functionality
-├── tests/
-│   ├── unit/
-│   │   ├── test_wordpress_vip.py
-│   │   ├── test_categorization.py
-│   │   ├── test_matching.py
-│   │   └── test_supabase_client.py
-│   ├── integration/
-│   │   ├── test_full_pipeline.py
-│   │   └── test_batch_processing.py
-│   └── conftest.py              # Pytest fixtures
-├── data/
-│   └── taxonomy.csv.example     # Example taxonomy file
-├── pyproject.toml               # Project configuration
-├── README.md                    # This file
-└── .env.example                 # Environment variables template
-```
-
-## Database Schema
-
-The Supabase database uses the following tables:
-
-### `wordpress_content`
-- `id` (uuid, primary key)
-- `url` (text, unique)
-- `title` (text)
-- `content` (text)
-- `site_url` (text)
-- `published_date` (timestamp)
-- `metadata` (jsonb)
-- `created_at` (timestamp)
-
-### `taxonomy_pages`
-- `id` (uuid, primary key)
-- `url` (text, unique)
-- `category` (text)
-- `description` (text)
-- `created_at` (timestamp)
-
-### `categorization_results`
-- `id` (uuid, primary key)
-- `content_id` (uuid, foreign key)
-- `category` (text)
-- `confidence` (float)
-- `batch_id` (text)
-- `created_at` (timestamp)
-
-### `matching_results`
-- `id` (uuid, primary key)
-- `taxonomy_id` (uuid, foreign key)
-- `content_id` (uuid, foreign key)
-- `similarity_score` (float)
-- `created_at` (timestamp)
+**Finding items for human review:** Filter for empty `target_url` or `match_stage=needs_human_review`.
 
 ## Troubleshooting
 
 ### Batch API taking too long
-- Increase `OPENAI_BATCH_TIMEOUT` in `.env`
+- Increase `LLM_BATCH_TIMEOUT` in `.env`
 - Check batch status: `python -m src.cli batch-status --id <batch_id>`
 
 ### Supabase connection issues
@@ -260,15 +167,3 @@ The Supabase database uses the following tables:
 ### Low matching quality
 - Run DSPy optimization: `python -m src.cli optimize-prompts`
 - Adjust similarity threshold in matching service
-
-## License
-
-MIT License
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Ensure all quality gates pass
-5. Submit a pull request

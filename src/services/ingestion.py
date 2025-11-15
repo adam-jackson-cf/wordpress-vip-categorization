@@ -3,6 +3,9 @@
 import csv
 import logging
 from pathlib import Path
+from typing import cast
+
+from pydantic import HttpUrl
 
 from src.config import Settings
 from src.connectors.wordpress_vip import WordPressVIPConnector
@@ -95,7 +98,7 @@ class IngestionService:
                         keywords = [kw.strip() for kw in row["keywords"].split(";") if kw.strip()]
 
                     taxonomy = TaxonomyPage(
-                        url=row["url"],
+                        url=cast(HttpUrl, row["url"]),
                         category=row["category"],
                         description=row["description"],
                         keywords=keywords,

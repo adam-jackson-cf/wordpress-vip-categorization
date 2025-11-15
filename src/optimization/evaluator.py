@@ -117,7 +117,7 @@ class Evaluator:
         Returns:
             Dictionary mapping item to count.
         """
-        distribution = {}
+        distribution: dict[str, int] = {}
         for item in items:
             distribution[item] = distribution.get(item, 0) + 1
         return distribution

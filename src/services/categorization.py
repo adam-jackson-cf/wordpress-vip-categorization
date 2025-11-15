@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -12,7 +13,14 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
-from src.models import BatchJobStatus, CategorizationResult, WordPressContent
+from src.models import (
+    BatchJobStatus,
+    CategorizationResult,
+    MatchingResult,
+    MatchStage,
+    TaxonomyPage,
+    WordPressContent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +41,42 @@ class CategorizationService:
         """
         self.settings = settings
         self.db = db_client
-        self.client = openai.OpenAI(
-            api_key=settings.openai_api_key, base_url=settings.openai_base_url
-        )
-        logger.info(f"Initialized categorization service with base URL: {settings.openai_base_url}")
+        self.client = openai.OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+        logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
+
+    @staticmethod
+    def _coerce_datetime(value: Any) -> datetime:
+        """Convert API timestamp formats into datetime."""
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value)
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                try:
+                    return datetime.fromtimestamp(float(value))
+                except ValueError:
+                    pass
+        return datetime.utcfromtimestamp(0)
+
+    @staticmethod
+    def _extract_request_count(data: Any, key: str) -> int:
+        """Safely extract request count metrics."""
+        if data is None:
+            return 0
+
+        value: Any
+        if isinstance(data, dict):
+            value = data.get(key, 0)
+        else:
+            value = getattr(data, key, 0)
+
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
 
     def create_categorization_prompt(self, content: WordPressContent, categories: list[str]) -> str:
         """Create prompt for content categorization.
@@ -86,7 +126,7 @@ The confidence should be a number between 0 and 1.
                 "method": "POST",
                 "url": "/v1/chat/completions",
                 "body": {
-                    "model": self.settings.openai_model,
+                    "model": self.settings.llm_model,
                     "messages": [
                         {
                             "role": "system",
@@ -149,7 +189,7 @@ The confidence should be a number between 0 and 1.
         )
 
         logger.info(f"Submitted batch {batch.id} with file {file_response.id}")
-        return batch.id
+        return str(batch.id)
 
     def get_batch_status(self, batch_id: str) -> BatchJobStatus:
         """Get status of a batch job.
@@ -162,17 +202,23 @@ The confidence should be a number between 0 and 1.
         """
         batch = self.client.batches.retrieve(batch_id)
 
+        created_at = self._coerce_datetime(getattr(batch, "created_at", time.time()))
+        completed_raw = getattr(batch, "completed_at", None)
+        completed_at = self._coerce_datetime(completed_raw) if completed_raw is not None else None
+        request_counts = getattr(batch, "request_counts", None)
+        counts = {
+            "total": self._extract_request_count(request_counts, "total"),
+            "completed": self._extract_request_count(request_counts, "completed"),
+            "failed": self._extract_request_count(request_counts, "failed"),
+        }
+
         return BatchJobStatus(
-            batch_id=batch.id,
-            status=batch.status,
-            created_at=batch.created_at,
-            completed_at=batch.completed_at,
-            request_counts={
-                "total": batch.request_counts.total,
-                "completed": batch.request_counts.completed,
-                "failed": batch.request_counts.failed,
-            },
-            metadata=batch.metadata or {},
+            batch_id=str(getattr(batch, "id", batch_id)),
+            status=str(getattr(batch, "status", "unknown")),
+            created_at=created_at,
+            completed_at=completed_at,
+            request_counts=counts,
+            metadata=getattr(batch, "metadata", {}) or {},
         )
 
     def wait_for_batch_completion(self, batch_id: str, check_interval: int = 60) -> BatchJobStatus:
@@ -190,7 +236,7 @@ The confidence should be a number between 0 and 1.
             RuntimeError: If batch fails.
         """
         start_time = time.time()
-        timeout = self.settings.openai_batch_timeout
+        timeout = self.settings.llm_batch_timeout
 
         logger.info(f"Waiting for batch {batch_id} to complete...")
 
@@ -332,3 +378,154 @@ The confidence should be a number between 0 and 1.
         categories = list({page.category for page in taxonomy_pages})
         logger.info(f"Found {len(categories)} categories in taxonomy")
         return categories
+
+    def categorize_for_matching(
+        self,
+        taxonomy_pages: list[TaxonomyPage],
+        content_items: list[WordPressContent],
+        min_confidence: float = 0.9,
+    ) -> dict[str, Any]:
+        """Use LLM to match taxonomy pages to content with confidence threshold.
+
+        This method provides a fallback for items that didn't match via semantic similarity.
+        It uses the LLM to evaluate each taxonomy page against content and determine
+        the best match based on semantic understanding rather than embedding similarity.
+
+        Args:
+            taxonomy_pages: Taxonomy pages to match (typically unmatched from semantic stage).
+            content_items: Available content items to match against.
+            min_confidence: Minimum confidence threshold (0-1) for accepting matches.
+
+        Returns:
+            Dictionary with statistics:
+                - matched: Number of taxonomy pages matched above threshold
+                - below_threshold: Number below threshold (need human review)
+                - total: Total taxonomy pages processed
+        """
+        logger.info(
+            f"Starting LLM categorization for {len(taxonomy_pages)} taxonomy pages "
+            f"against {len(content_items)} content items (min confidence: {min_confidence})"
+        )
+
+        matched_count = 0
+        below_threshold_count = 0
+
+        for taxonomy in taxonomy_pages:
+            # Create prompt for LLM to find best match
+            best_match, confidence = self._find_best_match_llm(taxonomy, content_items)
+
+            if best_match and confidence >= min_confidence:
+                # Match found above threshold
+                matching_result = MatchingResult(
+                    taxonomy_id=taxonomy.id,
+                    content_id=best_match.id,
+                    similarity_score=confidence,
+                    match_stage=MatchStage.LLM_CATEGORIZED,
+                )
+                matched_count += 1
+                logger.info(
+                    f"LLM matched taxonomy {taxonomy.url} to {best_match.url} "
+                    f"(confidence: {confidence:.3f})"
+                )
+            else:
+                # Below threshold or no match - needs human review
+                matching_result = MatchingResult(
+                    taxonomy_id=taxonomy.id,
+                    content_id=None,
+                    similarity_score=confidence if best_match else 0.0,
+                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+                    failed_at_stage="llm_categorization",
+                )
+                below_threshold_count += 1
+                logger.warning(
+                    f"LLM match for taxonomy {taxonomy.url} below threshold "
+                    f"(confidence: {confidence if best_match else 0.0:.3f}, threshold: {min_confidence})"
+                )
+
+            # Store result
+            self.db.upsert_matching(matching_result)
+
+        logger.info(
+            f"LLM categorization complete: {matched_count} matched, "
+            f"{below_threshold_count} need review"
+        )
+
+        return {
+            "matched": matched_count,
+            "below_threshold": below_threshold_count,
+            "total": len(taxonomy_pages),
+        }
+
+    @retry(
+        retry=retry_if_exception_type(openai.APIError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    def _find_best_match_llm(
+        self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
+    ) -> tuple[WordPressContent | None, float]:
+        """Use LLM to find best matching content for a taxonomy page.
+
+        Args:
+            taxonomy: Taxonomy page to match.
+            content_items: Available content items.
+
+        Returns:
+            Tuple of (best_match, confidence) or (None, 0.0) if no good match.
+        """
+        # Create content summaries for LLM
+        content_summaries = []
+        for i, content in enumerate(content_items):
+            summary = f"{i}. Title: {content.title}\n   URL: {content.url}\n   Preview: {content.content[:200]}..."
+            content_summaries.append(summary)
+
+        content_list = "\n\n".join(content_summaries)
+
+        prompt = f"""You are matching a taxonomy page to the most relevant content page.
+
+Taxonomy Page:
+- Category: {taxonomy.category}
+- Description: {taxonomy.description}
+- Keywords: {', '.join(taxonomy.keywords) if taxonomy.keywords else 'None'}
+- URL: {taxonomy.url}
+
+Available Content Pages:
+{content_list}
+
+Analyze the taxonomy page and find the BEST matching content page based on semantic relevance.
+Respond with a JSON object in this exact format:
+{{
+  "best_match_index": <index number of best match, or -1 if no good match>,
+  "confidence": <confidence score 0-1>,
+  "reasoning": "brief explanation"
+}}
+
+The confidence should reflect how well the content matches the taxonomy's category, description, and keywords."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.settings.llm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a content matching assistant. Always respond with valid JSON.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+
+            message_content = response.choices[0].message.content or "{}"
+            result = json.loads(message_content)
+            best_match_index = result.get("best_match_index", -1)
+            confidence = float(result.get("confidence", 0.0))
+
+            if best_match_index >= 0 and best_match_index < len(content_items):
+                return content_items[best_match_index], confidence
+            else:
+                return None, 0.0
+
+        except Exception as e:
+            logger.error(f"Error in LLM matching for taxonomy {taxonomy.url}: {e}")
+            return None, 0.0

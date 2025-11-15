@@ -3,10 +3,11 @@
 import logging
 from collections.abc import Iterator
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urljoin
 
 import requests
+from pydantic import HttpUrl
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -62,7 +63,7 @@ class WordPressVIPConnector:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
         """Make HTTP request to WordPress API with retry logic.
 
         Args:
@@ -212,10 +213,10 @@ class WordPressVIPConnector:
         }
 
         return WordPressContent(
-            url=item.get("link", ""),
+            url=cast(HttpUrl, item.get("link", "")),
             title=title_text,
             content=content_text,
-            site_url=self.site_url,
+            site_url=cast(HttpUrl, self.site_url),
             published_date=published_date,
             metadata=metadata,
         )

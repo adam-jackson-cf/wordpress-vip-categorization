@@ -193,10 +193,18 @@ def main():
     try:
         # Load configuration
         settings = get_settings()
-        logger.info(f"✓ Configuration loaded")
-        logger.info(f"  - Supabase: {settings.supabase_url}")
-        logger.info(f"  - Model: {settings.openai_model}")
-        logger.info(f"  - Embedding: {settings.openai_embedding_model}")
+        logger.info("✓ Configuration loaded")
+        logger.info("  - Supabase: %s", settings.supabase_url)
+        logger.info(
+            "  - Semantic embeddings: %s @ %s",
+            settings.semantic_embedding_model,
+            settings.semantic_base_url,
+        )
+        logger.info(
+            "  - LLM model: %s @ %s",
+            settings.llm_model,
+            settings.llm_base_url,
+        )
 
         # Initialize database client
         db = SupabaseClient(settings)

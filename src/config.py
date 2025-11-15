@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,17 +17,41 @@ class Settings(BaseSettings):
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_key: str = Field(..., description="Supabase service role key")
 
-    # OpenAI Configuration (or OpenAI-compatible like OpenRouter)
-    openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_base_url: str = Field(
-        default="https://api.openai.com/v1", description="OpenAI API base URL"
+    # Semantic Matching (Embeddings) Configuration
+    semantic_api_key: str = Field(
+        validation_alias=AliasChoices("SEMANTIC_API_KEY", "OPENAI_API_KEY"),
+        description="API key for embeddings-based semantic matching (e.g., OpenRouter/OpenAI).",
     )
-    openai_model: str = Field(default="gpt-4o-mini", description="OpenAI model to use")
-    openai_embedding_model: str = Field(
-        default="text-embedding-3-small", description="Embedding model to use"
+    semantic_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias=AliasChoices("SEMANTIC_BASE_URL", "OPENAI_BASE_URL"),
+        description="API base URL for semantic matching provider.",
     )
-    openai_batch_timeout: int = Field(
-        default=86400, description="Batch API timeout in seconds (24 hours default)"
+    semantic_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        validation_alias=AliasChoices("SEMANTIC_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"),
+        description="Embedding model used for semantic similarity.",
+    )
+
+    # LLM Categorization Configuration
+    llm_api_key: str = Field(
+        validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"),
+        description="API key for LLM categorization (chat completions).",
+    )
+    llm_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias=AliasChoices("LLM_BASE_URL", "OPENAI_BASE_URL"),
+        description="API base URL for LLM categorization provider.",
+    )
+    llm_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"),
+        description="LLM model to use for categorization fallback.",
+    )
+    llm_batch_timeout: int = Field(
+        default=86400,
+        validation_alias=AliasChoices("LLM_BATCH_TIMEOUT", "OPENAI_BATCH_TIMEOUT"),
+        description="Batch API timeout in seconds (24 hours default).",
     )
 
     # WordPress VIP Configuration
@@ -40,8 +64,19 @@ class Settings(BaseSettings):
     )
     batch_size: int = Field(default=1000, description="Batch processing size")
     log_level: str = Field(default="INFO", description="Logging level")
+
+    # Matching Configuration
     similarity_threshold: float = Field(
-        default=0.75, description="Minimum similarity score for matching"
+        default=0.85, description="Minimum similarity score for semantic matching"
+    )
+    llm_confidence_threshold: float = Field(
+        default=0.9, description="Minimum confidence score for LLM categorization"
+    )
+    enable_semantic_matching: bool = Field(
+        default=True, description="Enable semantic matching stage"
+    )
+    enable_llm_categorization: bool = Field(
+        default=True, description="Enable LLM categorization fallback stage"
     )
 
     # DSPy Configuration
@@ -71,7 +106,15 @@ class Settings(BaseSettings):
             raise ValueError("Similarity threshold must be between 0 and 1")
         return v
 
+    @field_validator("llm_confidence_threshold")
+    @classmethod
+    def validate_llm_threshold(cls, v: float) -> float:
+        """Validate LLM confidence threshold is between 0 and 1."""
+        if not 0 <= v <= 1:
+            raise ValueError("LLM confidence threshold must be between 0 and 1")
+        return v
+
 
 def get_settings() -> Settings:
     """Get application settings singleton."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
