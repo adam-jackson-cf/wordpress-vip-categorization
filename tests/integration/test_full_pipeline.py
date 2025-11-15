@@ -29,24 +29,30 @@ def supabase_client(live_settings: Settings) -> SupabaseClient:
     return SupabaseClient(live_settings)
 
 
+def _clear_supabase_tables(client: SupabaseClient, cutoff: str | None = None) -> None:
+    tables = (
+        "matching_results",
+        "categorization_results",
+        "wordpress_content",
+        "taxonomy_pages",
+    )
+    for table in tables:
+        query = client.client.table(table).delete()
+        if cutoff:
+            query = query.gte("created_at", cutoff)
+        else:
+            query = query.neq("id", "00000000-0000-0000-0000-000000000000")
+        query.execute()
+
+
 @pytest.fixture
 def supabase_test_context(supabase_client: SupabaseClient):
+    _clear_supabase_tables(supabase_client)
     start_time = datetime.now(timezone.utc)
     try:
         yield {"client": supabase_client, "started_at": start_time}
     finally:
-        cutoff = start_time.isoformat()
-        # Delete children first to satisfy FKs
-        supabase_client.client.table("matching_results").delete().gte(
-            "created_at", cutoff
-        ).execute()
-        supabase_client.client.table("categorization_results").delete().gte(
-            "created_at", cutoff
-        ).execute()
-        supabase_client.client.table("wordpress_content").delete().gte(
-            "created_at", cutoff
-        ).execute()
-        supabase_client.client.table("taxonomy_pages").delete().gte("created_at", cutoff).execute()
+        _clear_supabase_tables(supabase_client, start_time.isoformat())
 
 
 @pytest.fixture(scope="module")
