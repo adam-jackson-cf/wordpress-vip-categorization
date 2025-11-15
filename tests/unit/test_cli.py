@@ -123,10 +123,10 @@ def test_match_only_unmatched_triggers_llm_retry(
         [sample_taxonomy_page.id],
         [MatchStage.LLM_CATEGORIZED, MatchStage.NEEDS_HUMAN_REVIEW],
     )
-    mock_workflow.run_matching_workflow.assert_called_once_with(
-        taxonomy_pages=[sample_taxonomy_page],
-        batch_mode=True,
-    )
+    mock_workflow.run_matching_workflow.assert_called_once()
+    kwargs = mock_workflow.run_matching_workflow.call_args.kwargs
+    assert kwargs["taxonomy_pages"] == [sample_taxonomy_page]
+    assert kwargs["batch_mode"] is True
 
 
 def test_optimize_dataset_success(mocker, tmp_path) -> None:
@@ -268,3 +268,52 @@ def test_optimize_dataset_invalid_train_split() -> None:
         assert "Train split must be between 0 and 1" in result.output
     finally:
         Path(dataset_path).unlink()
+
+
+def test_workflow_start_cli(mocker) -> None:
+    mock_settings = mocker.Mock()
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+    mock_db = mocker.Mock()
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+    mock_service = mocker.Mock()
+    mocker.patch("src.cli.WorkflowService", return_value=mock_service)
+
+    result = runner.invoke(cli, ["workflow", "start", "--run-key", "demo", "--batch"])
+
+    assert result.exit_code == 0
+    mock_service.run_managed_workflow.assert_called_once_with(
+        run_key="demo",
+        batch_mode=True,
+        resume=False,
+    )
+
+
+def test_workflow_resume_cli(mocker) -> None:
+    mock_settings = mocker.Mock()
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+    mock_db = mocker.Mock()
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+    mock_service = mocker.Mock()
+    mocker.patch("src.cli.WorkflowService", return_value=mock_service)
+
+    result = runner.invoke(cli, ["workflow", "resume", "demo"])
+
+    assert result.exit_code == 0
+    mock_service.run_managed_workflow.assert_called_once_with(
+        run_key="demo",
+        batch_mode=True,
+        resume=True,
+    )
+
+
+def test_workflow_status_cli_lists_runs(mocker) -> None:
+    mock_settings = mocker.Mock()
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+    mock_db = mocker.Mock()
+    mock_db.list_workflow_runs.return_value = []
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+
+    result = runner.invoke(cli, ["workflow", "status", "--limit", "5"])
+
+    assert result.exit_code == 0
+    mock_db.list_workflow_runs.assert_called_once_with(limit=5)

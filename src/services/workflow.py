@@ -1,11 +1,13 @@
 """Orchestration service for cascading semantic matching and LLM categorization workflow."""
 
 import logging
+from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
-from src.models import TaxonomyPage, WordPressContent
+from src.models import TaxonomyPage, WordPressContent, WorkflowRun, WorkflowRunStatus
 from src.services.categorization import CategorizationService
 from src.services.matching import MatchingService
 
@@ -56,6 +58,7 @@ class WorkflowService:
         taxonomy_pages: list[TaxonomyPage] | None = None,
         content_items: list[WordPressContent] | None = None,
         batch_mode: bool = True,
+        run_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Run the complete cascading matching workflow.
 
@@ -108,6 +111,14 @@ class WorkflowService:
             "skipped": 0,
         }
 
+        if run_id:
+            self.db.update_workflow_run(
+                run_id,
+                current_stage="semantic_matching",
+                status=WorkflowRunStatus.RUNNING.value,
+                stats=stats,
+            )
+
         # Stage 1: Semantic Matching
         unmatched_taxonomy: list[TaxonomyPage] = []
 
@@ -136,21 +147,47 @@ class WorkflowService:
                 f"Semantic matching complete: {stats['semantic_matched']} matched, "
                 f"{len(unmatched_taxonomy)} unmatched"
             )
+            if run_id:
+                self.db.update_workflow_run(
+                    run_id,
+                    current_stage="llm_planning",
+                    stats=stats,
+                )
         else:
             logger.info("Stage 1: Semantic matching disabled, skipping...")
             unmatched_taxonomy = taxonomy_pages
 
         # Stage 2: LLM Categorization Fallback
+        candidate_map: dict[UUID, list[WordPressContent]] = {}
+
         if self.settings.enable_llm_categorization and unmatched_taxonomy:
             logger.info(
                 f"Stage 2: Running LLM categorization for {len(unmatched_taxonomy)} unmatched items "
                 f"(confidence >= {self.settings.llm_confidence_threshold})"
             )
 
+            for taxonomy in unmatched_taxonomy:
+                candidates = self.matching_service.match_taxonomy_to_content(
+                    taxonomy,
+                    limit=self.settings.llm_candidate_limit,
+                    min_threshold=self.settings.llm_candidate_min_score,
+                )
+                filtered = [
+                    content
+                    for content, score in candidates
+                    if score >= self.settings.llm_candidate_min_score
+                ]
+                if not filtered:
+                    filtered = [content for content, _ in candidates][
+                        : self.settings.llm_candidate_limit
+                    ]
+            candidate_map[taxonomy.id] = filtered
+
             # Run LLM categorization for unmatched items
             llm_results = self.categorization_service.categorize_for_matching(
                 taxonomy_pages=unmatched_taxonomy,
                 content_items=content_items,
+                candidate_map=candidate_map,
                 min_confidence=self.settings.llm_confidence_threshold,
             )
 
@@ -161,6 +198,12 @@ class WorkflowService:
                 f"LLM categorization complete: {stats['llm_categorized']} matched, "
                 f"{stats['needs_review']} need review"
             )
+            if run_id:
+                self.db.update_workflow_run(
+                    run_id,
+                    current_stage="completed",
+                    stats=stats,
+                )
         elif not self.settings.enable_llm_categorization:
             logger.info("Stage 2: LLM categorization disabled, skipping...")
             stats["needs_review"] = len(unmatched_taxonomy)
@@ -176,3 +219,49 @@ class WorkflowService:
         )
 
         return stats
+
+    def run_managed_workflow(
+        self,
+        run_key: str,
+        batch_mode: bool = True,
+        resume: bool = False,
+    ) -> dict[str, Any]:
+        """Execute the workflow while persisting run metadata for resuming."""
+
+        existing = self.db.get_workflow_run_by_key(run_key)
+        if existing and not resume:
+            raise ValueError(f"Run '{run_key}' already exists. Use resume to continue.")
+
+        if not existing:
+            run = WorkflowRun(
+                run_key=run_key,
+                status=WorkflowRunStatus.RUNNING,
+                current_stage="initializing",
+                config={"batch_mode": batch_mode},
+            )
+            run = self.db.create_workflow_run(run)
+        else:
+            run = self.db.update_workflow_run(
+                existing.id,
+                status=WorkflowRunStatus.RUNNING.value,
+                error=None,
+            )
+
+        try:
+            stats = self.run_matching_workflow(batch_mode=batch_mode, run_id=run.id)
+            self.db.update_workflow_run(
+                run.id,
+                status=WorkflowRunStatus.COMPLETED.value,
+                current_stage="completed",
+                stats=stats,
+                completed_at=datetime.utcnow().isoformat(),
+            )
+            return stats
+        except Exception as exc:  # pragma: no cover - error propagation
+            self.db.update_workflow_run(
+                run.id,
+                status=WorkflowRunStatus.FAILED.value,
+                current_stage="failed",
+                error=str(exc),
+            )
+            raise

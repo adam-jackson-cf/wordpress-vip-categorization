@@ -6,7 +6,7 @@ to verify the end-to-end functionality of the system.
 
 import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -47,6 +47,11 @@ class TestFullPipeline:
             mock_db._content.append(content)
             return content
 
+        def bulk_upsert_content(contents, chunk_size=200):
+            for item in contents:
+                upsert_content(item)
+            return contents
+
         def get_all_content(limit=None):
             if limit:
                 return mock_db._content[:limit]
@@ -59,6 +64,11 @@ class TestFullPipeline:
                     return taxonomy
             mock_db._taxonomy.append(taxonomy)
             return taxonomy
+
+        def bulk_upsert_taxonomy(taxonomies, chunk_size=200):
+            for item in taxonomies:
+                upsert_taxonomy(item)
+            return taxonomies
 
         def get_all_taxonomy():
             return mock_db._taxonomy[:]
@@ -77,11 +87,20 @@ class TestFullPipeline:
             mock_db._matchings.append(matching)
             return matching
 
+        def bulk_upsert_matchings(matchings, chunk_size=200):
+            for item in matchings:
+                upsert_matching(item)
+            return matchings
+
         def get_best_match_for_taxonomy(taxonomy_id, min_score=0.0):
             for m in mock_db._matchings:
                 if m.taxonomy_id == taxonomy_id and m.similarity_score >= min_score:
                     return m
             return None
+
+        def match_content_by_embedding(_embedding, _threshold, limit):
+            # Return top-N stored content rows with a deterministic similarity score
+            return [(content, 0.9) for content in mock_db._content[:limit]]
 
         def get_categorizations_by_content(content_id):
             return []
@@ -90,12 +109,16 @@ class TestFullPipeline:
             return mock_db._matchings[:]
 
         mock_db.upsert_content = upsert_content
+        mock_db.bulk_upsert_content = bulk_upsert_content
         mock_db.get_all_content = get_all_content
         mock_db.upsert_taxonomy = upsert_taxonomy
+        mock_db.bulk_upsert_taxonomy = bulk_upsert_taxonomy
         mock_db.get_all_taxonomy = get_all_taxonomy
         mock_db.get_content_by_id = get_content_by_id
         mock_db.upsert_matching = upsert_matching
+        mock_db.bulk_upsert_matchings = bulk_upsert_matchings
         mock_db.get_best_match_for_taxonomy = get_best_match_for_taxonomy
+        mock_db.match_content_by_embedding = match_content_by_embedding
         mock_db.get_categorizations_by_content = get_categorizations_by_content
         mock_db.get_all_matchings = get_all_matchings
 
@@ -171,19 +194,14 @@ class TestFullPipeline:
         assert taxonomy_pages[0].category in ["News", "Tech"]
         assert len(taxonomy_pages[0].keywords) > 0
 
-    @patch("src.services.matching.openai.OpenAI")
     def test_semantic_matching_integration(
         self,
-        mock_openai_class: Mock,
-        mock_openai_client: Mock,
         mock_settings: Settings,
         mock_db_client: Mock,
         public_wordpress_site: str,
         tmp_path: Path,
     ) -> None:
         """Test semantic matching integration with real WordPress content."""
-        mock_openai_class.return_value = mock_openai_client
-
         # Step 1: Ingest content
         ingestion_service = IngestionService(mock_settings, mock_db_client)
         ingestion_service.ingest_wordpress_sites([public_wordpress_site], max_pages=1)
@@ -214,11 +232,8 @@ class TestFullPipeline:
         not os.getenv("RUN_SLOW_TESTS"),
         reason="Skipping slow test - set RUN_SLOW_TESTS=1 to run",
     )
-    @patch("src.services.matching.openai.OpenAI")
     def test_full_e2e_pipeline(
         self,
-        mock_openai_class: Mock,
-        mock_openai_client: Mock,
         mock_settings: Settings,
         mock_db_client: Mock,
         public_wordpress_site: str,
@@ -234,8 +249,6 @@ class TestFullPipeline:
 
         Set RUN_SLOW_TESTS=1 environment variable to run this test.
         """
-        mock_openai_class.return_value = mock_openai_client
-
         # 1. Ingest content
         ingestion_service = IngestionService(mock_settings, mock_db_client)
         content_count = ingestion_service.ingest_wordpress_sites(

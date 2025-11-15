@@ -398,6 +398,7 @@ The confidence should be a number between 0 and 1.
         self,
         taxonomy_pages: list[TaxonomyPage],
         content_items: list[WordPressContent],
+        candidate_map: dict[UUID, list[WordPressContent]] | None = None,
         min_confidence: float = 0.9,
     ) -> dict[str, Any]:
         """Use LLM to match taxonomy pages to content with confidence threshold.
@@ -408,7 +409,8 @@ The confidence should be a number between 0 and 1.
 
         Args:
             taxonomy_pages: Taxonomy pages to match (typically unmatched from semantic stage).
-            content_items: Available content items to match against.
+            content_items: Available content items to match against (fallback pool).
+            candidate_map: Optional per-taxonomy shortlist of semantic candidates.
             min_confidence: Minimum confidence threshold (0-1) for accepting matches.
 
         Returns:
@@ -427,7 +429,30 @@ The confidence should be a number between 0 and 1.
 
         for taxonomy in taxonomy_pages:
             # Create prompt for LLM to find best match
-            best_match, confidence = self._find_best_match_llm(taxonomy, content_items)
+            pool = []
+            if candidate_map:
+                pool = candidate_map.get(taxonomy.id, [])
+
+            if not pool:
+                pool = content_items
+
+            if not pool:
+                logger.warning(
+                    "No candidate content available for taxonomy %s; marking for review",
+                    taxonomy.id,
+                )
+                matching_result = MatchingResult(
+                    taxonomy_id=taxonomy.id,
+                    content_id=None,
+                    similarity_score=0.0,
+                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+                    failed_at_stage="llm_categorization",
+                )
+                below_threshold_count += 1
+                self.db.upsert_matching(matching_result)
+                continue
+
+            best_match, confidence = self._find_best_match_llm(taxonomy, pool)
 
             if best_match and confidence >= min_confidence:
                 # Match found above threshold

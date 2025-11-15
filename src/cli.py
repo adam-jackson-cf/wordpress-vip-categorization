@@ -5,7 +5,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import click
 import httpx
@@ -845,6 +845,72 @@ def optimize_dataset(
         click.echo(f"Error during optimization: {e}", err=True)
         logger.exception("Optimization failed")
         sys.exit(1)
+
+
+@cli.group()
+def workflow() -> None:
+    """Workflow run management commands."""
+    pass
+
+
+@workflow.command(name="start")
+@click.option("--run-key", help="Unique identifier for the workflow run")
+@click.option("--batch/--no-batch", default=True, help="Toggle batch mode")
+def workflow_start(run_key: str | None, batch: bool) -> None:
+    """Start a managed workflow run with persisted checkpoints."""
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    workflow_service = WorkflowService(settings, db)
+
+    key = run_key or f"run-{uuid4().hex}"
+    stats = workflow_service.run_managed_workflow(run_key=key, batch_mode=batch, resume=False)
+    click.echo(f"Workflow '{key}' completed: {stats}")
+
+
+@workflow.command(name="resume")
+@click.argument("run_key")
+@click.option("--batch/--no-batch", default=True, help="Toggle batch mode for remaining stages")
+def workflow_resume(run_key: str, batch: bool) -> None:
+    """Resume an existing workflow run by run key."""
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    workflow_service = WorkflowService(settings, db)
+
+    stats = workflow_service.run_managed_workflow(run_key=run_key, batch_mode=batch, resume=True)
+    click.echo(f"Workflow '{run_key}' resumed with stats: {stats}")
+
+
+@workflow.command(name="status")
+@click.option("--run-key", help="Specific run key to inspect")
+@click.option("--limit", default=10, help="Number of recent runs to list")
+def workflow_status(run_key: str | None, limit: int) -> None:
+    """Show workflow run metadata."""
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+
+    if run_key:
+        run = db.get_workflow_run_by_key(run_key)
+        if not run:
+            click.echo(f"No workflow run found with key '{run_key}'")
+            return
+        click.echo(
+            f"Run {run.run_key}: status={run.status}, stage={run.current_stage}, stats={run.stats}"
+        )
+        return
+
+    runs = db.list_workflow_runs(limit=limit)
+    if not runs:
+        click.echo("No workflow runs found")
+        return
+
+    for run in runs:
+        click.echo(
+            f"{run.run_key}: status={run.status}, stage={run.current_stage}, "
+            f"started={run.started_at}, completed={run.completed_at}"
+        )
 
 
 if __name__ == "__main__":

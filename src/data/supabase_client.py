@@ -1,8 +1,9 @@
 """Supabase client for data persistence."""
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from supabase import Client, create_client
@@ -14,6 +15,7 @@ from src.models import (
     MatchStage,
     TaxonomyPage,
     WordPressContent,
+    WorkflowRun,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,26 @@ class SupabaseClient:
         result = self.client.table("wordpress_content").upsert(data, on_conflict="url").execute()
         logger.debug(f"Upserted content: {content.url}")
         return WordPressContent.model_validate(result.data[0])
+
+    def bulk_upsert_content(
+        self, contents: list[WordPressContent], chunk_size: int = 200
+    ) -> list[WordPressContent]:
+        """Bulk upsert WordPress content records."""
+
+        if not contents:
+            return []
+
+        persisted: list[WordPressContent] = []
+        for i in range(0, len(contents), chunk_size):
+            chunk = contents[i : i + chunk_size]
+            payload = [item.model_dump(mode="json") for item in chunk]
+            result = (
+                self.client.table("wordpress_content").upsert(payload, on_conflict="url").execute()
+            )
+            persisted.extend(WordPressContent.model_validate(item) for item in result.data)
+
+        logger.info("Bulk upserted %s content rows", len(persisted))
+        return persisted
 
     def get_content_by_url(self, url: str) -> WordPressContent | None:
         """Get content by URL.
@@ -125,6 +147,49 @@ class SupabaseClient:
         )
         return [WordPressContent.model_validate(item) for item in result.data]
 
+    def update_content_embedding(self, content_id: UUID, embedding: list[float]) -> None:
+        """Persist embedding vector for a WordPress content row."""
+
+        self.client.table("wordpress_content").update(
+            {
+                "content_embedding": embedding,
+                "embedding_updated_at": datetime.utcnow().isoformat(),
+            }
+        ).eq("id", str(content_id)).execute()
+
+    def update_taxonomy_embedding(self, taxonomy_id: UUID, embedding: list[float]) -> None:
+        """Persist embedding vector for a taxonomy row."""
+
+        self.client.table("taxonomy_pages").update(
+            {
+                "taxonomy_embedding": embedding,
+                "embedding_updated_at": datetime.utcnow().isoformat(),
+            }
+        ).eq("id", str(taxonomy_id)).execute()
+
+    def match_content_by_embedding(
+        self,
+        embedding: Sequence[float],
+        match_threshold: float,
+        limit: int,
+    ) -> list[tuple[WordPressContent, float]]:
+        """Call pgvector helper to fetch the closest content rows."""
+
+        payload = {
+            "query_embedding": list(embedding),
+            "match_threshold": match_threshold,
+            "match_count": limit,
+        }
+
+        result = self.client.rpc("match_wordpress_content", payload).execute()
+        rows = cast(list[dict[str, Any]], result.data or [])
+        candidates: list[tuple[WordPressContent, float]] = []
+        for row in rows:
+            similarity = float(row.get("similarity", 0.0))
+            content = WordPressContent.model_validate(row)
+            candidates.append((content, similarity))
+        return candidates
+
     def get_latest_published_date(self, site_url: str) -> datetime | None:
         """Return the most recent published_date for a site, if available."""
 
@@ -178,6 +243,24 @@ class SupabaseClient:
         logger.debug(f"Upserted taxonomy: {taxonomy.url}")
         return TaxonomyPage.model_validate(result.data[0])
 
+    def bulk_upsert_taxonomy(
+        self, taxonomies: list[TaxonomyPage], chunk_size: int = 200
+    ) -> list[TaxonomyPage]:
+        if not taxonomies:
+            return []
+
+        persisted: list[TaxonomyPage] = []
+        for i in range(0, len(taxonomies), chunk_size):
+            chunk = taxonomies[i : i + chunk_size]
+            payload = [item.model_dump(mode="json") for item in chunk]
+            result = (
+                self.client.table("taxonomy_pages").upsert(payload, on_conflict="url").execute()
+            )
+            persisted.extend(TaxonomyPage.model_validate(item) for item in result.data)
+
+        logger.info("Bulk upserted %s taxonomy rows", len(persisted))
+        return persisted
+
     def get_all_taxonomy(self) -> list[TaxonomyPage]:
         """Get all taxonomy pages.
 
@@ -225,6 +308,17 @@ class SupabaseClient:
         if result.data:
             return TaxonomyPage.model_validate(result.data[0])
         return None
+
+    def get_unmatched_taxonomy(self, threshold: float) -> list[TaxonomyPage]:
+        """Return taxonomy rows without a canonical match or below similarity threshold."""
+
+        result = self.client.rpc(
+            "get_unmatched_taxonomy",
+            {"min_similarity": threshold},
+        ).execute()
+
+        rows = cast(list[dict[str, Any]], result.data or [])
+        return [TaxonomyPage.model_validate(item) for item in rows]
 
     # Categorization results operations
     def insert_categorization(self, result: CategorizationResult) -> CategorizationResult:
@@ -286,6 +380,7 @@ class SupabaseClient:
             Inserted matching result.
         """
         data = result.model_dump(mode="json")
+        data["updated_at"] = datetime.utcnow().isoformat()
         db_result = self.client.table("matching_results").insert(data).execute()
         logger.debug(
             f"Inserted matching: taxonomy={result.taxonomy_id}, content={result.content_id}"
@@ -302,12 +397,66 @@ class SupabaseClient:
             Upserted matching result.
         """
         data = result.model_dump(mode="json")
+        data["updated_at"] = datetime.utcnow().isoformat()
         db_result = (
-            self.client.table("matching_results")
-            .upsert(data, on_conflict="taxonomy_id,content_id")
-            .execute()
+            self.client.table("matching_results").upsert(data, on_conflict="taxonomy_id").execute()
         )
         return MatchingResult.model_validate(db_result.data[0])
+
+    def bulk_upsert_matchings(
+        self, matchings: list[MatchingResult], chunk_size: int = 200
+    ) -> list[MatchingResult]:
+        if not matchings:
+            return []
+
+        persisted: list[MatchingResult] = []
+        for i in range(0, len(matchings), chunk_size):
+            chunk = matchings[i : i + chunk_size]
+            payload = [
+                {
+                    **item.model_dump(mode="json"),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+                for item in chunk
+            ]
+            result = (
+                self.client.table("matching_results")
+                .upsert(payload, on_conflict="taxonomy_id")
+                .execute()
+            )
+            persisted.extend(MatchingResult.model_validate(item) for item in result.data)
+
+        logger.info("Bulk upserted %s matching rows", len(persisted))
+        return persisted
+
+    # Workflow run operations
+    def create_workflow_run(self, run: WorkflowRun) -> WorkflowRun:
+        payload = run.model_dump(mode="json")
+        result = self.client.table("workflow_runs").insert(payload).execute()
+        return WorkflowRun.model_validate(result.data[0])
+
+    def update_workflow_run(self, run_id: UUID, **fields: Any) -> WorkflowRun:
+        fields["updated_at"] = datetime.utcnow().isoformat()
+        result = self.client.table("workflow_runs").update(fields).eq("id", str(run_id)).execute()
+        return WorkflowRun.model_validate(result.data[0])
+
+    def get_workflow_run_by_key(self, run_key: str) -> WorkflowRun | None:
+        result = (
+            self.client.table("workflow_runs").select("*").eq("run_key", run_key).limit(1).execute()
+        )
+        if not result.data:
+            return None
+        return WorkflowRun.model_validate(result.data[0])
+
+    def list_workflow_runs(self, limit: int = 20) -> list[WorkflowRun]:
+        result = (
+            self.client.table("workflow_runs")
+            .select("*")
+            .order("started_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [WorkflowRun.model_validate(item) for item in result.data]
 
     def get_matchings_by_taxonomy(self, taxonomy_id: UUID) -> list[MatchingResult]:
         """Get matching results for a taxonomy page.

@@ -45,6 +45,7 @@ class TestIngestionService:
         kwargs = connector.fetch_all_content.call_args.kwargs
         assert kwargs["modified_after"] == cutoff
         mock_supabase_client.get_latest_published_date.assert_not_called()
+        mock_supabase_client.bulk_upsert_content.assert_called()
 
     def test_resume_uses_latest_published_date(
         self,
@@ -70,3 +71,4 @@ class TestIngestionService:
         )
         kwargs = connector.fetch_all_content.call_args.kwargs
         assert kwargs["modified_after"] == last_seen
+        mock_supabase_client.bulk_upsert_content.assert_called()

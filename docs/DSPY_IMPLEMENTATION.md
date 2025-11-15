@@ -165,6 +165,16 @@ The optimized model is automatically used by `CategorizationService` when availa
 - Falls back to unoptimized model if file doesn't exist or load fails
 - Model is used in the LLM categorization stage of the cascading workflow
 
+### LLM Candidate Shortlists
+
+To reduce prompt size and token spend, the workflow feeds DSPy only the top semantic candidates per taxonomy page. Configure the shortlist via:
+
+- `SEMANTIC_CANDIDATE_LIMIT` – maximum neighbors retrieved from Supabase (default `25`).
+- `LLM_CANDIDATE_LIMIT` – maximum neighbors forwarded to the LLM fallback (default `10`).
+- `LLM_CANDIDATE_MIN_SCORE` – minimum cosine similarity for inclusion (default `0.6`).
+
+When no candidate meets the minimum score, the engine automatically backfills with the best available semantic matches so DSPy still receives context.
+
 ## Troubleshooting
 
 **Error: "No valid examples found in dataset file"**

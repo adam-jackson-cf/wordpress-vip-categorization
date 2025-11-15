@@ -34,6 +34,7 @@ Use progressive disclosure - only review the below indexed documents when your t
 - Run tests only: `pytest`
 - Run pre-commit checks: `pre-commit run --all-files` (mirrors the git hook)
 - CLI help and commands: `python -m src.cli --help`
+- Managed runs & resumable matching: `python -m src.cli workflow start|resume|status`
 
 ## Architecture Overview
 

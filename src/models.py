@@ -31,6 +31,8 @@ class WordPressContent(BaseModel):
     site_url: HttpUrl
     published_date: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    content_embedding: list[float] | None = Field(default=None)
+    embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -53,6 +55,8 @@ class TaxonomyPage(BaseModel):
     keywords: list[str] = Field(
         default_factory=list, description="Keywords and phrases to match against"
     )
+    taxonomy_embedding: list[float] | None = Field(default=None)
+    embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -91,6 +95,7 @@ class MatchingResult(BaseModel):
         default=None, description="Stage where matching failed (for debugging)"
     )
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime | None = None
 
 
 class ExportRow(BaseModel):
@@ -105,6 +110,35 @@ class ExportRow(BaseModel):
     similarity_score: float
     match_stage: str | None = None
     failed_at_stage: str | None = None
+
+
+class WorkflowRunStatus(str, Enum):
+    """Workflow run lifecycle states."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class WorkflowRun(BaseModel):
+    """Persisted workflow run metadata for resumable executions."""
+
+    model_config = ConfigDict(
+        ser_json_timedelta="iso8601",
+        json_schema_serialization_defaults_required=True,
+    )
+
+    id: UUID = Field(default_factory=uuid4)
+    run_key: str
+    status: WorkflowRunStatus
+    current_stage: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime | None = None
+    completed_at: datetime | None = None
+    error: str | None = None
 
 
 class BatchJobStatus(BaseModel):

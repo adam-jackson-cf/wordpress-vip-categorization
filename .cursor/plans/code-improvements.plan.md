@@ -63,8 +63,8 @@ Implement the five architecture changes identified during the review: persist em
 
 ### To-dos
 
-- [ ] Add pgvector-powered embedding storage plus Supabase helpers and refresh existing records
-- [ ] Enforce single-row canonical matches per taxonomy and update dependent services/tests
-- [ ] Limit DSPy/LLM fallback prompts to top-N semantic candidates with new config knobs
-- [ ] Implement bulk upsert paths for ingestion + matching persistence, configurable batch sizes
-- [ ] Create `workflow_runs` persistence plus CLI commands for start/resume/status with documentation updates
+- [x] Add pgvector-powered embedding storage plus Supabase helpers and refresh existing records
+- [x] Enforce single-row canonical matches per taxonomy and update dependent services/tests
+- [x] Limit DSPy/LLM fallback prompts to top-N semantic candidates with new config knobs
+- [x] Implement bulk upsert paths for ingestion + matching persistence, configurable batch sizes
+- [x] Create `workflow_runs` persistence plus CLI commands for start/resume/status with documentation updates

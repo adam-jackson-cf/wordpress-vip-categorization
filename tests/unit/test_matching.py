@@ -1,6 +1,6 @@
 """Unit tests for matching service."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from uuid import uuid4
 
 from src.config import Settings
@@ -64,30 +64,24 @@ class TestMatchingService:
         similarity = service.compute_similarity(vec3, vec4)
         assert 0.4 < similarity < 0.6
 
-    @patch("src.services.matching.openai.OpenAI")
     def test_get_embedding(
         self,
-        mock_openai_class: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         mock_openai_client: Mock,
     ) -> None:
         """Test embedding retrieval."""
-        mock_openai_class.return_value = mock_openai_client
 
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.client = mock_openai_client
 
         embedding = service.get_embedding("test text")
 
         assert isinstance(embedding, list)
         assert len(embedding) == 1536  # Default embedding size
-        mock_openai_client.embeddings.create.assert_called_once()
+        service.embedding_service.embed.assert_called_once_with("test text")
 
-    @patch("src.services.matching.openai.OpenAI")
     def test_match_taxonomy_to_content(
         self,
-        mock_openai_class: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         mock_openai_client: Mock,
@@ -95,24 +89,20 @@ class TestMatchingService:
         sample_wordpress_content: WordPressContent,
     ) -> None:
         """Test matching taxonomy to content."""
-        mock_openai_class.return_value = mock_openai_client
-
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.client = mock_openai_client
+        mock_supabase_client.match_content_by_embedding.return_value = [
+            (sample_wordpress_content, 0.9)
+        ]
 
-        matches = service.match_taxonomy_to_content(
-            sample_taxonomy_page, [sample_wordpress_content]
-        )
+        matches = service.match_taxonomy_to_content(sample_taxonomy_page)
 
         assert len(matches) == 1
         content, score = matches[0]
         assert content.id == sample_wordpress_content.id
         assert 0.0 <= score <= 1.0
 
-    @patch("src.services.matching.openai.OpenAI")
     def test_find_best_match_above_threshold(
         self,
-        mock_openai_class: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         mock_openai_client: Mock,
@@ -120,24 +110,19 @@ class TestMatchingService:
         sample_wordpress_content: WordPressContent,
     ) -> None:
         """Test finding best match above threshold."""
-        mock_openai_class.return_value = mock_openai_client
-
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.client = mock_openai_client
+        mock_supabase_client.match_content_by_embedding.return_value = [
+            (sample_wordpress_content, 0.8)
+        ]
 
-        # Use very low threshold
-        match = service.find_best_match(
-            sample_taxonomy_page, [sample_wordpress_content], min_threshold=0.0
-        )
+        match = service.find_best_match(sample_taxonomy_page, min_threshold=0.0)
 
         assert match is not None
         content, score = match
         assert content.id == sample_wordpress_content.id
 
-    @patch("src.services.matching.openai.OpenAI")
     def test_find_best_match_below_threshold(
         self,
-        mock_openai_class: Mock,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         mock_openai_client: Mock,
@@ -145,15 +130,12 @@ class TestMatchingService:
         sample_wordpress_content: WordPressContent,
     ) -> None:
         """Test no match when below threshold."""
-        mock_openai_class.return_value = mock_openai_client
-
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.client = mock_openai_client
+        mock_supabase_client.match_content_by_embedding.return_value = [
+            (sample_wordpress_content, 0.5)
+        ]
 
-        # Use very high threshold
-        match = service.find_best_match(
-            sample_taxonomy_page, [sample_wordpress_content], min_threshold=0.99
-        )
+        match = service.find_best_match(sample_taxonomy_page, min_threshold=0.99)
 
         # Should return None if no match above threshold
         # (depends on mock embedding similarity)
@@ -176,24 +158,7 @@ class TestMatchingService:
             keywords=[],
         )
 
-        mock_supabase_client.get_all_taxonomy.return_value = [
-            sample_taxonomy_page,
-            second_taxonomy,
-        ]
-        mock_supabase_client.get_all_matchings.return_value = [
-            MatchingResult(
-                taxonomy_id=sample_taxonomy_page.id,
-                content_id=sample_wordpress_content.id,
-                similarity_score=0.9,
-                match_stage=MatchStage.SEMANTIC_MATCHED,
-            ),
-            MatchingResult(
-                taxonomy_id=second_taxonomy.id,
-                content_id=None,
-                similarity_score=0.4,
-                match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
-            ),
-        ]
+        mock_supabase_client.get_unmatched_taxonomy.return_value = [second_taxonomy]
 
         service = MatchingService(mock_settings, mock_supabase_client)
         unmatched = service.get_unmatched_taxonomy(min_threshold=0.85)
@@ -219,7 +184,7 @@ class TestMatchingService:
         )
 
         assert sample_taxonomy_page.id in results
-        mock_supabase_client.upsert_matching.assert_called_once()
+        mock_supabase_client.bulk_upsert_matchings.assert_called()
 
     def test_match_all_taxonomy_records_needs_review(
         self,
@@ -241,7 +206,7 @@ class TestMatchingService:
 
         match_result = results[sample_taxonomy_page.id]
         assert match_result.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
-        mock_supabase_client.upsert_matching.assert_called_once()
+        mock_supabase_client.bulk_upsert_matchings.assert_called()
 
     def test_match_all_taxonomy_batch_uses_precomputed_embeddings(
         self,
@@ -250,10 +215,18 @@ class TestMatchingService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Batch matching should persist best-scoring matches using cosine similarity."""
+        """Batch helper should delegate to match_all_taxonomy for vector-backed flow."""
 
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.batch_get_embeddings = Mock(side_effect=[[[1.0, 0.0]], [[1.0, 0.0]]])
+        delegated = {
+            sample_taxonomy_page.id: MatchingResult(
+                taxonomy_id=sample_taxonomy_page.id,
+                content_id=sample_wordpress_content.id,
+                similarity_score=0.9,
+                match_stage=MatchStage.SEMANTIC_MATCHED,
+            )
+        }
+        service.match_all_taxonomy = Mock(return_value=delegated)
 
         results = service.match_all_taxonomy_batch(
             taxonomy_pages=[sample_taxonomy_page],
@@ -261,5 +234,5 @@ class TestMatchingService:
             min_threshold=0.5,
         )
 
-        assert sample_taxonomy_page.id in results
-        mock_supabase_client.upsert_matching.assert_called_once()
+        service.match_all_taxonomy.assert_called_once()
+        assert results == delegated

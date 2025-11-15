@@ -29,6 +29,17 @@ This will create the following tables:
 - `taxonomy_pages` - Your source taxonomy for matching
 - `categorization_results` - AI categorization results
 - `matching_results` - Semantic matching between taxonomy and content
+- `workflow_runs` - Metadata for resumable workflow executions
+
+#### Enable pgvector & similarity helpers
+
+The matching pipeline now stores embeddings directly in Supabase using [`pgvector`](https://supabase.com/docs/guides/database/extensions/pgvector). Make sure the extension is enabled after running the schema:
+
+```sql
+create extension if not exists vector;
+```
+
+The schema also creates `ivfflat` indexes plus a `match_wordpress_content` RPC to power fast `<->` lookups. After the first run, execute `ANALYZE wordpress_content;` so pgvector can tune the index.
 
 ### 2. Environment Configuration
 
@@ -43,15 +54,22 @@ SUPABASE_KEY=your-service-role-key-here
 SEMANTIC_API_KEY=sk-semantic-key
 SEMANTIC_BASE_URL=https://openrouter.ai/api/v1
 SEMANTIC_EMBEDDING_MODEL=qwen/qwen3-embedding-0.6b
+SEMANTIC_CANDIDATE_LIMIT=25
 
 # LLM Categorization (Chat)
 LLM_API_KEY=sk-llm-key
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=google/gemini-2.0-flash-exp:free
 LLM_BATCH_TIMEOUT=86400
+LLM_CANDIDATE_LIMIT=10
+LLM_CANDIDATE_MIN_SCORE=0.6
 
 # WordPress sites to ingest (comma-separated)
 WORDPRESS_VIP_SITES=https://wordpress.org/news
+
+# Batch tuning
+INGESTION_BATCH_SIZE=200
+MATCHING_BATCH_SIZE=200
 ```
 
 ### 3. Install Dependencies
@@ -139,6 +157,23 @@ python -m src.cli match --taxonomy-ids <uuid1,uuid2> --force-semantic
 # Feed a CSV with a `url` column
 python -m src.cli match --taxonomy-file data/review_subset.csv
 ```
+
+#### Managed workflow runs & resuming
+
+Long-running cascades can be tracked and resumed via the `workflow` subcommands:
+
+```bash
+# Start with an explicit run key (defaults to run-<uuid>)
+python -m src.cli workflow start --run-key nightly-2025-11-15
+
+# Resume after fixing credentials or rate limits
+python -m src.cli workflow resume nightly-2025-11-15
+
+# Inspect history
+python -m src.cli workflow status --limit 5
+```
+
+Each run updates the `workflow_runs` table with stage transitions, counts, and errors so you can continue from the last checkpoint.
 
 ### Step 4: Export Results
 

@@ -64,13 +64,33 @@ class Settings(BaseSettings):
     )
     batch_size: int = Field(default=1000, description="Batch processing size")
     log_level: str = Field(default="INFO", description="Logging level")
+    ingestion_batch_size: int = Field(
+        default=200,
+        description="Rows per bulk upsert when ingesting content or taxonomy",
+    )
+    matching_batch_size: int = Field(
+        default=200,
+        description="Rows per bulk upsert when persisting matching results",
+    )
 
     # Matching Configuration
     similarity_threshold: float = Field(
         default=0.85, description="Minimum similarity score for semantic matching"
     )
+    semantic_candidate_limit: int = Field(
+        default=25,
+        description="Semantic neighbors fetched from Supabase pgvector per taxonomy row",
+    )
     llm_confidence_threshold: float = Field(
         default=0.9, description="Minimum confidence score for LLM categorization"
+    )
+    llm_candidate_limit: int = Field(
+        default=10,
+        description="Max semantic candidates forwarded to the LLM fallback stage",
+    )
+    llm_candidate_min_score: float = Field(
+        default=0.6,
+        description="Similarity floor for LLM fallback candidates",
     )
     enable_semantic_matching: bool = Field(
         default=True, description="Enable semantic matching stage"
@@ -140,6 +160,13 @@ class Settings(BaseSettings):
             raise ValueError("LLM confidence threshold must be between 0 and 1")
         return v
 
+    @field_validator("llm_candidate_min_score")
+    @classmethod
+    def validate_candidate_floor(cls, v: float) -> float:
+        if not 0 <= v <= 1:
+            raise ValueError("LLM candidate minimum score must be between 0 and 1")
+        return v
+
     @field_validator("dspy_train_split_ratio")
     @classmethod
     def validate_train_split(cls, v: float) -> float:
@@ -154,6 +181,18 @@ class Settings(BaseSettings):
         """Validate GEPA budget is one of the allowed values."""
         if v not in ("light", "medium", "heavy"):
             raise ValueError("GEPA budget must be one of: light, medium, heavy")
+        return v
+
+    @field_validator(
+        "semantic_candidate_limit",
+        "llm_candidate_limit",
+        "ingestion_batch_size",
+        "matching_batch_size",
+    )
+    @classmethod
+    def validate_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Value must be positive")
         return v
 
 

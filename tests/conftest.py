@@ -100,6 +100,11 @@ def mock_supabase_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.get_all_content.return_value = []
     mock_client.get_all_taxonomy.return_value = []
     mock_client.get_all_matchings.return_value = []
+    mock_client.match_content_by_embedding.return_value = []
+    mock_client.get_unmatched_taxonomy.return_value = []
+    mock_client.bulk_upsert_content.return_value = []
+    mock_client.bulk_upsert_taxonomy.return_value = []
+    mock_client.bulk_upsert_matchings.return_value = []
 
     return mock_client
 
@@ -148,3 +153,23 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.files.content.return_value = mock_file_content
 
     return mock_client
+
+
+@pytest.fixture
+def mock_embedding_service(mocker, mock_openai_client: Mock) -> Mock:  # type: ignore[misc]
+    """Provide a reusable embedding service stub for matching/ingestion tests."""
+
+    dims = 1536
+    service = mocker.Mock()
+    service.embed.side_effect = lambda text: [0.1] * dims
+    service.embed_batch.side_effect = lambda texts: [[0.1] * dims for _ in texts]
+    service.client = mock_openai_client
+    return service
+
+
+@pytest.fixture(autouse=True)
+def patch_embedding_services(mocker, mock_embedding_service: Mock) -> None:
+    """Patch embedding service dependencies to avoid network calls during tests."""
+
+    mocker.patch("src.services.matching.EmbeddingService", return_value=mock_embedding_service)
+    mocker.patch("src.services.ingestion.EmbeddingService", return_value=mock_embedding_service)
