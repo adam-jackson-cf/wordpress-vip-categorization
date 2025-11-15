@@ -315,9 +315,12 @@ def test_run_managed_workflow_creates_run(
     mock_db.get_workflow_run_by_key.return_value = None
     mock_db.create_workflow_run.return_value = run_record
     mock_matching_service.get_unmatched_taxonomy.return_value = []
-    mock_matching_service.match_all_taxonomy.return_value = {
+    mock_matching_service.match_all_taxonomy_batch.return_value = {
         page.id: Mock(content_id=uuid4()) for page in sample_taxonomy_pages
     }
+    mock_matching_service.match_taxonomy_to_content.return_value = []
+    mock_db.get_all_taxonomy.return_value = sample_taxonomy_pages
+    mock_db.get_all_content.return_value = sample_content_items
 
     service = WorkflowService(
         mock_settings,

@@ -38,12 +38,14 @@ class TestWordPressVIPConnector:
             }
         ]
         mock_response.raise_for_status = Mock()
+        mock_response.headers = {"X-WP-TotalPages": "2"}
         mock_get.return_value = mock_response
 
         connector = WordPressVIPConnector("https://example.com")
-        posts = connector.get_posts(page=1, per_page=10)
+        posts, total_pages = connector.get_posts(page=1, per_page=10)
 
         assert len(posts) == 1
+        assert total_pages == 2
         assert posts[0]["id"] == 1
         assert posts[0]["title"]["rendered"] == "Test Post"
 
@@ -120,15 +122,18 @@ class TestWordPressVIPConnector:
                 connector,
                 "get_posts",
                 side_effect=[
-                    [
-                        {
-                            "id": 1,
-                            "link": "https://example.com/post",
-                            "title": {"rendered": "Title"},
-                            "content": {"rendered": "<p>Body</p>"},
-                        }
-                    ],
-                    [],
+                    (
+                        [
+                            {
+                                "id": 1,
+                                "link": "https://example.com/post",
+                                "title": {"rendered": "Title"},
+                                "content": {"rendered": "<p>Body</p>"},
+                            }
+                        ],
+                        1,
+                    ),
+                    ([], 1),
                 ],
             ) as mock_get_posts,
             patch.object(

@@ -41,6 +41,20 @@ create extension if not exists vector;
 
 The schema also creates `ivfflat` indexes plus a `match_wordpress_content` RPC to power fast `<->` lookups. After the first run, execute `ANALYZE wordpress_content;` so pgvector can tune the index.
 
+### Bootstrap everything with one script
+
+The repo ships with `scripts/bootstrap_supabase.py`, which sequentially calls the CLI (`init-db`, `load-taxonomy`, `ingest`, `match`) and optionally runs the recommended integration tests. Example:
+
+```bash
+scripts/bootstrap_supabase.py \
+  --taxonomy-file data/taxonomy.csv \
+  --sites https://wordpress.org/news \
+  --max-pages 2 \
+  --run-tests
+```
+
+Add `--include-slow-test` if you want it to run the full E2E pytest (sets `RUN_SLOW_TESTS=1`). You can skip individual stages via `--skip-...` flags if you simply need to re-run part of the pipeline.
+
 ### 2. Environment Configuration
 
 Update `.env` with your credentials:

@@ -1,11 +1,12 @@
 """Pydantic models for data validation and serialization."""
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class MatchStage(str, Enum):
@@ -35,6 +36,16 @@ class WordPressContent(BaseModel):
     embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    @field_validator("content_embedding", mode="before")
+    @classmethod
+    def _parse_content_embedding(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return None
+        return value
+
 
 class TaxonomyPage(BaseModel):
     """Taxonomy page for matching.
@@ -58,6 +69,16 @@ class TaxonomyPage(BaseModel):
     taxonomy_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("taxonomy_embedding", mode="before")
+    @classmethod
+    def _parse_taxonomy_embedding(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return None
+        return value
 
 
 class CategorizationResult(BaseModel):

@@ -63,7 +63,13 @@ class WordPressVIPConnector:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    def _make_request(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
+    def _make_request(
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        *,
+        include_headers: bool = False,
+    ) -> Any:
         """Make HTTP request to WordPress API with retry logic.
 
         Args:
@@ -79,7 +85,10 @@ class WordPressVIPConnector:
         url = urljoin(self.api_base, endpoint)
         response = self.session.get(url, params=params, timeout=self.timeout)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        if include_headers:
+            return data, response.headers
+        return data
 
     def get_posts(
         self,
@@ -87,7 +96,7 @@ class WordPressVIPConnector:
         per_page: int = 100,
         status: str = "publish",
         modified_after: datetime | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Get posts from WordPress site.
 
         Args:
@@ -109,14 +118,15 @@ class WordPressVIPConnector:
             params["after"] = modified_after.isoformat()
 
         try:
-            data = self._make_request("posts", params)
+            data, headers = self._make_request("posts", params, include_headers=True)
+            total_pages = int(headers.get("X-WP-TotalPages", "0") or 0)
             if isinstance(data, list):
-                return data
-            return []
+                return data, total_pages
+            return [], total_pages
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 400:
                 # Page beyond available content
-                return []
+                return [], 0
             raise
 
     def get_pages(
@@ -125,7 +135,7 @@ class WordPressVIPConnector:
         per_page: int = 100,
         status: str = "publish",
         modified_after: datetime | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Get pages from WordPress site.
 
         Args:
@@ -146,13 +156,14 @@ class WordPressVIPConnector:
             params["after"] = modified_after.isoformat()
 
         try:
-            data = self._make_request("pages", params)
+            data, headers = self._make_request("pages", params, include_headers=True)
+            total_pages = int(headers.get("X-WP-TotalPages", "0") or 0)
             if isinstance(data, list):
-                return data
-            return []
+                return data, total_pages
+            return [], total_pages
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 400:
-                return []
+                return [], 0
             raise
 
     def _extract_text_content(self, html_content: str) -> str:
@@ -255,7 +266,9 @@ class WordPressVIPConnector:
             if max_pages and page > max_pages:
                 break
 
-            posts = self.get_posts(page=page, per_page=100, modified_after=modified_after)
+            posts, total_pages = self.get_posts(
+                page=page, per_page=100, modified_after=modified_after
+            )
             if not posts:
                 break
 
@@ -269,6 +282,9 @@ class WordPressVIPConnector:
                 except Exception as e:
                     logger.error(f"Error parsing post {post_data.get('id')}: {e}")
                     continue
+
+            if total_pages and page >= total_pages:
+                break
 
             page += 1
 
@@ -303,7 +319,9 @@ class WordPressVIPConnector:
             if max_pages and page > max_pages:
                 break
 
-            pages = self.get_pages(page=page, per_page=100, modified_after=modified_after)
+            pages, total_pages = self.get_pages(
+                page=page, per_page=100, modified_after=modified_after
+            )
             if not pages:
                 break
 
@@ -317,6 +335,9 @@ class WordPressVIPConnector:
                 except Exception as e:
                     logger.error(f"Error parsing page {page_data.get('id')}: {e}")
                     continue
+
+            if total_pages and page >= total_pages:
+                break
 
             page += 1
 
