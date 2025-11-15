@@ -7,13 +7,12 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
-
 
 DEFAULT_TESTS = [
-    "tests/integration/test_full_pipeline.py::TestFullPipeline::test_ingestion_with_public_site",
-    "tests/integration/test_full_pipeline.py::TestFullPipeline::test_semantic_matching_integration",
+    "tests/unit/test_full_pipeline_mock.py::TestFullPipeline::test_ingestion_with_public_site",
+    "tests/unit/test_full_pipeline_mock.py::TestFullPipeline::test_semantic_matching_integration",
 ]
 
 
@@ -36,13 +35,17 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int, help="Max pages per site during ingestion")
     parser.add_argument("--since", help="ISO timestamp for ingestion cutoff")
     parser.add_argument("--resume", action="store_true", help="Resume ingestion using checkpoints")
-    parser.add_argument("--no-batch", dest="batch", action="store_false", help="Disable batch matching")
+    parser.add_argument(
+        "--no-batch", dest="batch", action="store_false", help="Disable batch matching"
+    )
     parser.set_defaults(batch=True)
     parser.add_argument("--skip-init", action="store_true", help="Skip schema init")
     parser.add_argument("--skip-taxonomy", action="store_true", help="Skip taxonomy load")
     parser.add_argument("--skip-ingest", action="store_true", help="Skip ingestion")
     parser.add_argument("--skip-match", action="store_true", help="Skip match workflow")
-    parser.add_argument("--run-tests", action="store_true", help="Run integration smoke tests after matching")
+    parser.add_argument(
+        "--run-tests", action="store_true", help="Run integration smoke tests after matching"
+    )
     parser.add_argument(
         "--include-slow-test",
         action="store_true",
@@ -80,9 +83,7 @@ def main() -> None:
     if args.run_tests:
         tests = list(DEFAULT_TESTS)
         if args.include_slow_test:
-            tests.append(
-                "tests/integration/test_full_pipeline.py::TestFullPipeline::test_full_e2e_pipeline"
-            )
+            tests.append("tests/integration/test_full_pipeline.py::test_full_e2e_pipeline_live")
         env = os.environ.copy()
         if args.include_slow_test:
             env["RUN_SLOW_TESTS"] = "1"
