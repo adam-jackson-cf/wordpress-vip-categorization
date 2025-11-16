@@ -133,7 +133,7 @@ Located in `src/optimization/dspy_optimizer.py`.
 Optimized models are saved using DSPy's built-in persistence into `prompt-optimiser/models/`:
 - `matcher_vN.json` – Versioned model artifacts (N auto-incremented per run)
 
-Models are automatically loaded by `CategorizationService` by scanning `prompt-optimiser/models/` and loading the highest `matcher_vN.json` version if present.
+Models are automatically loaded by `CategorizationService` via `matcher_latest.json`. Use `scripts/promote_optimized_model.py` to copy the latest versioned artifact (`matcher_vN.json`) to `matcher_latest.json` once you’ve tested it locally. Because everything runs on localhost (no staging tier), promotion is the safeguard between “experiment” and “in use”—keep prior `matcher_vN.json` files so you can re-promote if you need to roll back.
 
 ### Training Data Preparation
 

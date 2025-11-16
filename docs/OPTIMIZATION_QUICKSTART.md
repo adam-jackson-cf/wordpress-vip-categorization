@@ -15,7 +15,7 @@ python -m src.cli optimize-dataset \
 
 ### Command Breakdown
 
-- **`--dataset data/dspy_training_dataset.csv`**: Uses the 100-example dataset we generated
+- **`--dataset data/dspy_training_dataset.csv`**: Uses the curated 360-example dataset we generated
 - **`--optimizer bootstrap`**: Uses `BootstrapFewShot` (fastest, lowest cost option)
   - **Cost**: ~20-40 LLM calls (much cheaper than GEPA)
   - **Time**: ~2-5 minutes for 100 examples
@@ -61,6 +61,62 @@ The `optimization_report.md` file will include:
 | `gepa` (medium) | 2000-5000 | 30-60 min | Production quality |
 | `gepa` (heavy) | 5000+ | 60+ min | Maximum quality |
 
+## Smoke Test Script (Bootstrap)
+
+When you modify the categorization workflow or DSPy integration, run the fast smoke test to make sure nothing fundamental broke before spending money on GEPA:
+
+```bash
+python scripts/run_quick_optimization_test.py \
+  --dataset data/dspy_training_dataset.csv \
+  --train-split 0.2 \
+  --seed 42 \
+  --max-examples 30
+```
+
+This script is the old “Stage 1” bootstrap step pulled out of the workflow:
+
+- Uses DSPy BootstrapFewShot with 4 bootstrapped / 8 labeled demos.
+- Finishes in seconds and costs ~30 LLM calls per 100 examples.
+- Stores artifacts as `_test` files (`matcher_test.json`, `dspy_config_test.json`, `report_test.md`), overwriting previous smoke tests.
+- Intended purely as a sanity check—scores from this run are not production-quality, but they prove the stack works end-to-end on localhost.
+
+## GEPA Optimization Workflow
+
+For the real optimization run (previously “Stage 2”), use:
+
+```bash
+python scripts/run_optimization_workflow.py \
+  --dataset data/dspy_training_dataset.csv \
+  --train-split 0.2 \
+  --seed 42 \
+  --budget medium
+```
+
+### Workflow Behavior
+
+- Runs the GEPA optimizer with the requested budget (`light`, `medium`, or `heavy`).
+- Writes versioned artifacts (`matcher_vN.json`, `dspy_config_vN.json`, `report_vN.md`).
+- Prints validation score, runtime, and a rough metric-call estimate at the end.
+- Because there is no staging environment, versioned artifacts stay in `prompt-optimiser/` until you explicitly promote one (see below); the categorization service reads `matcher_latest.json`.
+
+### Options
+
+- `--dataset`: CSV/JSON training dataset (required).
+- `--train-split`: Train/validation split (default `0.2`).
+- `--seed`: Random seed (default `42`).
+- `--budget`: `light`, `medium`, or `heavy` preset (default `medium`).
+- `--max-examples`: Optional slice for experimentation.
+- `--num-threads`: Parallel GEPA evaluation threads if you have local capacity.
+
+### Local “Promotion” Checklist
+
+1. Run `scripts/run_quick_optimization_test.py` after code changes to validate the bootstrap flow.
+2. Run `scripts/run_optimization_workflow.py` with the same dataset to produce a GEPA candidate (versioned `matcher_vN.json`).
+3. When you decide a version is ready for production, run `scripts/promote_optimized_model.py` to copy the latest `matcher_vN.json` to `matcher_latest.json`.
+4. Rerun the end-to-end CLI locally (e.g., `python -m src.cli workflow start ...`) to confirm the promoted prompt behaves as expected before committing.
+
+If you prefer to manage artifacts manually, you can still use `python -m src.cli optimize-dataset ...` with explicit budgets—both scripts ultimately call the same optimizer under the hood. Promotion simply controls which artifact `CategorizationService` loads.
+
 ## Next Steps
 
 After running the quick optimization:
@@ -76,7 +132,7 @@ After running, you'll see:
 
 ```
 Loading dataset from data/dspy_training_dataset.csv...
-Optimizing with 100 examples using bootstrap optimizer...
+Optimizing with 360 examples using bootstrap optimizer...
 ⚠ This process is expensive by nature (multiple iterations, metric evaluations, LLM calls).
 ✓ Optimization complete. Model saved to prompt-optimiser/models/matcher_vN.json
 ✓ Optimization report saved to prompt-optimiser/reports/report_vN.md

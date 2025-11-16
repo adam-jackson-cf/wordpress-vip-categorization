@@ -1,31 +1,20 @@
-## Prompt Optimizer Artifacts
+# Prompt Optimiser Layout
 
-This directory holds all DSPy / GEPA prompt-optimization outputs. It is an operational area for models and reports, not the primary source of documentation (see `docs/DSPY_IMPLEMENTATION.md` for full design details).
+Defines how DSPy optimization artifacts are organized under `prompt-optimiser/`.
 
-### Layout
+## Directory Structure
+- `models/` stores versioned optimized matchers (`matcher_vN.json`).
+- `configs/` stores JSON specs for each optimization run (`dspy_config_vN.json`).
+- `reports/` optionally captures human-readable run summaries (`report_vN.md`).
 
-- `models/`
-  - `matcher_vN.json` – Versioned optimized matcher artifacts (N starts at 1 and increments per optimization run).
-- `configs/`
-  - `dspy_config_vN.json` – JSON configs describing each optimization run (optimizer settings, metrics, before/after prompts).
-- `reports/`
-  - `report_vN.md` – Optional human-readable reports for a given optimization run.
+```text
+prompt-optimiser/
+├── models/matcher_v3.json
+├── configs/dspy_config_v3.json
+└── reports/report_v3.md
+```
 
-### How Versions Work
-
-- Each optimization run computes the next version number by scanning `configs/` for `dspy_config_v*.json` and incrementing the highest `vN`.
-- That same `N` is used for:
-  - `models/matcher_vN.json`
-  - `configs/dspy_config_vN.json`
-  - `reports/report_vN.md` (when generated).
-
-### How the Matcher Is Loaded
-
-- `CategorizationService` scans `models/` for `matcher_v*.json` at startup and loads the highest version number, if present.
-- If no versioned model exists, the unoptimized DSPy matcher is used.
-
-For how to run optimizations, choose optimizers, and interpret configs/reports, see:
-
-- `docs/DSPY_IMPLEMENTATION.md`
-- `docs/OPTIMIZATION_QUICKSTART.md`
-- `docs/DSPY_GEPA_BEST_PRACTICES.md`
+## Versioning Rules
+- Each optimization run increments `N` by scanning existing configs; reuse that number across models/configs/reports.
+- Never overwrite or delete prior versions; add new files instead so historical runs remain reproducible.
+- Runtime services load the highest `matcher_vN.json`; keep files well-formed JSON to avoid startup failures.

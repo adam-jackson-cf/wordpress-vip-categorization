@@ -3,6 +3,7 @@
 import csv
 import json
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 PROMPT_OPT_DIR = Path("prompt-optimiser")
 MODELS_DIR = PROMPT_OPT_DIR / "models"
+ACTIVE_MODEL_PATH = MODELS_DIR / "matcher_latest.json"
 CONFIGS_DIR = PROMPT_OPT_DIR / "configs"
 REPORTS_DIR = PROMPT_OPT_DIR / "reports"
 GEPA_LOG_DIR = PROMPT_OPT_DIR / "gepa_logs"
@@ -359,7 +361,7 @@ class DSPyOptimizer:
 
         # Use validation set if provided, otherwise split training set
         if validation_examples is None:
-            split_point = int(len(training_examples) * 0.8)
+            split_point = int(len(training_examples) * self.settings.dspy_train_split_ratio)
             train_set = training_examples[:split_point]
             val_set = training_examples[split_point:]
         else:
@@ -392,7 +394,21 @@ class DSPyOptimizer:
                 display_progress=True,
             )
 
-            score = evaluator(optimized)
+            eval_result = evaluator(optimized)
+            # Extract score from EvaluationResult object
+            if hasattr(eval_result, "score"):
+                score = float(eval_result.score)
+            elif hasattr(eval_result, "average"):
+                score = float(eval_result.average)
+            elif isinstance(eval_result, (int, float)):
+                score = float(eval_result)
+            else:
+                # Try to convert to float directly
+                try:
+                    score = float(eval_result)
+                except (TypeError, ValueError):
+                    logger.warning(f"Could not extract score from evaluation result: {type(eval_result)}")
+                    score = 0.0
             logger.info(f"Optimized model validation score: {score:.3f}")
 
             return cast(MatchingModule, optimized)
@@ -579,8 +595,12 @@ class DSPyOptimizer:
         try:
             for config_file in config_dir.glob(config_pattern):
                 # Extract version number from filename: dspy_config_v{version}.json
+                # or dspy_config_v{version}_stage{N}.json
                 try:
                     version_str = config_file.stem.replace("dspy_config_v", "")
+                    # Remove stage suffix if present (e.g., "_stage1" or "_stage2")
+                    if "_stage" in version_str:
+                        version_str = version_str.split("_stage")[0]
                     version = int(version_str)
                     max_version = max(max_version, version)
                 except (ValueError, AttributeError):
@@ -769,23 +789,23 @@ class DSPyOptimizer:
         logger.info(f"Loaded optimized model from {model_path}")
         return self.matcher
 
-    def load_latest_model(self) -> MatchingModule | None:
-        """Load the latest versioned optimized model, if available."""
+    def _get_latest_versioned_model_path(self) -> Path | None:
+        """Return the highest matcher_vN.json path if it exists."""
         if not MODELS_DIR.exists():
-            logger.info("No optimized models directory found; using unoptimized matcher")
             return None
 
         candidates = list(MODELS_DIR.glob("matcher_v*.json"))
         if not candidates:
-            logger.info("No versioned optimized models found; using unoptimized matcher")
             return None
 
         max_version = -1
         latest_path: Path | None = None
         for candidate in candidates:
-            stem = candidate.stem  # matcher_vN
+            stem = candidate.stem
             try:
                 version_str = stem.replace("matcher_v", "")
+                if "_stage" in version_str:
+                    version_str = version_str.split("_stage")[0]
                 version = int(version_str)
                 if version > max_version:
                     max_version = version
@@ -793,13 +813,38 @@ class DSPyOptimizer:
             except ValueError:
                 continue
 
+        return latest_path
+
+    def load_latest_model(self) -> MatchingModule | None:
+        """Load the promoted matcher_latest.json or fall back to latest versioned model."""
+        if ACTIVE_MODEL_PATH.exists():
+            self.matcher.load(str(ACTIVE_MODEL_PATH))
+            logger.info(f"Loaded promoted optimized model from {ACTIVE_MODEL_PATH}")
+            return self.matcher
+
+        latest_path = self._get_latest_versioned_model_path()
         if latest_path is None:
-            logger.info("No valid versioned optimized models found; using unoptimized matcher")
+            logger.info("No optimized models found; using unoptimized matcher")
             return None
 
         self.matcher.load(str(latest_path))
-        logger.info(f"Loaded latest optimized model from {latest_path}")
+        logger.info(
+            "Loaded latest versioned optimized model from %s (no promoted model found)",
+            latest_path,
+        )
         return self.matcher
+
+    def promote_latest_model(self) -> Path | None:
+        """Copy the latest matcher_vN.json to matcher_latest.json for production use."""
+        latest_path = self._get_latest_versioned_model_path()
+        if latest_path is None:
+            logger.info("No versioned optimized models available to promote")
+            return None
+
+        ACTIVE_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(latest_path, ACTIVE_MODEL_PATH)
+        logger.info("Promoted %s -> %s", latest_path.name, ACTIVE_MODEL_PATH.name)
+        return ACTIVE_MODEL_PATH
 
     def predict_match(
         self,
@@ -987,7 +1032,7 @@ class DSPyOptimizer:
             api_key=self.settings.llm_api_key,
             base_url=self.settings.llm_base_url,
             temperature=1.0,  # Higher temperature for diverse prompt proposals
-            max_tokens=32000,
+            max_tokens=16384,  # Maximum for gpt-4o-mini and similar models
         )
 
         # Configure GEPA budget (exactly one must be provided)
@@ -1002,6 +1047,14 @@ class DSPyOptimizer:
 
         # Set up GEPA optimizer
         GEPA_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Check for existing state file and warn if present (may cause issues)
+        state_file = GEPA_LOG_DIR / "gepa_state.bin"
+        if state_file.exists():
+            logger.warning(
+                f"Existing GEPA state file found at {state_file}. "
+                "If you encounter errors, try deleting this file to start fresh."
+            )
 
         optimizer = GEPA(
             reflection_lm=reflection_lm,
@@ -1017,7 +1070,14 @@ class DSPyOptimizer:
         )
 
         # Compile/optimize the model
+        # Note: GEPA.compile() only accepts trainset, not valset
+        # The validation set is used for evaluation after optimization
         try:
+            logger.info("Starting GEPA optimization (this may take several minutes)...")
+            logger.info(
+                f"GEPA will use trainset ({len(train_set)} examples) for optimization. "
+                f"Validation set ({len(val_set)} examples) will be used for evaluation after optimization."
+            )
             optimized = optimizer.compile(
                 self.matcher,
                 trainset=train_set,
@@ -1034,13 +1094,41 @@ class DSPyOptimizer:
                 ),
             )
 
-            score = evaluator(optimized)
+            eval_result = evaluator(optimized)
+            # Extract score from EvaluationResult object
+            if hasattr(eval_result, "score"):
+                score = float(eval_result.score)
+            elif hasattr(eval_result, "average"):
+                score = float(eval_result.average)
+            elif isinstance(eval_result, (int, float)):
+                score = float(eval_result)
+            else:
+                # Try to convert to float directly
+                try:
+                    score = float(eval_result)
+                except (TypeError, ValueError):
+                    logger.warning(f"Could not extract score from evaluation result: {type(eval_result)}")
+                    score = 0.0
             logger.info(f"GEPA optimized model validation score: {score:.3f}")
 
             return cast(MatchingModule, optimized)
 
+        except EOFError as e:
+            logger.error(
+                f"GEPA optimization failed: Ran out of input ({e}). "
+                "This usually indicates an API connection issue, timeout, or network problem. "
+                "Check your LLM API configuration, network connectivity, and API rate limits."
+            )
+            logger.exception("Full traceback:")
+            return self.matcher
         except Exception as e:
-            logger.error(f"GEPA optimization failed: {e}")
+            error_msg = str(e) if str(e) else f"{type(e).__name__} (no message)"
+            logger.error(f"GEPA optimization failed: {error_msg}")
+            if "input" in error_msg.lower() or "eof" in error_msg.lower():
+                logger.error(
+                    "This may indicate an API connection issue. Check your LLM API configuration and network connectivity."
+                )
+            logger.exception("Full traceback:")
             return self.matcher
 
     def optimize_with_dataset(

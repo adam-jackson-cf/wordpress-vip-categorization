@@ -1,57 +1,42 @@
-# Database & Supabase Development Standards
+# Data & Supabase Rules
 
-Project overview: [../../AGENTS.md](../../AGENTS.md)
-Code review checklist: [../../CODE_REVIEW.md](../../CODE_REVIEW.md)
+Applies to `src/data/` (Supabase client, schema helpers, exporters).
 
-## SupabaseClient Wrapper Usage
+## Access Pattern
+- All database interactions flow through `SupabaseClient`; never instantiate raw Supabase SDKs elsewhere.
+- CRUD methods accept/return typed Pydantic models and hide JSON coercion from callers.
 
 ```python
-from src.data.supabase_client import SupabaseClient
-from src.models import TaxonomyPage
+class SupabaseClient:
+    def __init__(self, settings: Settings) -> None:
+        self._client = create_client(settings.supabase_url, settings.supabase_key)
 
-client = SupabaseClient(settings)
-taxonomy = client.get_taxonomy_by_id(taxonomy_id)  # Returns TaxonomyPage model
+    async def get_taxonomy(self, taxonomy_id: str) -> TaxonomyPage:
+        record = await self._client.table("taxonomy_pages").select("*").eq("id", taxonomy_id).single()
+        return TaxonomyPage.model_validate(record)
 ```
 
-Never directly instantiate Supabase client - use `SupabaseClient` wrapper
-Use type-safe models for all CRUD operations
-Handle errors gracefully - wrap database calls in try-catch
+## Query Safety
+- Use the query builder / RPC helpers for parameterized SQL; never concat user input into SQL strings.
+- Multi-step writes use transactions when available; otherwise guard with explicit ordering and retries.
 
-## SQL Injection Prevention
+## Schema Ownership
+- `src/data/schema.sql` is the source of truth; run `python -m src.cli init-db` after edits and keep schema + models in sync.
+- Views like `export_results` should only be read via dedicated query helpers to avoid drift.
 
-Always use parameterized queries (Supabase client handles this)
-Never concatenate user input into SQL queries
-Validate all input before database operations
+## Error Handling
+- Wrap Supabase calls in try/except, log context (table, taxonomy id), and raise domain-specific errors upward.
 
-## Database Best Practices
+```python
+try:
+    self._client.table("matching_results").insert(payload).execute()
+except PostgrestError as exc:
+    logger.error("Failed to insert match %s", payload["taxonomy_id"], exc_info=True)
+    raise
+```
 
-- **Type Safety**: All CRUD methods return/accept Pydantic models
-- **Error Handling**: Wrap all database operations in try-catch blocks
-- **Transaction Safety**: Use transactions for multi-step operations
-- **Query Efficiency**: Avoid N+1 queries; use joins and batch operations
-- **Connection Management**: Let SupabaseClient manage connections
-
-## Schema Reference
-
-See `src/data/schema.sql` for complete schema definitions:
-- `wordpress_content` - Ingested posts/pages
-- `taxonomy_pages` - Source taxonomy
-- `categorization_results` - AI categorization metadata
-- `matching_results` - Match scores + stages
-- `export_results` (view) - Joined projection for CSV export
-
-## Common Pitfalls
-
-1. **Direct Supabase Client**: Always use `SupabaseClient` wrapper
-2. **SQL Injection**: Never concatenate user input into SQL queries
-3. **Missing Error Handling**: Always wrap database calls in try-catch
-4. **N+1 Queries**: Use efficient joins and batch operations
-
-## Database Checklist (src/data)
-
-- [ ] All database access goes through `SupabaseClient` (no direct client usage)
-- [ ] Queries are parameterized (no string concatenation with user input)
-- [ ] CRUD methods use typed Pydantic models for inputs/outputs
-- [ ] Database calls are wrapped with error handling and appropriate logging
-- [ ] Multi-step operations use transactions where consistency matters
-- [ ] Queries are designed to avoid N+1 patterns (use joins/batching where appropriate)
+## Checklist (`src/data/`)
+- Only `SupabaseClient` touches the Supabase SDK; other modules depend on it instead of raw clients.
+- All inputs/outputs are validated via Pydantic models and serializers.
+- No string-concatenated SQL; everything uses parameterized builders or RPCs.
+- Schema changes are mirrored in both `schema.sql` and any dependent models/tests immediately.

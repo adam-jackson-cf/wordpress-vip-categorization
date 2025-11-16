@@ -1,122 +1,72 @@
-# Python & Pydantic Development Standards
+# src Coding Rules
 
-Project overview: [../AGENTS.md](../AGENTS.md)
-Code review checklist: [../CODE_REVIEW.md](../CODE_REVIEW.md)
+Covers Python modules inside `src/` (CLI, config, services, connectors, exporters, DSPy modules).
 
-## Import Organization
+## Imports & Style
+- Order imports stdlib → third-party → local, alphabetized per block, and keep line length ≤100 enforced by Black.
+- Prefer descriptive names and remove unused imports/variables so Ruff stays clean without `noqa` escapes.
+- Use async/await for every I/O path; never block the event loop inside services or connectors.
 
 ```python
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
-import pytest
-from pydantic import BaseModel
+import httpx
 
-from src.models import TaxonomyPage
 from src.config import Settings
+from src.models import MatchResult
 ```
 
-Organize imports: stdlib → third-party → local (alphabetical within each group)
-
-## Type Hints
-
-Use explicit type hints for all parameters and returns
-Modern isinstance: `isinstance(value, int | float)`
-Avoid `Any` - use proper types or `Unknown`
-Must pass `mypy src` strict mode
-
-## Error Handling Pattern
+## Type Hints & Pydantic
+- Annotate every parameter/return with concrete types and modern union syntax (`int | float`).
+- Keep Pydantic models v2-native with `Field`, `HttpUrl`, and `model_config`; model instances must serialize cleanly for Supabase JSON columns.
 
 ```python
-from tenacity import retry, stop_after_attempt, wait_exponential
-import logging
+from pydantic import BaseModel, Field, HttpUrl
 
-logger = logging.getLogger(__name__)
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-async def fetch_data(url: str) -> dict[str, Any]:
-    try:
-        response = await client.get(url)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Failed to fetch {url}: {e}", exc_info=True)
-        raise
+class MatchResult(BaseModel):
+    taxonomy_id: str
+    content_url: HttpUrl
+    similarity: float = Field(ge=0, le=1)
 ```
 
-Wrap all async operations in try-catch
-Never silently swallow errors
-Use `tenacity` for retry logic on external APIs
-Log with context: user, request ID, endpoint (no secrets)
-
-## Code Style
-
-Line length: 100 chars (black enforced)
-Use async/await for all I/O
-Clear variable names, no magic numbers
-Remove unused imports/vars (ruff F401, F841)
-
-## Pydantic Settings Management
+## Settings Management
+- Centralize configuration in `src/config.py` using `pydantic_settings`; never access `os.environ` elsewhere and always provide defaults or Field-level validation.
 
 ```python
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    supabase_url: str
-    supabase_key: str
-    openai_api_key: str
+    llm_model: str
     similarity_threshold: float = 0.85
-    llm_confidence_threshold: float = 0.9
 ```
 
-Use `pydantic-settings` for all configuration
-Load from `.env` files - never hardcode
-Validate at startup - fail fast if invalid
-
-## Pydantic Data Model Pattern
+## Error Handling & Logging
+- Guard every external call (HTTP, Supabase, OpenRouter) with try/except + contextual logging, re-raising after logging, and use `tenacity` retries for transient errors.
 
 ```python
-from pydantic import BaseModel, Field, HttpUrl
-from datetime import datetime
-from enum import Enum
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-class MatchStage(str, Enum):
-    SEMANTIC_MATCHED = "semantic_matched"
-    LLM_CATEGORIZED = "llm_categorized"
-    NEEDS_HUMAN_REVIEW = "needs_human_review"
+logger = logging.getLogger(__name__)
 
-class TaxonomyPage(BaseModel):
-    id: str
-    url: HttpUrl
-    category: str
-    description: str
-    keywords: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+async def fetch_posts(connector: WordPressConnector, site: str) -> list[dict[str, Any]]:
+    try:
+        return await connector.fetch(site)
+    except Exception as exc:
+        logger.error("WordPress fetch failed for %s", site, exc_info=True)
+        raise
 ```
 
-Use Pydantic v2 for all data models
-Use `HttpUrl` for URL validation
-Use `Field()` for defaults, validation, descriptions
-Use `model_config` for serialization behavior
-
-## Common Pitfalls to Avoid
-
-1. **Hardcoding Configuration**: Always use Pydantic Settings with `.env` files
-2. **Missing Type Hints**: All functions must have explicit type annotations
-3. **Poor Error Handling**: Never silently swallow exceptions
-4. **Unused Imports**: Run `ruff check --fix` to auto-remove
-5. **Old isinstance Syntax**: Use `int | float` not `(int, float)`
-6. **Incomplete Tests**: Ensure ≥80% coverage, mock external dependencies
-7. **Logging Secrets**: Never log API keys, passwords, or sensitive data
-
-## Per-File Checklist (src)
-
-- [ ] Imports organized: stdlib → third-party → local (alphabetical)
-- [ ] All functions have explicit parameter and return type hints
-- [ ] Modern `isinstance` syntax used (e.g., `int | float`)
-- [ ] No unused imports or variables (passes Ruff F401/F841)
-- [ ] Configuration loaded via Pydantic Settings (no hardcoded env values)
-- [ ] Pydantic models follow v2 patterns (`Field`, `HttpUrl`, `model_config`)
-- [ ] Async I/O uses `async/await` with proper error handling and logging
+## Checklist (`src/`)
+- Imports grouped + alphabetized (stdlib → third-party → local) with ≤100 character lines.
+- All functions and methods have explicit type hints and avoid `Any` unless unavoidable.
+- Configuration flows through `Settings` only; no direct `os.environ` access.
+- External I/O uses async/await, contextual logging, and `tenacity` retries.
+- Pydantic models and DTOs are v2-compliant and serialization-safe for Supabase.

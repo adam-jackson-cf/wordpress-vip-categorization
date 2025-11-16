@@ -1,57 +1,98 @@
 # WordPress VIP Content Categorization
 
-AI-powered content categorization system that ingests data from WordPress VIP, stores it in Supabase, and runs a cascading semantic → LLM workflow to map taxonomy pages to content.
+AI-powered workflow that ingests content from WordPress VIP, stores it in Supabase, and runs a cascading semantic → LLM workflow to map taxonomy URLs to the best matching WordPress content.
 
-## Highlights
+## System Workflow
 
-- WordPress VIP connector with pagination and retry-aware ingestion.
-- Supabase-backed persistence and CSV exports for review workflows.
-- Dual-stage AI workflow (OpenRouter/OpenAI compatible) with configurable thresholds.
-- DSPy-based prompt optimization and CLI tooling for every step.
-- Pre-commit + `make quality-check` gate covering format, lint, types, and tests.
+1. **Semantic matching (default ≥0.85)** – Embed taxonomy + content, compute cosine similarity, and write matches immediately.
+2. **LLM categorization fallback (default ≥0.9)** – Ask the configured chat model to choose the best remaining candidate per taxonomy page.
+3. **Human review** – Export unmapped taxonomy rows (blank targets) for analysts.
 
-## Workflow Overview
+Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and `LLM_CONFIDENCE_THRESHOLD`.
 
-1. **Semantic matching (default ≥0.85)** – Embed taxonomy + content, run cosine similarity, and store matches immediately.
-2. **LLM categorization fallback (default ≥0.9)** – Ask the chat model to pick the best remaining candidate per taxonomy page.
-3. **Human review** – Anything still unmatched is exported with blank target URLs for manual action.
+## Operations Quick Reference
 
-Both AI stages can be toggled independently via environment variables or CLI flags.
+- `python -m src.cli full-run --output results/results.csv` – Taxonomy load → ingestion → cascading matching → CSV export.
+- `python -m src.cli ingest --resume` – Incremental ingestion (override with `--since YYYY-MM-DD`).
+- `python -m src.cli match --only-unmatched --skip-semantic --force-llm` – Re-drive backlog beneath the semantic threshold.
+- `python -m src.cli workflow start|resume|status` – Managed runs with persisted checkpoints.
+- `python -m src.cli init-db` – Apply `src/data/schema.sql` to Supabase (RPC when available, otherwise prints SQL).
+- `python scripts/test_setup.py` – Verifies env vars, Supabase access, WordPress connector, and embeddings.
+- `scripts/bootstrap_supabase.py --run-tests` – Helper for provisioning Supabase plus smoke tests.
 
-## Operator Shortcuts
+## Setup Paths
 
-- `python -m src.cli full-run --output redirects.csv` chains taxonomy load → incremental ingestion → cascading matching → CSV export in one go.
-- `python -m src.cli ingest --resume` resumes each site from the last published date we captured; use `--since 2025-11-01` for explicit recovery windows.
-- `python -m src.cli match --only-unmatched --skip-semantic --force-llm` reruns only the backlog below the semantic threshold and forces new LLM judgments without touching previously matched rows.
-- Targeted fixes are supported via `--taxonomy-ids <uuid,...>` or by pointing `--taxonomy-file subset.csv` (expects a `url` column) at a hand-curated list of taxonomy entries.
+### Quick Start
+Use [docs/QUICKSTART.md](docs/QUICKSTART.md) for a scripted path: seed Supabase, load taxonomy data, and run `full-run` with one command.
 
-## Get Started
+### Full Install & Local Development
+Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, virtualenv management, `.env` population, CLI command recipes, troubleshooting, and cost controls.
 
-1. **Need a one-command experience?** Follow the [Quick Start](docs/QUICKSTART.md) to create the schema and run `python -m src.cli full-run --output results/results.csv`.
-2. **Want the full install + CLI workflow?** Use the detailed [Setup Guide](docs/SETUP.md) for prerequisites, environment configuration, and command recipes.
-3. **Building or extending the system?** Read [AGENTS.md](AGENTS.md) for architecture, component responsibilities, and development guidelines.
+### Configuration Keys
 
-### Core Setup Commands
+- Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITES` (comma-separated list).
+- Semantic embedding provider: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`.
+- LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`.
+- Workflow tuning: `SIMILARITY_THRESHOLD`, `LLM_CONFIDENCE_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
+- Data inputs: `TAXONOMY_FILE_PATH` (default `./data/taxonomy.csv`).
 
-- `python -m src.cli init-db` – Apply `src/data/schema.sql` to your Supabase project (uses SQL RPC when available, otherwise prints copy-paste instructions).
-- `python scripts/test_setup.py` – Dry-run verification of environment, Supabase connectivity, WordPress connector, and embeddings.
-- `python -m src.cli full-run --output results/results.csv` – One-shot taxonomy load → ingestion → cascading matching → CSV export.
+Legacy `OPENAI_*` keys are supported but should be replaced with the semantic / LLM-specific variables above. `.env.example` documents every option.
 
-## Documentation Map
+## Prompt Optimization
 
-- [QUICKSTART.md](docs/QUICKSTART.md) – Fast path: Supabase SQL, automated ingestion/matching, and quick validation.
-- [SETUP.md](docs/SETUP.md) – Deep dive into environment variables, CLI commands, customization, cost management, and troubleshooting.
-- [AGENTS.md](AGENTS.md) – Authoritative reference for architecture, services, database schema, and quality expectations.
-- [CODE_REVIEW.md](CODE_REVIEW.md) – Code standards and review checklist.
-- [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) – AI/human review workflow.
-- [src/data/schema.sql](src/data/schema.sql) – Canonical Supabase schema (also reproduced inside the quick start guide).
+Use the DSPy tooling when tuning categorization prompts:
 
-## Quality & Tooling
+- `python scripts/run_optimization_workflow.py --dataset data/dspy_training_dataset.csv` – Bootstrap check then GEPA optimization (asks for confirmation before the expensive stage).
+- `python -m src.cli optimize-dataset --dataset data/dspy_training_dataset.csv --optimizer bootstrap` – Cheap, single-stage tuning.
+- `python -m src.cli optimize-dataset --dataset data/dspy_training_dataset.csv --optimizer gepa --budget medium` – Thorough tuning with GEPA.
 
-- Run `make quality-check` locally to execute Black, Ruff, mypy, and pytest with coverage (54% minimum enforced).
-- Install the bundled hooks with `pre-commit install` to block commits until the full gate passes.
-- See [AGENTS.md](AGENTS.md) for additional testing strategies, integration markers, and development conventions.
+Deep dives live in [docs/OPTIMIZATION_QUICKSTART.md](docs/OPTIMIZATION_QUICKSTART.md), [docs/DSPY_IMPLEMENTATION.md](docs/DSPY_IMPLEMENTATION.md), and [docs/DSPY_GEPA_BEST_PRACTICES.md](docs/DSPY_GEPA_BEST_PRACTICES.md).
+
+### DSPy Dataset
+
+The default dataset (`data/dspy_training_dataset.csv`) now contains 360 labeled examples (60 per taxonomy category). Each example injects a guaranteed positive match drawn from:
+
+- **Live feeds** – `wordpress.org/news`, `developer.wordpress.org/news`, `make.wordpress.org/community`, `woocommerce.com`, etc.
+- **Curated enterprise cases** – Additional WooCommerce and healthcare-focused stories to keep underrepresented taxonomies well covered.
+
+Regenerate or grow the dataset any time:
+
+```bash
+python scripts/generate_dspy_dataset.py \
+  --taxonomy data/taxonomy.csv \
+  --output data/dspy_training_dataset.csv \
+  --num-examples 360
+```
+
+Feel free to raise `--num-examples` for even more coverage; the generator automatically balances per category.
+
+## Developer Process
+
+- Run `make quality-check` before committing; it wraps `black --check`, `ruff check`, `mypy src`, and `pytest --cov=src --cov-fail-under=80`.
+- Install hooks via `pre-commit install` to ensure the gate runs on every commit.
+- Unit tests mock all external I/O; integration tests live in `tests/integration/` and must be marked `@pytest.mark.integration`.
+- Use `pytest --no-cov tests/unit/test_x.py` for focused loops, but rerun the full gate (with coverage) before merging.
+- Database initialization lives in `src/data/schema.sql`; rerun `python -m src.cli init-db` when migrations land.
+- See the relevant `AGENTS.md` files for coding rules, project structure expectations, and test behaviors per directory.
+
+## Directory Guide
+
+- `src/` – CLI entrypoints, services, connectors, configuration, DSPy modules.
+- `tests/` – Unit + integration suites with shared fixtures.
+- `data/` – Taxonomy CSVs, result exports, and Supabase artifacts.
+- `docs/` – Detailed how-to guides referenced throughout this README.
+- `prompt-optimiser/` – Versioned DSPy optimization outputs (models/configs/reports).
+
+## Documentation Hub
+
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) – Scripted onboarding path.
+- [docs/SETUP.md](docs/SETUP.md) – Environment, CLI, troubleshooting, and cost guidance.
+- [docs/OPTIMIZATION_QUICKSTART.md](docs/OPTIMIZATION_QUICKSTART.md) – DSPy / GEPA workflows.
+- [docs/DSPY_IMPLEMENTATION.md](docs/DSPY_IMPLEMENTATION.md) – Optimizer internals and extension hooks.
+- [docs/DSPY_GEPA_BEST_PRACTICES.md](docs/DSPY_GEPA_BEST_PRACTICES.md) – Advanced tuning guidance.
+- [CODE_REVIEW.md](CODE_REVIEW.md) & [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) – Review checklist plus AI/human workflow.
+- [src/data/schema.sql](src/data/schema.sql) – Canonical Supabase schema.
 
 ## Need Help?
 
-Troubleshooting tips (Supabase auth, OpenRouter limits, low match quality, etc.) live in [SETUP.md](docs/SETUP.md).
+Troubleshooting tips for Supabase auth, OpenRouter/OpenAI quotas, low match quality, and general FAQs live in [docs/SETUP.md](docs/SETUP.md).

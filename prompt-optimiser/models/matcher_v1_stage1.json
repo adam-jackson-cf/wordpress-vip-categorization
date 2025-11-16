@@ -1,0 +1,48 @@
+{
+  "predict.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "Match a taxonomy page to the most relevant content page.",
+      "fields": [
+        {
+          "prefix": "Taxonomy Category:",
+          "description": "Category of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Description:",
+          "description": "Description of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Keywords:",
+          "description": "Keywords for the taxonomy page (comma-separated)"
+        },
+        {
+          "prefix": "Content Summaries:",
+          "description": "List of available content pages with index, title, URL, and preview"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Brief explanation of why this match was chosen"
+        },
+        {
+          "prefix": "Best Match Index:",
+          "description": "Index of the best matching content page, or -1 if no good match"
+        },
+        {
+          "prefix": "Confidence:",
+          "description": "Confidence score (0-1) for the match"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

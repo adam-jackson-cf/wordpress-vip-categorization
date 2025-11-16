@@ -1,110 +1,33 @@
-# Testing Guide
+# Tests Contract
 
-## Organization
+Applies to everything under `tests/`.
 
-`tests/unit/` - Mocked dependencies
-`tests/integration/` - Real dependencies (mark `@pytest.mark.integration`)
-`tests/conftest.py` - Shared fixtures
+## Layout Expectations
+- `tests/unit/` mocks external services and is the default target for fast feedback.
+- `tests/integration/` exercises Supabase/WordPress/OpenRouter and must be marked with `@pytest.mark.integration`.
+- Shared fixtures live in `tests/conftest.py`; extend there before duplicating setup code.
 
-## Test Requirements
-
-Minimum 80% coverage (enforced by pytest)
-Use descriptive test names that explain what is being tested
-Mock external dependencies in unit tests (use `pytest-mock`)
-Use fixtures for shared test data (see `tests/conftest.py`)
-Follow Arrange-Act-Assert (AAA) pattern
-Integration tests must be marked with `@pytest.mark.integration`
-
-## Running Tests
-
-All tests: `pytest`
-Unit only: `pytest tests/unit/ -v`
-Integration only: `pytest tests/integration/ -v -m integration`
-Specific file: `pytest tests/unit/test_name.py`
-With coverage: `pytest --cov=src --cov-report=html`
-
-Coverage gate: 80% (enforced by pytest)
-Excluded: CLI (`src/cli.py`), DSPy optimization modules
-Focus on business logic in unit tests
-For focused test runs: `pytest --no-cov tests/unit/test_x.py` (80% gate runs on full suite)
-
-## Writing Tests
-
-### AAA Pattern
+## Behavioral Rules
+- Coverage must stay ≥80% when running `pytest --cov=src --cov-fail-under=80` (run via `make quality-check`).
+- Slow paths belong behind `@pytest.mark.slow`; keep them out of the default gate.
+- Follow Arrange–Act–Assert and pick descriptive test names that explain behavior, not implementation.
 
 ```python
-def test_matching_returns_high_similarity(mock_supabase):
-    # Arrange
-    settings = Settings(similarity_threshold=0.85)
-    service = MatchingService(settings, mock_supabase)
+def test_matching_respects_similarity_threshold(mock_settings, mock_supabase):
+    service = MatchingService(mock_settings, mock_supabase)
 
-    # Act
-    results = service.match_taxonomy("test-123")
+    result = service.match_taxonomy("tax-123")
 
-    # Assert
-    assert all(r.similarity_score >= 0.85 for r in results)
+    assert result.similarity >= mock_settings.similarity_threshold
 ```
 
-### Using Fixtures
+## Command Reference
+- All tests: `pytest`
+- Unit only: `pytest tests/unit -v`
+- Integration only: `pytest tests/integration -m integration`
+- Focused run without coverage: `pytest --no-cov tests/unit/test_matching.py`
 
-See `tests/conftest.py` for available fixtures:
-- `mock_settings` - Pydantic Settings with test values
-- `mock_supabase` - Mocked SupabaseClient
-- `sample_taxonomy` - Sample TaxonomyPage instances
-
-```python
-def test_with_fixture(mock_settings, mock_supabase):
-    service = MyService(mock_settings, mock_supabase)
-    # Test implementation
-```
-
-### Mocking Patterns
-
-Mock Supabase calls:
-```python
-from unittest.mock import Mock
-
-mock_client = Mock()
-mock_client.get_taxonomy_by_id.return_value = TaxonomyPage(...)
-```
-
-Mock external APIs:
-```python
-@patch('src.services.matching.requests.post')
-def test_api_call(mock_post):
-    mock_post.return_value.json.return_value = {...}
-```
-
-Mark integration tests:
-```python
-@pytest.mark.integration
-def test_full_pipeline():
-    # Uses real Supabase, OpenRouter
-```
-
-## Common Patterns
-
-Test async functions:
-```python
-@pytest.mark.asyncio
-async def test_async_function():
-    result = await async_function()
-    assert result is not None
-```
-
-Test exceptions:
-```python
-with pytest.raises(ValueError, match="Expected error message"):
-    function_that_raises()
-```
-
-Back to main guide: [../AGENTS.md](../AGENTS.md)
-
-## Testing Checklist (tests)
-
-- [ ] Overall coverage ≥ 80% with `pytest` (excluding CLI/DSPy where appropriate)
-- [ ] Tests follow the Arrange–Act–Assert (AAA) structure
-- [ ] Test names are descriptive and explain intent/behavior
-- [ ] External services and I/O are mocked in unit tests
-- [ ] Integration tests are marked with `@pytest.mark.integration`
-- [ ] Core business logic paths are covered by unit tests
+## Checklist (`tests/`)
+- Coverage ≥80% on the default suite; integration/slow tests are marker-gated.
+- External I/O is mocked in unit tests; only integration tests hit live services.
+- Tests follow the AAA pattern with descriptive names and assertions tied to behavior.
