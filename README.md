@@ -91,7 +91,6 @@ Feel free to raise `--num-examples` for even more coverage; the generator automa
 - [docs/OPTIMIZATION_QUICKSTART.md](docs/OPTIMIZATION_QUICKSTART.md) – DSPy / GEPA workflows.
 - [docs/DSPY_IMPLEMENTATION.md](docs/DSPY_IMPLEMENTATION.md) – Optimizer internals and extension hooks.
 - [docs/DSPY_GEPA_BEST_PRACTICES.md](docs/DSPY_GEPA_BEST_PRACTICES.md) – Advanced tuning guidance.
-- [CODE_REVIEW.md](CODE_REVIEW.md) & [docs/CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md) – Review checklist plus AI/human workflow.
 - [src/data/schema.sql](src/data/schema.sql) – Canonical Supabase schema.
 
 ## Need Help?
