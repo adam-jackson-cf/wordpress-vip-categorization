@@ -2,11 +2,13 @@
 
 import json
 import logging
+import random
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import openai
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -24,6 +26,15 @@ from src.models import (
 from src.optimization.dspy_optimizer import DSPyOptimizer
 
 logger = logging.getLogger(__name__)
+
+OPENAI_RETRY_EXCEPTIONS = (
+    openai.APIError,
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    openai.APIStatusError,
+)
 
 
 class CategorizationService:
@@ -58,6 +69,8 @@ class CategorizationService:
             logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
 
         logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
+        self.batch_artifact_root = Path("data/batch")
+        self.batch_artifact_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _coerce_datetime(value: Any) -> datetime:
@@ -165,8 +178,10 @@ Respond with a JSON object in this exact format:
         Returns:
             Path to created JSONL file.
         """
-        file_path = Path(f"/tmp/batch_requests_{int(time.time())}.jsonl")
-        with open(file_path, "w") as f:
+        run_dir = self.batch_artifact_root / f"batch_{int(time.time())}_{uuid4().hex[:8]}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        file_path = run_dir / "requests.jsonl"
+        with open(file_path, "w", encoding="utf-8") as f:
             for request in requests:
                 f.write(json.dumps(request) + "\n")
 
@@ -174,9 +189,10 @@ Respond with a JSON object in this exact format:
         return str(file_path)
 
     @retry(
-        retry=retry_if_exception_type(openai.APIError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
     )
     def submit_batch(self, file_path: str, description: str = "") -> str:
         """Submit batch job to OpenAI.
@@ -203,6 +219,29 @@ Respond with a JSON object in this exact format:
         logger.info(f"Submitted batch {batch.id} with file {file_response.id}")
         return str(batch.id)
 
+    def _cleanup_batch_artifacts(self, file_path: str) -> None:
+        """Remove temporary batch JSONL files/directories."""
+
+        path = Path(file_path)
+        try:
+            if path.exists():
+                path.unlink()
+            parent = path.parent
+            if (
+                parent.is_dir()
+                and parent != self.batch_artifact_root
+                and self.batch_artifact_root in parent.parents
+            ):
+                shutil.rmtree(parent, ignore_errors=True)
+        except OSError as exc:  # pragma: no cover - best effort cleanup
+            logger.warning("Failed to clean up batch artifacts at %s: %s", file_path, exc)
+
+    @retry(
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
+    )
     def get_batch_status(self, batch_id: str) -> BatchJobStatus:
         """Get status of a batch job.
 
@@ -251,6 +290,7 @@ Respond with a JSON object in this exact format:
         timeout = self.settings.llm_batch_timeout
 
         logger.info(f"Waiting for batch {batch_id} to complete...")
+        interval = max(10, check_interval)
 
         while True:
             status = self.get_batch_status(batch_id)
@@ -275,8 +315,17 @@ Respond with a JSON object in this exact format:
                 f"{status.request_counts.get('total', 0)} completed)"
             )
 
-            time.sleep(check_interval)
+            sleep_for = min(interval, 120) + random.uniform(0, 5)
+            logger.debug("Sleeping %.1fs before next batch poll", sleep_for)
+            time.sleep(sleep_for)
+            interval = min(int(interval * 1.5), 120)
 
+    @retry(
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
+    )
     def retrieve_batch_results(self, batch_id: str) -> list[dict[str, Any]]:
         """Retrieve results from completed batch.
 
@@ -362,6 +411,7 @@ Respond with a JSON object in this exact format:
         batch_id = self.submit_batch(
             file_path, description=f"Categorize {len(content_items)} content items"
         )
+        self._cleanup_batch_artifacts(file_path)
 
         # Optionally wait for completion
         if wait:
@@ -447,13 +497,30 @@ Respond with a JSON object in this exact format:
                 continue
 
             best_match, rubric = self._find_best_match_llm(taxonomy, pool)
+            existing_record = self.db.get_best_match_for_taxonomy(taxonomy.id)
+            semantic_score = (
+                existing_record.candidate_similarity_score
+                if existing_record and existing_record.candidate_similarity_score is not None
+                else (existing_record.similarity_score if existing_record else 0.0)
+            )
+            previous_candidate_id = (
+                existing_record.candidate_content_id
+                if existing_record and existing_record.candidate_content_id
+                else (existing_record.content_id if existing_record else None)
+            )
+            candidate_content_id = best_match.id if best_match else previous_candidate_id
+            candidate_score = semantic_score if candidate_content_id is not None else None
+            llm_topic_score = float(rubric.get("topic_alignment", 0.0)) if rubric else None
 
             if best_match and self._accept_by_rubric(rubric):
                 # Match found above threshold
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=best_match.id,
-                    similarity_score=float(rubric.get("topic_alignment", 0.0)),
+                    similarity_score=semantic_score,
+                    candidate_content_id=candidate_content_id,
+                    candidate_similarity_score=candidate_score,
+                    llm_topic_score=llm_topic_score,
                     match_stage=MatchStage.LLM_CATEGORIZED,
                     rubric=rubric,
                 )
@@ -471,9 +538,10 @@ Respond with a JSON object in this exact format:
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=None,
-                    similarity_score=(
-                        float(rubric.get("topic_alignment", 0.0)) if best_match else 0.0
-                    ),
+                    similarity_score=semantic_score,
+                    candidate_content_id=candidate_content_id,
+                    candidate_similarity_score=candidate_score,
+                    llm_topic_score=llm_topic_score,
                     match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
                     failed_at_stage="llm_categorization",
                     rubric=rubric if rubric else None,
@@ -543,8 +611,10 @@ Respond with a JSON object in this exact format:
             return best_candidate, rubric
 
         except Exception as e:
-            logger.error(f"Error in DSPy matching for taxonomy {taxonomy.url}: {e}")
-            raise  # Raise exception rather than falling back to hardcoded prompt
+            logger.error(
+                "Error in DSPy matching for taxonomy %s: %s", taxonomy.url, e, exc_info=True
+            )
+            return None, {}
 
     def _accept_by_rubric(self, rubric: dict[str, float | str]) -> bool:
         """Deterministically accept or reject an LLM-selected match based on rubric scores."""

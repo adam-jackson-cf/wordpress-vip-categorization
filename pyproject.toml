@@ -24,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
+    "pytest-xdist>=3.5.0",
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
@@ -97,12 +98,6 @@ source = ["src"]
 omit = [
     "tests/*",
     "**/__pycache__/*",
-    "src/cli.py",  # CLI has integration tests, not unit tests
-    "src/optimization/*",  # Advanced features with DSPy - would need mock LLM
-    "src/connectors/*",  # External HTTP integrations, covered by integration tests
-    "src/exporters/*",  # Thin CSV wrappers, covered indirectly
-    "src/services/*",  # High-level orchestration; integration-tested via pipeline
-    "src/data/supabase_client.py",  # DB client wrapper with heavy I/O
 ]
 
 [tool.coverage.report]

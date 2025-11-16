@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "timestamp": "2025-11-16T17:16:08.547900",
+  "model_file": "matcher_v3.json",
+  "optimizer": {
+    "type": "bootstrap",
+    "settings": {
+      "optimizer": "bootstrap",
+      "train_split": 0.2,
+      "num_threads": 2,
+      "seed": 42
+    }
+  },
+  "model_config": {
+    "llm_model": "gpt-4o-mini",
+    "llm_base_url": "https://api.openai.com/v1",
+    "temperature": 0.3
+  },
+  "before_optimization": {
+    "instructions": "Default DSPy ChainOfThought instructions",
+    "num_demos": 0,
+    "demonstrations": []
+  },
+  "after_optimization": {
+    "instructions": "Optimized DSPy ChainOfThought instructions",
+    "num_demos": 0,
+    "demonstrations": []
+  },
+  "metrics": {
+    "training_size": 72,
+    "validation_size": 288,
+    "validation_score": 

@@ -882,7 +882,9 @@ class DSPyOptimizer:
                 try:
                     rubric[key] = float(value) if value is not None else 0.0
                 except (ValueError, TypeError):
-                    logger.warning("Could not parse rubric field %s from prediction; defaulting to 0.0", key)
+                    logger.warning(
+                        "Could not parse rubric field %s from prediction; defaulting to 0.0", key
+                    )
                     rubric[key] = 0.0
             # Decision and reasoning (strings)
             rubric["decision"] = str(getattr(prediction, "decision", "") or "")

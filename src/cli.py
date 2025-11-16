@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import click
 import httpx
+from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
@@ -27,6 +28,26 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_sql_retryer = Retrying(
+    retry=retry_if_exception_type(httpx.HTTPError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    reraise=True,
+)
+
+
+def _post_schema_sql_with_retry(url: str, headers: dict[str, str], query: str) -> httpx.Response:
+    """Execute Supabase SQL RPC with retry/backoff."""
+
+    return _sql_retryer(
+        lambda: httpx.post(
+            url,
+            headers=headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+    )
 
 
 @click.group()
@@ -84,8 +105,7 @@ def init_db() -> None:
     }
 
     try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(sql_url, headers=headers, json={"query": schema_sql})
+        response = _post_schema_sql_with_retry(sql_url, headers, schema_sql)
 
         if response.status_code == 200:
             click.echo("✓ Tables created successfully via Supabase SQL RPC.")
@@ -282,18 +302,18 @@ def match(
     if filters_selected > 1:
         raise click.UsageError("Use at most one of --taxonomy-ids/--taxonomy-file/--only-unmatched")
 
-    settings = get_settings()
-    db = SupabaseClient(settings)
-
-    # Override config with CLI flags if provided
+    overrides: dict[str, bool | float] = {}
     if skip_semantic:
-        settings.enable_semantic_matching = False
+        overrides["enable_semantic_matching"] = False
     if skip_llm:
-        settings.enable_llm_categorization = False
+        overrides["enable_llm_categorization"] = False
 
     # Override semantic threshold if provided
     if threshold is not None:
-        settings.similarity_threshold = threshold
+        overrides["similarity_threshold"] = threshold
+
+    settings = get_settings(overrides=overrides or None)
+    db = SupabaseClient(settings)
 
     matching_service = MatchingService(settings, db)
     workflow_service = WorkflowService(settings, db, matching_service=matching_service)
@@ -428,20 +448,20 @@ def full_run(
 ) -> None:
     """Run taxonomy load → ingestion → matching → export with one command."""
 
-    settings = get_settings()
-    db = SupabaseClient(settings)
+    base_settings = get_settings()
+    db = SupabaseClient(base_settings)
 
-    ingestion_service = IngestionService(settings, db)
+    ingestion_service = IngestionService(base_settings, db)
     exporter = CSVExporter(db)
 
     # Step 1: Load taxonomy
-    csv_path = taxonomy_file or settings.taxonomy_file_path
+    csv_path = taxonomy_file or base_settings.taxonomy_file_path
     click.echo(f"[1/4] Loading taxonomy from {csv_path}...")
     loaded_count = ingestion_service.load_taxonomy_from_csv(csv_path)
     click.echo(f"    ✓ Loaded {loaded_count} taxonomy pages")
 
     # Step 2: Ingest content
-    site_list = sites.split(",") if sites else settings.get_wordpress_sites()
+    site_list = sites.split(",") if sites else base_settings.get_wordpress_sites()
     click.echo(f"[2/4] Ingesting content from {len(site_list)} site(s)...")
     if resume and since:
         click.echo(
@@ -456,22 +476,25 @@ def full_run(
     click.echo(f"    ✓ Ingested {ingested_count} content items")
 
     # Step 3: Matching workflow with optional overrides
+    overrides: dict[str, bool | float] = {}
     if skip_semantic:
-        settings.enable_semantic_matching = False
+        overrides["enable_semantic_matching"] = False
     if skip_llm:
-        settings.enable_llm_categorization = False
+        overrides["enable_llm_categorization"] = False
     if threshold is not None:
-        settings.similarity_threshold = threshold
+        overrides["similarity_threshold"] = threshold
 
-    workflow_service = WorkflowService(settings, db)
+    match_settings = get_settings(overrides=overrides or None)
+
+    workflow_service = WorkflowService(match_settings, db)
 
     click.echo("[3/4] Running cascading matching workflow...")
     click.echo(
-        f"    Semantic stage: {'enabled' if settings.enable_semantic_matching else 'disabled'} "
-        f"(threshold={settings.similarity_threshold})"
+        f"    Semantic stage: {'enabled' if match_settings.enable_semantic_matching else 'disabled'} "
+        f"(threshold={match_settings.similarity_threshold})"
     )
     click.echo(
-        f"    LLM stage: {'enabled' if settings.enable_llm_categorization else 'disabled'} (rubric-gated)"
+        f"    LLM stage: {'enabled' if match_settings.enable_llm_categorization else 'disabled'} (rubric-gated)"
     )
 
     stats = workflow_service.run_matching_workflow(batch_mode=batch)
@@ -785,7 +808,13 @@ def optimize_dataset(
                 "For GEPA optimizer, provide exactly one of: --budget, --max-full-evals, or --max-metric-calls"
             )
 
-    settings = get_settings()
+    overrides: dict[str, float | int] = {}
+    if train_split is not None:
+        overrides["dspy_train_split_ratio"] = train_split
+    if seed is not None:
+        overrides["dspy_optimization_seed"] = seed
+
+    settings = get_settings(overrides=overrides or None)
     db = SupabaseClient(settings)
     optimizer_instance = DSPyOptimizer(settings, db)
 
@@ -820,14 +849,6 @@ def optimize_dataset(
         optimizer_kwargs["num_threads"] = num_threads
     if display_table is not None:
         optimizer_kwargs["display_table"] = display_table
-
-    # Override train split if provided
-    if train_split is not None:
-        settings.dspy_train_split_ratio = train_split
-
-    # Override seed if provided
-    if seed is not None:
-        settings.dspy_optimization_seed = seed
 
     # Build optimizer config dict for reporting/config saving
     train_split_ratio = train_split or settings.dspy_train_split_ratio
@@ -868,7 +889,7 @@ def optimize_dataset(
         duration = time.time() - start_time
 
         # Evaluate to get validation score
-        validation_score: float | None = None
+        validation_score_raw: float | None = None
         try:
             from dspy.evaluate import Evaluate
 
@@ -880,9 +901,26 @@ def optimize_dataset(
                 num_threads=1,
                 display_progress=False,
             )
-            validation_score = evaluator(optimized_model)
+            validation_score_raw = evaluator(optimized_model)
         except Exception as e:
             logger.warning(f"Could not compute validation score: {e}")
+
+        def _coerce_validation_score(value: object) -> float | None:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            score_attr = getattr(value, "score", None)
+            if isinstance(score_attr, (int, float)):
+                return float(score_attr)
+            summary_attr = getattr(value, "summary", None)
+            if isinstance(summary_attr, dict):
+                maybe_score = summary_attr.get("score")
+                if isinstance(maybe_score, (int, float)):
+                    return float(maybe_score)
+            return None
+
+        validation_score = _coerce_validation_score(validation_score_raw)
 
         # Save optimized model
         optimizer_instance.save_optimized_model(optimized_model, str(output))

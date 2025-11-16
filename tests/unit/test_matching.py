@@ -129,7 +129,7 @@ class TestMatchingService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Test no match when below threshold."""
+        """Ensure best candidate is returned even when below semantic threshold."""
         service = MatchingService(mock_settings, mock_supabase_client)
         mock_supabase_client.match_content_by_embedding.return_value = [
             (sample_wordpress_content, 0.5)
@@ -137,9 +137,10 @@ class TestMatchingService:
 
         match = service.find_best_match(sample_taxonomy_page, min_threshold=0.99)
 
-        # Should return None if no match above threshold
-        # (depends on mock embedding similarity)
-        assert match is None or match[1] >= 0.99
+        assert match is not None
+        content, score = match
+        assert content.id == sample_wordpress_content.id
+        assert score == 0.5
 
     def test_get_unmatched_taxonomy_filters_by_threshold(
         self,
@@ -184,6 +185,9 @@ class TestMatchingService:
         )
 
         assert sample_taxonomy_page.id in results
+        match_result = results[sample_taxonomy_page.id]
+        assert match_result.candidate_content_id == sample_wordpress_content.id
+        assert match_result.candidate_similarity_score == match_result.similarity_score
         mock_supabase_client.bulk_upsert_matchings.assert_called()
 
     def test_match_all_taxonomy_records_needs_review(
@@ -196,7 +200,7 @@ class TestMatchingService:
         """When no best match exists, a needs-review result should be stored."""
 
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.find_best_match = Mock(return_value=None)
+        service.find_best_match = Mock(return_value=(sample_wordpress_content, 0.5))
 
         results = service.match_all_taxonomy(
             taxonomy_pages=[sample_taxonomy_page],
@@ -206,6 +210,8 @@ class TestMatchingService:
 
         match_result = results[sample_taxonomy_page.id]
         assert match_result.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
+        assert match_result.candidate_content_id == sample_wordpress_content.id
+        assert match_result.similarity_score == 0.5
         mock_supabase_client.bulk_upsert_matchings.assert_called()
 
     def test_match_all_taxonomy_batch_uses_precomputed_embeddings(

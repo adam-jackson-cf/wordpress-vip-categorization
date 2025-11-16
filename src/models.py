@@ -108,6 +108,21 @@ class MatchingResult(BaseModel):
     taxonomy_id: UUID
     content_id: UUID | None = None
     similarity_score: float = Field(ge=0.0, le=1.0)
+    candidate_content_id: UUID | None = Field(
+        default=None, description="Best semantic candidate even if below threshold"
+    )
+    candidate_similarity_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Similarity score for candidate_content_id",
+    )
+    llm_topic_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="LLM rubric topic score when available",
+    )
     match_stage: MatchStage | None = Field(
         default=None, description="Stage where match was determined"
     )
@@ -117,6 +132,7 @@ class MatchingResult(BaseModel):
     rubric: dict[str, Any] | None = Field(
         default=None, description="Rubric scores and decision from judge"
     )
+    is_current: bool = Field(default=True, description="Whether this row is the active match")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime | None = None
 

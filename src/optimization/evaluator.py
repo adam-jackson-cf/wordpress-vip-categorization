@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from src.data.supabase_client import SupabaseClient
-from src.models import CategorizationResult, MatchStage, MatchingResult
+from src.models import CategorizationResult, MatchingResult, MatchStage
 
 logger = logging.getLogger(__name__)
 

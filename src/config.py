@@ -1,6 +1,7 @@
 """Configuration management for the application."""
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -224,6 +225,25 @@ class Settings(BaseSettings):
         return v
 
 
-def get_settings() -> Settings:
-    """Get application settings singleton."""
-    return Settings()  # type: ignore[call-arg]
+_SETTINGS_CACHE: Settings | None = None
+
+
+def get_settings(
+    *, overrides: dict[str, Any] | None = None, force_refresh: bool = False
+) -> Settings:
+    """Return a cloned Settings object, cached between calls.
+
+    Args:
+        overrides: Optional field overrides applied to the cached settings.
+        force_refresh: Force reloading settings from the environment.
+    """
+
+    global _SETTINGS_CACHE
+
+    if force_refresh or _SETTINGS_CACHE is None:
+        _SETTINGS_CACHE = Settings()  # type: ignore[call-arg]
+
+    if overrides:
+        return _SETTINGS_CACHE.model_copy(update=overrides)
+
+    return _SETTINGS_CACHE.model_copy()

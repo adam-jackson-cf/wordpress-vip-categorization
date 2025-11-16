@@ -101,6 +101,7 @@ def mock_supabase_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.get_all_matchings.return_value = []
     mock_client.match_content_by_embedding.return_value = []
     mock_client.get_unmatched_taxonomy.return_value = []
+    mock_client.get_best_match_for_taxonomy.return_value = None
     mock_client.bulk_upsert_content.return_value = []
     mock_client.bulk_upsert_taxonomy.return_value = []
     mock_client.bulk_upsert_matchings.return_value = []
