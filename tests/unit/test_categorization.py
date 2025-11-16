@@ -211,7 +211,19 @@ class TestCategorizationService:
         """Ensure matched taxonomy rows are persisted with stage metadata."""
 
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(return_value=(sample_wordpress_content, 0.95))
+        service._find_best_match_llm = Mock(
+            return_value=(
+                sample_wordpress_content,
+                {
+                    "topic_alignment": 0.9,
+                    "intent_fit": 0.9,
+                    "entity_overlap": 0.6,
+                    "temporal_relevance": 0.5,
+                    "decision": "accept",
+                    "reasoning": "good match",
+                },
+            )
+        )
 
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
@@ -229,10 +241,10 @@ class TestCategorizationService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Items below confidence threshold should become needs_human_review."""
+        """Items failing rubric gate should become needs_human_review."""
 
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(return_value=(None, 0.0))
+        service._find_best_match_llm = Mock(return_value=(None, {}))
 
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
@@ -254,20 +266,32 @@ class TestCategorizationService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Test that _find_best_match_llm correctly parses DSPy response."""
+        """Test that _find_best_match_llm correctly parses DSPy response into rubric."""
         mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (0, 0.91)
+        mock_dspy_optimizer.predict_match.return_value = (
+            0,
+            {
+                "topic_alignment": 0.91,
+                "intent_fit": 0.88,
+                "entity_overlap": 0.7,
+                "temporal_relevance": 0.4,
+                "decision": "accept",
+                "reasoning": "valid",
+            },
+        )
         mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
         mock_path_exists.return_value = False
 
         service = CategorizationService(mock_settings, mock_supabase_client)
 
-        best_match, confidence = service._find_best_match_llm(
+        best_match, rubric = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
         )
 
         assert best_match == sample_wordpress_content
-        assert confidence == 0.91
+        assert isinstance(rubric, dict)
+        assert rubric.get("decision") == "accept"
+        assert rubric.get("topic_alignment") == 0.91
         mock_dspy_optimizer.predict_match.assert_called_once_with(
             sample_taxonomy_page, [sample_wordpress_content]
         )
@@ -285,18 +309,18 @@ class TestCategorizationService:
     ) -> None:
         """Test that _find_best_match_llm handles no match case."""
         mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (-1, 0.4)
+        mock_dspy_optimizer.predict_match.return_value = (-1, {})
         mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
         mock_path_exists.return_value = False
 
         service = CategorizationService(mock_settings, mock_supabase_client)
 
-        best_match, confidence = service._find_best_match_llm(
+        best_match, rubric = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
         )
 
         assert best_match is None
-        assert confidence == 0.0
+        assert rubric == {}
         mock_dspy_optimizer.predict_match.assert_called_once_with(
             sample_taxonomy_page, [sample_wordpress_content]
         )

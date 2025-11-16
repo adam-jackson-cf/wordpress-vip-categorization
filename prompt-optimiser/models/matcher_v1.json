@@ -1,0 +1,64 @@
+{
+  "predict.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "You are tasked with matching a taxonomy page focused on \"WordPress news and information\" to the most relevant content page based on specific inputs. Your job is to analyze and evaluate content summaries against provided taxonomy details to find the best-matched content related to WordPress news.\n\n### Input Format:\n1. **taxonomy_category**: The primary subject label (e.g., \"WordPress\").\n2. **taxonomy_description**: A description of what the taxonomy covers (e.g., \"WordPress news and information\").\n3. **taxonomy_keywords**: Relevant keywords associated with the taxonomy (e.g., \"wordpress, cms, blogging, open source\").\n4. **content_summaries**: A list of content items, each comprising:\n   - Title\n   - URL\n   - Preview: A short description of the content\n\n### Detailed Task Description:\n- Your goal is to analyze how closely each content summary matches the specified taxonomy category and description, focusing on the news aspect of WordPress.\n- Prioritize articles that discuss current updates, releases, and events related to WordPress. Articles should provide news regarding WordPress features, updates, or community events.\n- Be aware that articles mentioning version releases (e.g., \"WordPress 6.7,\" beta versions, and major updates) should receive higher consideration in your evaluations.\n\n### Scoring Criteria for Evaluation:\n1. **topic_alignment**: Score the relevance of the content to the taxonomy topic (scale 0 to 1).\n2. **intent_fit**: Assess how well the content's intent aligns with the intent of providing news and information about WordPress (scale 0 to 1).\n3. **entity_overlap**: Evaluate how many relevant keywords from the taxonomy are present in the content (scale 0 to 1).\n4. **temporal_relevance**: Consider the recency of the content, placing higher value on the latest publications (scale 0 to 1).\n\n### Decision Process:\n- For each content item, assign scores between 0 and 1 based on the evaluation of the criteria above.\n- Aggregate the scores, and select the content with the highest total score as the best match.\n- Return the following:\n  - **best_match_index**: The index of the best-matched content.\n  - **topic_alignment**: The score for topic relevance.\n  - **intent_fit**: The score for intent alignment.\n  - **entity_overlap**: The score for keyword inclusion.\n  - **temporal_relevance**: The score for recency.\n  - **decision**: Indicate whether to accept the match (\"accept\" or \"reject\").\n\n### Important Notes:\n- Focus specifically on articles that represent significant newsworthy announcements or updates in the WordPress ecosystem, such as version releases and major community events. Don't accept content focused on development practices or plugins that do not directly relate to newsworthy updates.\n- Ensure your evaluation maintains a consistent and accurate methodology, to enhance the matching quality over time, filtering out content that diverges from the focus on significant WordPress news.\n\n### Domain-Specific Insights:\n- Articles such as \"WordPress 6.7 Beta 2\" or \"State of the Word\" events are usually of high relevance and should be prioritized since they discuss significant updates within the WordPress community.\n- Articles providing details on developer meetings or technical discussions, while related, might not qualify as newsworthy updates in the context of the taxonomy.\n\nUse this structured approach to maintain a focused and precise matching process for \"WordPress news and information.\"",
+      "fields": [
+        {
+          "prefix": "Taxonomy Category:",
+          "description": "Category of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Description:",
+          "description": "Description of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Keywords:",
+          "description": "Keywords for the taxonomy page (comma-separated)"
+        },
+        {
+          "prefix": "Content Summaries:",
+          "description": "List of available content pages with index, title, URL, and preview"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Brief explanation of why this decision was chosen"
+        },
+        {
+          "prefix": "Best Match Index:",
+          "description": "Index of the best matching content page, or -1 if no good match"
+        },
+        {
+          "prefix": "Topic Alignment:",
+          "description": "Topical alignment score 0-1 (coverage of taxonomy topic)"
+        },
+        {
+          "prefix": "Intent Fit:",
+          "description": "Intent alignment score 0-1 (does the content's purpose match taxonomy intent)"
+        },
+        {
+          "prefix": "Entity Overlap:",
+          "description": "Named entity/keyword overlap score 0-1 (0 if none are present)"
+        },
+        {
+          "prefix": "Temporal Relevance:",
+          "description": "Temporal relevance score 0-1 (use 0 if not applicable)"
+        },
+        {
+          "prefix": "Decision:",
+          "description": "One of: accept, reject, abstain"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

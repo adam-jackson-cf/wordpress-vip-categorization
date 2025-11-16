@@ -29,7 +29,7 @@ GEPA_LOG_DIR = PROMPT_OPT_DIR / "gepa_logs"
 
 
 class TaxonomyMatcher(dspy.Signature):
-    """Match a taxonomy page to the most relevant content page."""
+    """Match a taxonomy page to the most relevant content page with rubric scoring."""
 
     taxonomy_category: str = dspy.InputField(desc="Category of the taxonomy page")
     taxonomy_description: str = dspy.InputField(desc="Description of the taxonomy page")
@@ -42,8 +42,20 @@ class TaxonomyMatcher(dspy.Signature):
     best_match_index: int = dspy.OutputField(
         desc="Index of the best matching content page, or -1 if no good match"
     )
-    confidence: float = dspy.OutputField(desc="Confidence score (0-1) for the match")
-    reasoning: str = dspy.OutputField(desc="Brief explanation of why this match was chosen")
+    topic_alignment: float = dspy.OutputField(
+        desc="Topical alignment score 0-1 (coverage of taxonomy topic)"
+    )
+    intent_fit: float = dspy.OutputField(
+        desc="Intent alignment score 0-1 (does the content's purpose match taxonomy intent)"
+    )
+    entity_overlap: float = dspy.OutputField(
+        desc="Named entity/keyword overlap score 0-1 (0 if none are present)"
+    )
+    temporal_relevance: float = dspy.OutputField(
+        desc="Temporal relevance score 0-1 (use 0 if not applicable)"
+    )
+    decision: str = dspy.OutputField(desc="One of: accept, reject, abstain")
+    reasoning: str = dspy.OutputField(desc="Brief explanation of why this decision was chosen")
 
 
 class MatchingModule(dspy.Module):
@@ -109,7 +121,7 @@ class DSPyOptimizer:
             model=model_name,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
-            temperature=0.3,
+            temperature=getattr(settings, "llm_match_temperature", 0.3),
         )
         dspy.configure(lm=lm)
 
@@ -407,7 +419,9 @@ class DSPyOptimizer:
                 try:
                     score = float(eval_result)
                 except (TypeError, ValueError):
-                    logger.warning(f"Could not extract score from evaluation result: {type(eval_result)}")
+                    logger.warning(
+                        f"Could not extract score from evaluation result: {type(eval_result)}"
+                    )
                     score = 0.0
             logger.info(f"Optimized model validation score: {score:.3f}")
 
@@ -850,15 +864,15 @@ class DSPyOptimizer:
         self,
         taxonomy: TaxonomyPage,
         content_items: list[WordPressContent],
-    ) -> tuple[int, float]:
-        """Make matching prediction using current model.
+    ) -> tuple[int, dict[str, float | str]]:
+        """Make matching prediction using current model, returning rubric fields.
 
         Args:
             taxonomy: Taxonomy page to match.
             content_items: Available content items.
 
         Returns:
-            Tuple of (best_match_index, confidence). Returns (-1, 0.0) if no good match.
+            Tuple of (best_match_index, rubric_dict). Returns (-1, {}) if parsing fails.
         """
         # Format inputs
         keywords_str = ", ".join(taxonomy.keywords) if taxonomy.keywords else "None"
@@ -877,12 +891,22 @@ class DSPyOptimizer:
             best_match_index = (
                 int(prediction.best_match_index) if hasattr(prediction, "best_match_index") else -1
             )
-            confidence = float(prediction.confidence) if hasattr(prediction, "confidence") else 0.0
+            rubric: dict[str, float | str] = {}
+            # Numeric rubric fields (default to 0.0 on parse failure)
+            for key in ("topic_alignment", "intent_fit", "entity_overlap", "temporal_relevance"):
+                value = getattr(prediction, key, None)
+                try:
+                    rubric[key] = float(value) if value is not None else 0.0
+                except (ValueError, TypeError):
+                    rubric[key] = 0.0
+            # Decision and reasoning (strings)
+            rubric["decision"] = str(getattr(prediction, "decision", "") or "")
+            rubric["reasoning"] = str(getattr(prediction, "reasoning", "") or "")
         except (ValueError, TypeError, AttributeError):
             logger.warning("Failed to parse prediction, returning no match")
-            return -1, 0.0
+            return -1, {}
 
-        return best_match_index, confidence
+        return best_match_index, rubric
 
     def load_training_dataset(self, dataset_path: Path) -> list[dspy.Example]:
         """Load training dataset from CSV or JSON file.
@@ -1047,7 +1071,7 @@ class DSPyOptimizer:
 
         # Set up GEPA optimizer
         GEPA_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         # Check for existing state file and warn if present (may cause issues)
         state_file = GEPA_LOG_DIR / "gepa_state.bin"
         if state_file.exists():
@@ -1107,7 +1131,9 @@ class DSPyOptimizer:
                 try:
                     score = float(eval_result)
                 except (TypeError, ValueError):
-                    logger.warning(f"Could not extract score from evaluation result: {type(eval_result)}")
+                    logger.warning(
+                        f"Could not extract score from evaluation result: {type(eval_result)}"
+                    )
                     score = 0.0
             logger.info(f"GEPA optimized model validation score: {score:.3f}")
 

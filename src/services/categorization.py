@@ -401,7 +401,7 @@ The confidence should be a number between 0 and 1.
         candidate_map: dict[UUID, list[WordPressContent]] | None = None,
         min_confidence: float = 0.9,
     ) -> dict[str, Any]:
-        """Use LLM to match taxonomy pages to content with confidence threshold.
+        """Use LLM to match taxonomy pages to content with rubric-based deterministic gating.
 
         This method provides a fallback for items that didn't match via semantic similarity.
         It uses the LLM to evaluate each taxonomy page against content and determine
@@ -452,34 +452,44 @@ The confidence should be a number between 0 and 1.
                 self.db.upsert_matching(matching_result)
                 continue
 
-            best_match, confidence = self._find_best_match_llm(taxonomy, pool)
+            best_match, rubric = self._find_best_match_llm(taxonomy, pool)
 
-            if best_match and confidence >= min_confidence:
+            if best_match and self._accept_by_rubric(rubric):
                 # Match found above threshold
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=best_match.id,
-                    similarity_score=confidence,
+                    similarity_score=float(rubric.get("topic_alignment", 0.0)),
                     match_stage=MatchStage.LLM_CATEGORIZED,
                 )
                 matched_count += 1
                 logger.info(
                     f"LLM matched taxonomy {taxonomy.url} to {best_match.url} "
-                    f"(confidence: {confidence:.3f})"
+                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
+                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
+                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
+                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
+                    f"decision={rubric.get('decision','')})"
                 )
             else:
                 # Below threshold or no match - needs human review
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=None,
-                    similarity_score=confidence if best_match else 0.0,
+                    similarity_score=(
+                        float(rubric.get("topic_alignment", 0.0)) if best_match else 0.0
+                    ),
                     match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
                     failed_at_stage="llm_categorization",
                 )
                 below_threshold_count += 1
                 logger.warning(
-                    f"LLM match for taxonomy {taxonomy.url} below threshold "
-                    f"(confidence: {confidence if best_match else 0.0:.3f}, threshold: {min_confidence})"
+                    f"LLM match for taxonomy {taxonomy.url} below rubric thresholds "
+                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
+                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
+                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
+                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
+                    f"decision={rubric.get('decision','')})"
                 )
 
             # Store result
@@ -498,7 +508,7 @@ The confidence should be a number between 0 and 1.
 
     def _find_best_match_llm(
         self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
-    ) -> tuple[WordPressContent | None, float]:
+    ) -> tuple[WordPressContent | None, dict[str, float | str]]:
         """Use DSPy-optimized LLM to find best matching content for a taxonomy page.
 
         Args:
@@ -506,20 +516,97 @@ The confidence should be a number between 0 and 1.
             content_items: Available content items.
 
         Returns:
-            Tuple of (best_match, confidence) or (None, 0.0) if no good match.
+            Tuple of (best_match, rubric_dict) or (None, {}) if no good match.
         """
         try:
-            # Use DSPy optimizer to get prediction
-            best_match_index, confidence = self.dspy_optimizer.predict_match(
-                taxonomy, content_items
-            )
+            votes = max(1, getattr(self.settings, "llm_consensus_votes", 1))
+            if votes == 1:
+                best_match_index, rubric = self.dspy_optimizer.predict_match(
+                    taxonomy, content_items
+                )
+                if 0 <= best_match_index < len(content_items):
+                    return content_items[best_match_index], rubric
+                return None, {}
 
-            # Validate index and return result
-            if best_match_index >= 0 and best_match_index < len(content_items):
-                return content_items[best_match_index], confidence
-            else:
-                return None, 0.0
+            # Consensus voting across multiple rubric evaluations
+            index_counts: dict[int, int] = {}
+            per_index_rubrics: dict[int, list[dict[str, float | str]]] = {}
+            for _ in range(votes):
+                idx, rub = self.dspy_optimizer.predict_match(taxonomy, content_items)
+                if idx < 0 or idx >= len(content_items):
+                    continue
+                index_counts[idx] = index_counts.get(idx, 0) + 1
+                per_index_rubrics.setdefault(idx, []).append(rub)
+
+            if not index_counts:
+                return None, {}
+
+            # Pick index with most votes
+            best_index = max(index_counts.items(), key=lambda kv: kv[1])[0]
+            rubrics_for_best = per_index_rubrics.get(best_index, [])
+
+            # Aggregate rubric: average numeric fields; majority decision accept?
+            agg: dict[str, float | str] = {}
+            if rubrics_for_best:
+                numeric_keys = (
+                    "topic_alignment",
+                    "intent_fit",
+                    "entity_overlap",
+                    "temporal_relevance",
+                )
+                for key in numeric_keys:
+                    vals: list[float] = []
+                    for r in rubrics_for_best:
+                        try:
+                            vals.append(float(r.get(key, 0.0) or 0.0))
+                        except (ValueError, TypeError):
+                            vals.append(0.0)
+                    agg[key] = sum(vals) / len(vals) if vals else 0.0
+                # Decision by majority
+                accept_votes = sum(
+                    1
+                    for r in rubrics_for_best
+                    if str(r.get("decision", "")).strip().lower() == "accept"
+                )
+                agg["decision"] = "accept" if accept_votes > len(rubrics_for_best) / 2 else "reject"
+                # Keep last reasoning for context
+                agg["reasoning"] = (
+                    str(rubrics_for_best[-1].get("reasoning", "")) if rubrics_for_best else ""
+                )
+
+            return content_items[best_index], agg
 
         except Exception as e:
             logger.error(f"Error in DSPy matching for taxonomy {taxonomy.url}: {e}")
             raise  # Raise exception rather than falling back to hardcoded prompt
+
+    def _accept_by_rubric(self, rubric: dict[str, float | str]) -> bool:
+        """Deterministically accept or reject an LLM-selected match based on rubric scores."""
+        try:
+            decision = str(rubric.get("decision", "")).strip().lower()
+            if decision not in {"accept", "abstain", "reject"}:
+                return False
+            if decision != "accept":
+                return False
+            topic = float(rubric.get("topic_alignment", 0.0) or 0.0)
+            intent = float(rubric.get("intent_fit", 0.0) or 0.0)
+            entity = float(rubric.get("entity_overlap", 0.0) or 0.0)
+        except (ValueError, TypeError):
+            return False
+
+        if topic < self.settings.llm_rubric_topic_min:
+            return False
+        if intent < self.settings.llm_rubric_intent_min:
+            return False
+        # Only enforce entity threshold if taxonomy has keywords; infer via >0 expectation
+        # If model sets entity to 0 while keywords exist, we enforce; else we treat as N/A.
+        enforce_entity = True
+        try:
+            # Best-effort: if entity was exactly 0.0 and there are no keywords, skip enforcement
+            # We cannot access taxonomy here, so we treat very small values as "possibly N/A"
+            enforce_entity = entity > 0.0 or self.settings.llm_rubric_entity_min <= 0.0
+        except Exception:
+            enforce_entity = True
+        if enforce_entity and entity < self.settings.llm_rubric_entity_min:
+            return False
+        return True

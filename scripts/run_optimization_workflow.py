@@ -129,7 +129,7 @@ def run_gepa(
             training_size=train_size,
             validation_size=val_size,
             model_file_path=str(model_path),
-            validation_score=validation_score,
+            validation_score=float(validation_score) if validation_score is not None else None,
             duration_seconds=duration,
         )
         config_path = CONFIGS_DIR / f"dspy_config_v{version}.json"
@@ -147,7 +147,7 @@ def run_gepa(
         optimizer_config=optimizer_config,
         training_size=train_size,
         validation_size=val_size,
-        validation_score=validation_score,
+        validation_score=float(validation_score) if validation_score is not None else None,
         duration_seconds=duration,
     )
     report_path.write_text(report_content, encoding="utf-8")
