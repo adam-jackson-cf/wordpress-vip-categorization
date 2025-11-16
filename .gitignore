@@ -55,6 +55,7 @@ data/*.csv
 !data/*.csv.example
 *.db
 *.sqlite
+data/batch/
 
 # Logs
 *.log

@@ -273,6 +273,38 @@ class TestCategorizationService:
 
         assert not service._accept_by_rubric(sample_taxonomy_page, rubric)
 
+    def test_accept_by_rubric_logs_warning_when_clamping(
+        self,
+        mocker,
+        caplog,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """Clamping rubric scores outside [0, 1] should log a warning."""
+        import logging
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 1.5,  # Above 1.0, will be clamped to 1.0
+            "intent_fit": 0.75,  # Below threshold, will be rejected
+            "entity_overlap": -0.1,  # Below 0.0, will be clamped to 0.0
+            "temporal_relevance": 0.9,
+        }
+
+        with caplog.at_level(logging.WARNING):
+            result = service._accept_by_rubric(sample_taxonomy_page, rubric)
+
+        # Should reject because intent_fit (0.75) is below threshold (0.8)
+        assert not result
+
+        # Should have logged warnings for topic and entity
+        assert "Clamped topic_alignment from 1.50 to 1.00" in caplog.text
+        assert "Clamped entity_overlap from -0.10 to 0.00" in caplog.text
+        assert "Clamped intent_fit" not in caplog.text
+
     def test_categorize_for_matching_marks_review(
         self,
         mock_settings: Settings,
