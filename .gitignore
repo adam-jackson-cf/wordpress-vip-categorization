@@ -71,4 +71,6 @@ exports/
 *.out
 
 # Editor / tooling docs
-.cursor/docs/
+.cursor/
+.claude/
+.codex/

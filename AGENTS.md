@@ -14,6 +14,15 @@ This file documents the minimum structure, behaviors, and coding rules expected 
 - Slow paths belong behind `@pytest.mark.slow` and must not run in CI unless explicitly requested.
 - Database changes ship through `src/data/schema.sql` + `python -m src.cli init-db`; never apply ad-hoc SQL elsewhere.
 - No secrets, placeholders, or mock/test data live in production code or configuration.
+- Modules excluded from coverage must be listed under `[tool.coverage.run].omit` with a short justification in the PR description; don’t silently relax the gate.
+- Deterministic orchestration logic (rubric gating, demotion, workflow stats, etc.) must have targeted unit tests even if the surrounding module is exempted from coverage.
+- `.cursor/plans/**` are human-authored plans; do not auto-format or reflow them unless the plan content is actually changing.
+
+## Testing & Coverage
+
+- The unit suite is scoped to modules not listed in `pyproject.toml`’s coverage omit list. If you introduce a new helper/service, either write tests or update the omit list with a rationale.
+- When adding helper wrappers for network/storage calls (e.g., `_post_schema_sql_with_retry`), expose them at module scope and have tests patch the helper instead of the third-party client.
+- Integration-only flows (CLI, connectors, Supabase client, batch orchestration) should document their manual/integration test strategy before being excluded from coverage.
 
 ## Coding Rules
 

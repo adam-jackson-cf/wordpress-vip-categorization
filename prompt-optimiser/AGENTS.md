@@ -18,3 +18,7 @@ prompt-optimiser/
 - Each optimization run increments `N` by scanning existing configs; reuse that number across models/configs/reports.
 - Never overwrite or delete prior versions; add new files instead so historical runs remain reproducible.
 - Runtime services load the highest `matcher_vN.json`; keep files well-formed JSON to avoid startup failures.
+
+## Tooling & Testing
+- CLI scripts and automation helpers (e.g., promotion, dataset generation) must have at least one smoke test or doctest that exercises the happy path with fixtures.
+- Serialization helpers must be covered by unit tests to prove that the emitted config/report/meta JSON is valid (no `None` leakage or unserializable objects).
