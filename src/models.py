@@ -109,13 +109,20 @@ class MatchingResult(BaseModel):
     content_id: UUID | None = None
     similarity_score: float = Field(ge=0.0, le=1.0)
     candidate_content_id: UUID | None = Field(
-        default=None, description="Best semantic candidate even if below threshold"
+        default=None,
+        description=(
+            "Best semantic candidate regardless of acceptance; duplicates content_id when "
+            "the semantic stage succeeded so analysts can compare semantic vs. LLM picks."
+        ),
     )
     candidate_similarity_score: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Similarity score for candidate_content_id",
+        description=(
+            "Similarity score for candidate_content_id to preserve semantic evidence "
+            "even when the LLM ultimately rejects the match."
+        ),
     )
     llm_topic_score: float | None = Field(
         default=None,

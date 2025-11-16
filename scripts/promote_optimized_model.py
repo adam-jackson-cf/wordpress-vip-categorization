@@ -30,9 +30,15 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Promote optimized matcher to latest.")
-    parser.add_argument("--version", type=int, help="Specific matcher version N to promote (matcher_vN.json)")
-    parser.add_argument("--validation-score", type=float, help="Optional validation score to record")
-    parser.add_argument("--dataset-path", type=str, help="Optional dataset path used for evaluation")
+    parser.add_argument(
+        "--version", type=int, help="Specific matcher version N to promote (matcher_vN.json)"
+    )
+    parser.add_argument(
+        "--validation-score", type=float, help="Optional validation score to record"
+    )
+    parser.add_argument(
+        "--dataset-path", type=str, help="Optional dataset path used for evaluation"
+    )
     parser.add_argument("--budget", type=str, help="Optional GEPA budget used during optimization")
     args = parser.parse_args()
 
@@ -74,13 +80,13 @@ def main() -> None:
             version = 0
 
     # Write meta manifest next to matcher_latest.json
-    meta = {
-        "version": version,
-        "source_file": str(source_path.name),
-        "validation_score": args.validation_score,
-        "dataset_path": args.dataset_path,
-        "budget": args.budget,
-    }
+    meta = {"version": version, "source_file": str(source_path.name)}
+    if args.validation_score is not None:
+        meta["validation_score"] = args.validation_score
+    if args.dataset_path:
+        meta["dataset_path"] = args.dataset_path
+    if args.budget:
+        meta["budget"] = args.budget
     meta_path = ACTIVE_MODEL_PATH.with_suffix(".meta.json")
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 

@@ -231,7 +231,11 @@ _SETTINGS_CACHE: Settings | None = None
 def get_settings(
     *, overrides: dict[str, Any] | None = None, force_refresh: bool = False
 ) -> Settings:
-    """Return a cloned Settings object, cached between calls.
+    """Return a fresh Settings copy backed by a cached template.
+
+    The base Settings instance is cached so expensive env parsing only happens once,
+    but each call returns ``model_copy()`` so callers can safely mutate their copy without
+    affecting other parts of the application.
 
     Args:
         overrides: Optional field overrides applied to the cached settings.

@@ -512,7 +512,7 @@ Respond with a JSON object in this exact format:
             candidate_score = semantic_score if candidate_content_id is not None else None
             llm_topic_score = float(rubric.get("topic_alignment", 0.0)) if rubric else None
 
-            if best_match and self._accept_by_rubric(rubric):
+            if best_match and self._accept_by_rubric(taxonomy, rubric):
                 # Match found above threshold
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
@@ -616,7 +616,7 @@ Respond with a JSON object in this exact format:
             )
             return None, {}
 
-    def _accept_by_rubric(self, rubric: dict[str, float | str]) -> bool:
+    def _accept_by_rubric(self, taxonomy: TaxonomyPage, rubric: dict[str, float | str]) -> bool:
         """Deterministically accept or reject an LLM-selected match based on rubric scores."""
         try:
             decision = str(rubric.get("decision", "")).strip().lower()
@@ -639,15 +639,9 @@ Respond with a JSON object in this exact format:
             return False
         if intent < self.settings.llm_rubric_intent_min:
             return False
-        # Only enforce entity threshold if taxonomy has keywords; infer via >0 expectation
-        # If model sets entity to 0 while keywords exist, we enforce; else we treat as N/A.
-        enforce_entity = True
-        try:
-            # Best-effort: if entity was exactly 0.0 and there are no keywords, skip enforcement
-            # We cannot access taxonomy here, so we treat very small values as "possibly N/A"
-            enforce_entity = entity > 0.0 or self.settings.llm_rubric_entity_min <= 0.0
-        except Exception:
-            enforce_entity = True
+        # Only enforce entity threshold when taxonomy defines keywords, otherwise treat entity
+        # overlap as optional (many taxonomy pages have no keyword metadata yet).
+        enforce_entity = bool(taxonomy.keywords)
         if enforce_entity and entity < self.settings.llm_rubric_entity_min:
             return False
         return True

@@ -20,23 +20,13 @@ def test_init_db_success_via_rpc(mocker) -> None:
     mock_settings.supabase_key = "test-key"
     mocker.patch("src.cli.get_settings", return_value=mock_settings)
 
-    mock_client = mocker.Mock()
     mock_response = mocker.Mock(status_code=200)
-    mock_client.post.return_value = mock_response
-
-    class DummyClient:
-        def __enter__(self):
-            return mock_client
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    mocker.patch("src.cli.httpx.Client", return_value=DummyClient())
+    mock_post = mocker.patch("src.cli._post_schema_sql_with_retry", return_value=mock_response)
 
     result = runner.invoke(cli, ["init-db"])
 
     assert result.exit_code == 0
-    mock_client.post.assert_called_once()
+    mock_post.assert_called_once()
 
 
 def test_init_db_falls_back_on_rpc_failure(mocker) -> None:
@@ -47,14 +37,7 @@ def test_init_db_falls_back_on_rpc_failure(mocker) -> None:
     mock_settings.supabase_key = "test-key"
     mocker.patch("src.cli.get_settings", return_value=mock_settings)
 
-    class FailingClient:
-        def __enter__(self):
-            raise Exception("network error")
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    mocker.patch("src.cli.httpx.Client", return_value=FailingClient())
+    mocker.patch("src.cli._post_schema_sql_with_retry", side_effect=Exception("network error"))
 
     result = runner.invoke(cli, ["init-db"])
 

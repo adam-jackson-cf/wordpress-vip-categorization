@@ -454,6 +454,7 @@ class SupabaseClient:
         self._demote_current_records([result.taxonomy_id])
         data = result.model_dump(mode="json")
         data["updated_at"] = datetime.utcnow().isoformat()
+        data["is_current"] = True
         db_result = self._with_retry(
             lambda: self.client.table("matching_results").insert(data).execute()
         )
@@ -474,8 +475,11 @@ class SupabaseClient:
         self._demote_current_records([result.taxonomy_id])
         data = result.model_dump(mode="json")
         data["updated_at"] = datetime.utcnow().isoformat()
+        data["is_current"] = True
         db_result = self._with_retry(
-            lambda: self.client.table("matching_results").insert(data).execute()
+            lambda: self.client.table("matching_results")
+            .upsert(data, on_conflict="taxonomy_id")
+            .execute()
         )
         return MatchingResult.model_validate(db_result.data[0])
 
@@ -493,14 +497,19 @@ class SupabaseClient:
                 {
                     **item.model_dump(mode="json"),
                     "updated_at": datetime.utcnow().isoformat(),
+                    "is_current": True,
                 }
                 for item in chunk
             ]
 
-            def _exec_insert(data: list[dict[str, Any]] = payload) -> Any:
-                return self.client.table("matching_results").insert(data).execute()
+            def _exec_upsert(data: list[dict[str, Any]] = payload) -> Any:
+                return (
+                    self.client.table("matching_results")
+                    .upsert(data, on_conflict="taxonomy_id")
+                    .execute()
+                )
 
-            result = self._with_retry(_exec_insert)
+            result = self._with_retry(_exec_upsert)
             persisted.extend(MatchingResult.model_validate(item) for item in result.data)
 
         logger.info("Bulk upserted %s matching rows", len(persisted))

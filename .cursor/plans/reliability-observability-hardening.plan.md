@@ -12,18 +12,27 @@ Address the cross-cutting risks surfaced in the Copilot reviews by hardening ret
 The following tasks are mandatory for correct end-to-end runs and new-environment readiness. Complete them before tackling other workstreams.
 
 1. **Resilience Guardrails**
-   - Add tenacity retries + typed errors for Supabase CRUD/RPC, OpenAI embeddings, batch submit/status/download, DSPy selector/judge calls, and httpx SQL helper.
-   - Ensure per-taxonomy DSPy failures fall back to `needs_human_review` rather than aborting the loop.
+
+- Add tenacity retries + typed errors for Supabase CRUD/RPC, OpenAI embeddings, batch submit/status/download, DSPy selector/judge calls, and httpx SQL helper.
+- Ensure per-taxonomy DSPy failures fall back to `needs_human_review` rather than aborting the loop.
+
 2. **Developer Tooling Baseline**
-   - Add `pytest-xdist` to the dev extras (or remove `-n 4`) so `make quality-check` works everywhere.
-   - Tighten coverage settings to include services/connectors/Supabase modules; keep only unavoidable exclusions.
+
+- Add `pytest-xdist` to the dev extras (or remove `-n 4`) so `make quality-check` works everywhere.
+- Tighten coverage settings to include services/connectors/Supabase modules; keep only unavoidable exclusions.
+
 3. **Configuration Hygiene**
-   - Memoize `get_settings()` and make every call return a fresh copy so CLI overrides can’t leak; stop mutating shared settings objects.
+
+- Memoize `get_settings()` and make every call return a fresh copy so CLI overrides can’t leak; stop mutating shared settings objects.
+
 4. **Matching Data Model Fixes**
-   - Redesign `matching_results` to keep canonical state + history (`is_current` flag or composite key) and store semantic vs. LLM rubric scores separately.
-   - Persist best semantic candidate/score even when below threshold so analysts see context.
+
+- Redesign `matching_results` to keep canonical state + history (`is_current` flag or composite key) and store semantic vs. LLM rubric scores separately.
+- Persist best semantic candidate/score even when below threshold so analysts see context.
+
 5. **OpenAI Batch File Handling**
-   - Store batch JSONL artifacts under per-run directories, guard against collisions, add cleanup, and replace the fixed 60s poll with adaptive intervals/jitter.
+
+- Store batch JSONL artifacts under per-run directories, guard against collisions, add cleanup, and replace the fixed 60s poll with adaptive intervals/jitter.
 
 Once these P1 items are complete and quality checks are green, continue with the broader reliability and observability enhancements below.
 

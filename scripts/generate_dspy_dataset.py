@@ -13,8 +13,8 @@ import html
 import logging
 import random
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import requests
 
@@ -275,7 +275,9 @@ def format_ordered_summaries(posts: list[dict]) -> str:
 
 
 def post_matches_keywords(post: dict, category: str, keywords: list[str]) -> bool:
-    text = f"{post.get('title', {}).get('rendered', '')} {post.get('content', {}).get('rendered', '')}"
+    text = (
+        f"{post.get('title', {}).get('rendered', '')} {post.get('content', {}).get('rendered', '')}"
+    )
     text = html.unescape(re.sub(r"<[^>]+>", " ", text)).lower()
     category_lower = category.lower()
     if category_lower and category_lower in text:
@@ -330,8 +332,8 @@ def generate_reasoning(taxonomy_category: str, taxonomy_keywords: str) -> str:
     reasons = [
         f"Matches {taxonomy_category.lower()} focus keywords ({taxonomy_keywords}).",
         f"Content describes {taxonomy_category.lower()} initiatives highlighted in the taxonomy.",
-        f"Article addresses the taxonomy description with concrete updates.",
-        f"Strong overlap between taxonomy keywords and the article’s subject matter.",
+        "Article addresses the taxonomy description with concrete updates.",
+        "Strong overlap between taxonomy keywords and the article’s subject matter.",
     ]
     return random.choice(reasons)
 
