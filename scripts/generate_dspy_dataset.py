@@ -20,7 +20,6 @@ import requests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-random.seed(42)
 
 CATEGORY_SOURCES: dict[str, list[str]] = {
     "WordPress": ["https://wordpress.org/news"],
@@ -341,7 +340,10 @@ def generate_dataset(
     taxonomy_path: Path,
     output_path: Path,
     num_examples: int = 360,
+    seed: int = 42,
 ) -> None:
+    # Local seeding keeps this script deterministic without affecting callers
+    random.seed(seed)
     taxonomy = load_taxonomy(taxonomy_path)
     posts_by_category, global_posts = assemble_category_posts()
 

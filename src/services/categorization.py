@@ -560,6 +560,11 @@ Respond with a JSON object in this exact format:
         except (ValueError, TypeError):
             return False
 
+        # Clamp rubric scores into [0, 1] to satisfy data constraints and avoid overflows
+        topic = max(0.0, min(topic, 1.0))
+        intent = max(0.0, min(intent, 1.0))
+        entity = max(0.0, min(entity, 1.0))
+
         if topic < self.settings.llm_rubric_topic_min:
             return False
         if intent < self.settings.llm_rubric_intent_min:

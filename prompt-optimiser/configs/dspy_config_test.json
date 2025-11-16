@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "timestamp": "2025-11-16T09:37:50.874904",
+  "timestamp": "2025-11-16T15:54:47.477198",
   "model_file": "matcher_test.json",
   "optimizer": {
     "type": "bootstrap",
@@ -32,6 +32,6 @@
     "training_size": 12,
     "validation_size": 48,
     "validation_score": 29.17,
-    "duration_seconds": 0.2697610855102539
+    "duration_seconds": 0.27600908279418945
   }
 }

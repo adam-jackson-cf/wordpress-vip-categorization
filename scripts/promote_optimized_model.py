@@ -63,9 +63,19 @@ def main() -> None:
 
     shutil.copy2(source_path, ACTIVE_MODEL_PATH)
 
+    # Normalize version for meta manifest
+    if args.version is not None:
+        version = args.version
+    else:
+        try:
+            version = int(source_path.stem.replace("matcher_v", ""))
+        except ValueError:
+            logger.warning("Could not parse version from %s; storing version as 0", source_path)
+            version = 0
+
     # Write meta manifest next to matcher_latest.json
     meta = {
-        "version": args.version if args.version is not None else source_path.stem.replace("matcher_v", ""),
+        "version": version,
         "source_file": str(source_path.name),
         "validation_score": args.validation_score,
         "dataset_path": args.dataset_path,

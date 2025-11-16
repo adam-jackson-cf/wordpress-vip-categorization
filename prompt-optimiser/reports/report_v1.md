@@ -1,6 +1,6 @@
 # DSPy Optimization Report
 
-**Generated:** 2025-11-16 11:39:27
+**Generated:** 2025-11-16 15:54:59
 
 ## Summary
 
@@ -8,7 +8,7 @@
 - **Training Examples:** 72
 - **Validation Examples:** 288
 - **Validation Score:** 46.880
-- **Duration:** 151.8 seconds
+- **Duration:** 4.9 seconds
 
 ## Configuration
 

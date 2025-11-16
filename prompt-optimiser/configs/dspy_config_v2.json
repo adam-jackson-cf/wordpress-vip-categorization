@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "timestamp": "2025-11-16T15:54:59.981960",
-  "model_file": "matcher_v1.json",
+  "version": 2,
+  "timestamp": "2025-11-16T15:55:15.799182",
+  "model_file": "matcher_v2.json",
   "optimizer": {
     "type": "gepa",
     "settings": {
@@ -31,6 +31,6 @@
     "training_size": 72,
     "validation_size": 288,
     "validation_score": 46.88,
-    "duration_seconds": 4.9230968952178955
+    "duration_seconds": 0.9601669311523438
   }
 }

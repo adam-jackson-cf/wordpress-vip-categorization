@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from src.data.supabase_client import SupabaseClient
-from src.models import CategorizationResult, MatchingResult
+from src.models import CategorizationResult, MatchStage, MatchingResult
 
 logger = logging.getLogger(__name__)
 
@@ -167,16 +167,8 @@ class Evaluator:
             return sum(items) / len(items) if items else 0.0
 
         numeric_keys = ("topic_alignment", "intent_fit", "entity_overlap", "temporal_relevance")
-        accepted = [
-            r
-            for r in results
-            if r.match_stage and r.match_stage.value == "llm_categorized" and r.rubric
-        ]
-        review = [
-            r
-            for r in results
-            if r.match_stage and r.match_stage.value == "needs_human_review" and r.rubric
-        ]
+        accepted = [r for r in results if r.match_stage == MatchStage.LLM_CATEGORIZED and r.rubric]
+        review = [r for r in results if r.match_stage == MatchStage.NEEDS_HUMAN_REVIEW and r.rubric]
 
         accepted_avg: dict[str, float] = {}
         review_avg: dict[str, float] = {}
