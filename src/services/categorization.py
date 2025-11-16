@@ -635,9 +635,33 @@ Respond with a JSON object in this exact format:
             return False
 
         # Clamp rubric scores into [0, 1] to satisfy data constraints and avoid overflows
+        original_topic, original_intent, original_entity = topic, intent, entity
         topic = max(0.0, min(topic, 1.0))
         intent = max(0.0, min(intent, 1.0))
         entity = max(0.0, min(entity, 1.0))
+
+        # Log warning if any scores were clamped to aid debugging
+        if original_topic != topic:
+            logger.warning(
+                "Clamped topic_alignment from %.2f to %.2f for taxonomy %s",
+                original_topic,
+                topic,
+                taxonomy.url,
+            )
+        if original_intent != intent:
+            logger.warning(
+                "Clamped intent_fit from %.2f to %.2f for taxonomy %s",
+                original_intent,
+                intent,
+                taxonomy.url,
+            )
+        if original_entity != entity:
+            logger.warning(
+                "Clamped entity_overlap from %.2f to %.2f for taxonomy %s",
+                original_entity,
+                entity,
+                taxonomy.url,
+            )
 
         if topic < self.settings.llm_rubric_topic_min:
             return False
