@@ -113,11 +113,8 @@ Content: {content.content[:2000]}...
 Respond with a JSON object in this exact format:
 {{
   "category": "the most appropriate category",
-  "confidence": 0.95,
   "reasoning": "brief explanation of why this category was chosen"
 }}
-
-The confidence should be a number between 0 and 1.
 """
         return prompt
 
@@ -331,7 +328,6 @@ The confidence should be a number between 0 and 1.
                 categorization = CategorizationResult(
                     content_id=content_id,
                     category=parsed["category"],
-                    confidence=float(parsed["confidence"]),
                     batch_id=batch_id,
                 )
                 categorizations.append(categorization)
@@ -399,7 +395,6 @@ The confidence should be a number between 0 and 1.
         taxonomy_pages: list[TaxonomyPage],
         content_items: list[WordPressContent],
         candidate_map: dict[UUID, list[WordPressContent]] | None = None,
-        min_confidence: float = 0.9,
     ) -> dict[str, Any]:
         """Use LLM to match taxonomy pages to content with rubric-based deterministic gating.
 
@@ -411,7 +406,6 @@ The confidence should be a number between 0 and 1.
             taxonomy_pages: Taxonomy pages to match (typically unmatched from semantic stage).
             content_items: Available content items to match against (fallback pool).
             candidate_map: Optional per-taxonomy shortlist of semantic candidates.
-            min_confidence: Minimum confidence threshold (0-1) for accepting matches.
 
         Returns:
             Dictionary with statistics:
@@ -421,7 +415,7 @@ The confidence should be a number between 0 and 1.
         """
         logger.info(
             f"Starting LLM categorization for {len(taxonomy_pages)} taxonomy pages "
-            f"against {len(content_items)} content items (min confidence: {min_confidence})"
+            f"against {len(content_items)} content items with rubric gating"
         )
 
         matched_count = 0
@@ -461,6 +455,7 @@ The confidence should be a number between 0 and 1.
                     content_id=best_match.id,
                     similarity_score=float(rubric.get("topic_alignment", 0.0)),
                     match_stage=MatchStage.LLM_CATEGORIZED,
+                    rubric=rubric,
                 )
                 matched_count += 1
                 logger.info(
@@ -481,6 +476,7 @@ The confidence should be a number between 0 and 1.
                     ),
                     match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
                     failed_at_stage="llm_categorization",
+                    rubric=rubric if rubric else None,
                 )
                 below_threshold_count += 1
                 logger.warning(
@@ -509,7 +505,7 @@ The confidence should be a number between 0 and 1.
     def _find_best_match_llm(
         self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
     ) -> tuple[WordPressContent | None, dict[str, float | str]]:
-        """Use DSPy-optimized LLM to find best matching content for a taxonomy page.
+        """Use selector (DSPy) to choose best index, then judge to compute rubric for that candidate.
 
         Args:
             taxonomy: Taxonomy page to match.
@@ -521,60 +517,33 @@ The confidence should be a number between 0 and 1.
         try:
             votes = max(1, getattr(self.settings, "llm_consensus_votes", 1))
             if votes == 1:
-                best_match_index, rubric = self.dspy_optimizer.predict_match(
+                best_match_index, _ = self.dspy_optimizer.predict_match(
                     taxonomy, content_items
                 )
                 if 0 <= best_match_index < len(content_items):
-                    return content_items[best_match_index], rubric
+                    best = content_items[best_match_index]
+                    rubric = self.dspy_optimizer.judge_candidate(taxonomy, best)
+                    return best, rubric
                 return None, {}
 
             # Consensus voting across multiple rubric evaluations
             index_counts: dict[int, int] = {}
             per_index_rubrics: dict[int, list[dict[str, float | str]]] = {}
             for _ in range(votes):
-                idx, rub = self.dspy_optimizer.predict_match(taxonomy, content_items)
+                idx, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
                 if idx < 0 or idx >= len(content_items):
                     continue
                 index_counts[idx] = index_counts.get(idx, 0) + 1
-                per_index_rubrics.setdefault(idx, []).append(rub)
+                # Defer rubric scoring to judge on the winning index later
 
             if not index_counts:
                 return None, {}
 
             # Pick index with most votes
             best_index = max(index_counts.items(), key=lambda kv: kv[1])[0]
-            rubrics_for_best = per_index_rubrics.get(best_index, [])
-
-            # Aggregate rubric: average numeric fields; majority decision accept?
-            agg: dict[str, float | str] = {}
-            if rubrics_for_best:
-                numeric_keys = (
-                    "topic_alignment",
-                    "intent_fit",
-                    "entity_overlap",
-                    "temporal_relevance",
-                )
-                for key in numeric_keys:
-                    vals: list[float] = []
-                    for r in rubrics_for_best:
-                        try:
-                            vals.append(float(r.get(key, 0.0) or 0.0))
-                        except (ValueError, TypeError):
-                            vals.append(0.0)
-                    agg[key] = sum(vals) / len(vals) if vals else 0.0
-                # Decision by majority
-                accept_votes = sum(
-                    1
-                    for r in rubrics_for_best
-                    if str(r.get("decision", "")).strip().lower() == "accept"
-                )
-                agg["decision"] = "accept" if accept_votes > len(rubrics_for_best) / 2 else "reject"
-                # Keep last reasoning for context
-                agg["reasoning"] = (
-                    str(rubrics_for_best[-1].get("reasoning", "")) if rubrics_for_best else ""
-                )
-
-            return content_items[best_index], agg
+            best_candidate = content_items[best_index]
+            rubric = self.dspy_optimizer.judge_candidate(taxonomy, best_candidate)
+            return best_candidate, rubric
 
         except Exception as e:
             logger.error(f"Error in DSPy matching for taxonomy {taxonomy.url}: {e}")

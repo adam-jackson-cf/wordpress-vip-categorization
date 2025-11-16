@@ -168,7 +168,7 @@ class TestCategorizationService:
                 "response": {
                     "body": {
                         "choices": [
-                            {"message": {"content": '{"category": "Tech", "confidence": 0.91}'}}
+                            {"message": {"content": '{"category": "Tech"}'}}
                         ]
                     }
                 },
@@ -228,7 +228,6 @@ class TestCategorizationService:
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
             [sample_wordpress_content],
-            min_confidence=0.9,
         )
 
         assert stats == {"matched": 1, "below_threshold": 0, "total": 1}
@@ -249,7 +248,6 @@ class TestCategorizationService:
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
             [sample_wordpress_content],
-            min_confidence=0.9,
         )
 
         assert stats == {"matched": 0, "below_threshold": 1, "total": 1}
@@ -268,17 +266,18 @@ class TestCategorizationService:
     ) -> None:
         """Test that _find_best_match_llm correctly parses DSPy response into rubric."""
         mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (
-            0,
-            {
-                "topic_alignment": 0.91,
-                "intent_fit": 0.88,
-                "entity_overlap": 0.7,
-                "temporal_relevance": 0.4,
-                "decision": "accept",
-                "reasoning": "valid",
-            },
-        )
+        # Selector returns index only (rubric ignored by new flow)
+        mock_dspy_optimizer.predict_match.return_value = (0, {})
+        # Judge returns the rubric used for gating
+        judge_rubric = {
+            "topic_alignment": 0.91,
+            "intent_fit": 0.88,
+            "entity_overlap": 0.7,
+            "temporal_relevance": 0.4,
+            "decision": "accept",
+            "reasoning": "valid",
+        }
+        mock_dspy_optimizer.judge_candidate.return_value = judge_rubric
         mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
         mock_path_exists.return_value = False
 
@@ -289,12 +288,11 @@ class TestCategorizationService:
         )
 
         assert best_match == sample_wordpress_content
-        assert isinstance(rubric, dict)
-        assert rubric.get("decision") == "accept"
-        assert rubric.get("topic_alignment") == 0.91
+        assert rubric == judge_rubric
         mock_dspy_optimizer.predict_match.assert_called_once_with(
             sample_taxonomy_page, [sample_wordpress_content]
         )
+        mock_dspy_optimizer.judge_candidate.assert_called_once()
 
     @patch("src.services.categorization.Path.exists")
     @patch("src.services.categorization.DSPyOptimizer")

@@ -72,7 +72,6 @@ def sample_categorization_result(
         id=uuid4(),
         content_id=sample_wordpress_content.id,
         category="Technology",
-        confidence=0.95,
         batch_id="test-batch-123",
     )
 
@@ -124,7 +123,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     mock_completion_response.choices = [
         mocker.Mock(
             message=mocker.Mock(
-                content='{"category": "Technology", "confidence": 0.95, "reasoning": "test"}'
+                content='{"category": "Technology", "reasoning": "test"}'
             )
         )
     ]
@@ -149,7 +148,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.files.create.return_value = mock_file
 
     mock_file_content = mocker.Mock()
-    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Technology\\", \\"confidence\\": 0.95}"}}]}}}'
+    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Technology\\"}"}}]}}}'
     mock_client.files.content.return_value = mock_file_content
 
     return mock_client

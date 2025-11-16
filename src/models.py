@@ -92,7 +92,6 @@ class CategorizationResult(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     content_id: UUID
     category: str
-    confidence: float = Field(ge=0.0, le=1.0)
     batch_id: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -115,6 +114,9 @@ class MatchingResult(BaseModel):
     failed_at_stage: str | None = Field(
         default=None, description="Stage where matching failed (for debugging)"
     )
+    rubric: dict[str, Any] | None = Field(
+        default=None, description="Rubric scores and decision from judge"
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime | None = None
 
@@ -126,7 +128,6 @@ class ExportRow(BaseModel):
 
     source_url: str
     target_url: str
-    confidence: float
     category: str
     similarity_score: float
     match_stage: str | None = None

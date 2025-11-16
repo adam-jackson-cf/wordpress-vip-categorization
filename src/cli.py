@@ -358,7 +358,7 @@ def match(
         f"- Semantic matching: {'enabled' if settings.enable_semantic_matching else 'disabled'} (threshold: {settings.similarity_threshold})"
     )
     click.echo(
-        f"- LLM categorization: {'enabled' if settings.enable_llm_categorization else 'disabled'} (threshold: {settings.llm_confidence_threshold})"
+        f"- LLM categorization: {'enabled' if settings.enable_llm_categorization else 'disabled'} (rubric-gated)"
     )
 
     stats = workflow_service.run_matching_workflow(
@@ -471,8 +471,7 @@ def full_run(
         f"(threshold={settings.similarity_threshold})"
     )
     click.echo(
-        f"    LLM stage: {'enabled' if settings.enable_llm_categorization else 'disabled'} "
-        f"(threshold={settings.llm_confidence_threshold})"
+        f"    LLM stage: {'enabled' if settings.enable_llm_categorization else 'disabled'} (rubric-gated)"
     )
 
     stats = workflow_service.run_matching_workflow(batch_mode=batch)
@@ -512,6 +511,88 @@ def export(output: Path, unmatched_only: bool, min_similarity: float | None) -> 
 
     click.echo(f"✓ Exported {count} rows to {output}")
 
+
+@cli.command(name="evaluate-matcher")
+@click.option(
+    "--matcher-path",
+    type=click.Path(path_type=Path),
+    help="Optional path to a matcher JSON to load before evaluation (defaults to latest if present)",
+)
+def evaluate_matcher(matcher_path: Path | None) -> None:
+    """Evaluate current database results and (optionally) load a matcher for downstream runs."""
+    settings = get_settings()
+    db = SupabaseClient(settings)
+
+    if matcher_path:
+        try:
+            optimizer = DSPyOptimizer(settings, db)
+            optimizer.load_optimized_model(str(matcher_path))
+            click.echo(f"Loaded matcher from {matcher_path} for subsequent runs")
+        except Exception as exc:
+            click.echo(f"⚠ Warning: Could not load matcher {matcher_path}: {exc}", err=True)
+
+    evaluator = Evaluator(db)
+    results = evaluator.evaluate_all()
+
+    click.echo("=== Matcher Evaluation (DB snapshot) ===")
+    click.echo(f"- Categorization: {results['categorization']}")
+    click.echo(f"- Matching: {results['matching']}")
+    click.echo(f"- Rubric: {results['rubric']}")
+
+
+@cli.command(name="compare-matchers")
+@click.option(
+    "--baseline",
+    type=click.Path(path_type=Path),
+    required=False,
+    help="Baseline matcher path (omit to use current latest)",
+)
+@click.option(
+    "--candidate",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Candidate matcher path to compare against baseline",
+)
+def compare_matchers(baseline: Path | None, candidate: Path) -> None:
+    """Compare baseline vs candidate by reporting current DB evaluation before and after load."""
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    evaluator = Evaluator(db)
+
+    # Baseline snapshot
+    base_metrics = evaluator.evaluate_all()
+    click.echo("=== Baseline (before) ===")
+    click.echo(f"- Categorization: {base_metrics['categorization']}")
+    click.echo(f"- Matching: {base_metrics['matching']}")
+    click.echo(f"- Rubric: {base_metrics['rubric']}")
+
+    # Load candidate
+    try:
+        optimizer = DSPyOptimizer(settings, db)
+        optimizer.load_optimized_model(str(candidate))
+        click.echo(f"\nLoaded candidate matcher from {candidate}")
+    except Exception as exc:
+        click.echo(f"Error: Could not load candidate matcher {candidate}: {exc}", err=True)
+        sys.exit(1)
+
+    # Candidate snapshot (note: metrics reflect DB state; use workflow runs to generate fresh data)
+    cand_metrics = evaluator.evaluate_all()
+    click.echo("\n=== Candidate (after load) ===")
+    click.echo(f"- Categorization: {cand_metrics['categorization']}")
+    click.echo(f"- Matching: {cand_metrics['matching']}")
+    click.echo(f"- Rubric: {cand_metrics['rubric']}")
+
+    # Simple deltas for quick read
+    def _delta(a: float, b: float) -> float:
+        return round(b - a, 4)
+
+    click.echo("\n=== Delta (candidate - baseline) ===")
+    click.echo(
+        f"- Match rate Δ: {_delta(base_metrics['matching'].get('match_rate', 0.0), cand_metrics['matching'].get('match_rate', 0.0))}"
+    )
+    click.echo(
+        f"- Avg similarity Δ: {_delta(base_metrics['matching'].get('avg_similarity', 0.0), cand_metrics['matching'].get('avg_similarity', 0.0))}"
+    )
 
 @cli.command()
 def stats() -> None:

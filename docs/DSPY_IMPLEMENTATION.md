@@ -20,15 +20,14 @@ Required columns:
 
 Optional columns:
 - `taxonomy_keywords`: Comma-separated keywords (defaults to "None" if missing)
-- `confidence`: Confidence score 0-1 (defaults to 0.0 if missing)
 - `reasoning`: Explanation text (defaults to empty string if missing)
 
 Example:
 ```csv
-taxonomy_category,taxonomy_description,taxonomy_keywords,content_summaries,best_match_index,confidence,reasoning
+taxonomy_category,taxonomy_description,taxonomy_keywords,content_summaries,best_match_index,reasoning
 Technology,Tech content,tech innovation,"0. Title: Tech Post
    URL: https://example.com/tech
-   Preview: Content about technology...",0,0.9,"Good semantic match"
+   Preview: Content about technology...",0,"Good semantic match"
 ```
 
 ### JSON Format
@@ -43,7 +42,6 @@ Array of objects with the same fields as CSV columns:
     "taxonomy_keywords": "tech, innovation",
     "content_summaries": "0. Title: Tech Post\n   URL: https://example.com/tech\n   Preview: Content...",
     "best_match_index": 0,
-    "confidence": 0.9,
     "reasoning": "Good match"
   }
 ]
@@ -127,6 +125,8 @@ Located in `src/optimization/dspy_optimizer.py`.
 - `optimize_with_gepa(...)`: GEPA optimization with configurable budget
 - `optimize_with_dataset(...)`: Dataset-based optimization supporting multiple optimizer types
 - `optimize(...)`: Quick BootstrapFewShot optimization (existing method)
+- `predict_match(taxonomy, content_items) -> (index, rubric)`: Selector returns best index; rubric hints are not used for gating
+- `judge_candidate(taxonomy, candidate) -> rubric`: Judge scores a single candidate with rubric fields used for deterministic gating
 
 ### Model Persistence
 
@@ -146,8 +146,14 @@ The `prepare_training_data()` method converts database matching results into DSP
 
 The `accuracy_metric()` method:
 - Checks exact match on `best_match_index`
-- Applies confidence penalty for overconfident wrong predictions
 - Returns score between 0 and 1
+
+### Selector vs. Judge
+
+- Selector (DSPy): Chooses `best_match_index` from candidate summaries. It may emit reasoning/rubric-style hints, but these are not trusted for acceptance.
+- Judge (rubric scorer): Independently scores the selector’s chosen candidate, returning:
+  - `topic_alignment`, `intent_fit`, `entity_overlap`, `temporal_relevance`, `decision`, and `reasoning`.
+- The workflow feeds the judge’s rubric into `_accept_by_rubric()` for deterministic gating. Selector output alone never triggers acceptance.
 
 ## Best Practices
 

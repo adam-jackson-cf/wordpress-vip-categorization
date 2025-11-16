@@ -81,9 +81,6 @@ class Settings(BaseSettings):
         default=25,
         description="Semantic neighbors fetched from Supabase pgvector per taxonomy row",
     )
-    llm_confidence_threshold: float = Field(
-        default=0.9, description="Minimum confidence score for LLM categorization"
-    )
     llm_candidate_limit: int = Field(
         default=10,
         description="Max semantic candidates forwarded to the LLM fallback stage",
@@ -168,14 +165,6 @@ class Settings(BaseSettings):
         """Validate similarity threshold is between 0 and 1."""
         if not 0 <= v <= 1:
             raise ValueError("Similarity threshold must be between 0 and 1")
-        return v
-
-    @field_validator("llm_confidence_threshold")
-    @classmethod
-    def validate_llm_threshold(cls, v: float) -> float:
-        """Validate LLM confidence threshold is between 0 and 1."""
-        if not 0 <= v <= 1:
-            raise ValueError("LLM confidence threshold must be between 0 and 1")
         return v
 
     @field_validator("llm_candidate_min_score")

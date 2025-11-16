@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS categorization_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     content_id UUID NOT NULL REFERENCES wordpress_content(id) ON DELETE CASCADE,
     category TEXT NOT NULL,
-    confidence FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     batch_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -66,6 +65,7 @@ CREATE TABLE IF NOT EXISTS matching_results (
     similarity_score FLOAT NOT NULL CHECK (similarity_score >= 0 AND similarity_score <= 1),
     match_stage TEXT,
     failed_at_stage TEXT,
+    rubric JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(taxonomy_id)
@@ -83,13 +83,11 @@ SELECT
     COALESCE(wc.url, '') as target_url,
     COALESCE(mr.similarity_score, 0.0) as similarity_score,
     tp.category,
-    COALESCE(cr.confidence, 0.0) as confidence,
     mr.match_stage,
     mr.failed_at_stage
 FROM taxonomy_pages tp
 LEFT JOIN matching_results mr ON tp.id = mr.taxonomy_id
 LEFT JOIN wordpress_content wc ON mr.content_id = wc.id
-LEFT JOIN categorization_results cr ON wc.id = cr.content_id
 ORDER BY tp.category, mr.similarity_score DESC NULLS LAST;
 
 -- Vector similarity helper for Supabase RPC usage
