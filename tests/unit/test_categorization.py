@@ -229,6 +229,50 @@ class TestCategorizationService:
         assert stats == {"matched": 1, "below_threshold": 0, "total": 1}
         mock_supabase_client.upsert_matching.assert_called_once()
 
+    def test_accept_by_rubric_skips_entity_without_keywords(
+        self,
+        mocker,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """Entity threshold should only apply when taxonomy keywords exist."""
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.keywords = []
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 0.9,
+            "intent_fit": 0.9,
+            "entity_overlap": 0.1,
+            "temporal_relevance": 0.9,
+        }
+
+        assert service._accept_by_rubric(sample_taxonomy_page, rubric)
+
+    def test_accept_by_rubric_enforces_entity_with_keywords(
+        self,
+        mocker,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """When keywords are present, low entity overlap should fail."""
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.keywords = ["ai"]
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 0.9,
+            "intent_fit": 0.9,
+            "entity_overlap": 0.1,
+            "temporal_relevance": 0.9,
+        }
+
+        assert not service._accept_by_rubric(sample_taxonomy_page, rubric)
+
     def test_categorize_for_matching_marks_review(
         self,
         mock_settings: Settings,

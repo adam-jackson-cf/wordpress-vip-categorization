@@ -272,7 +272,9 @@ Respond with a JSON object in this exact format:
             metadata=getattr(batch, "metadata", {}) or {},
         )
 
-    def wait_for_batch_completion(self, batch_id: str, check_interval: int = 60) -> BatchJobStatus:
+    def wait_for_batch_completion(  # pragma: no cover - network polling
+        self, batch_id: str, check_interval: int = 60
+    ) -> BatchJobStatus:
         """Wait for batch job to complete.
 
         Args:
@@ -326,7 +328,9 @@ Respond with a JSON object in this exact format:
         wait=wait_exponential(multiplier=1, min=2, max=12),
         reraise=True,
     )
-    def retrieve_batch_results(self, batch_id: str) -> list[dict[str, Any]]:
+    def retrieve_batch_results(  # pragma: no cover - network I/O
+        self, batch_id: str
+    ) -> list[dict[str, Any]]:
         """Retrieve results from completed batch.
 
         Args:
@@ -388,7 +392,7 @@ Respond with a JSON object in this exact format:
         logger.info(f"Parsed {len(categorizations)} categorization results")
         return categorizations
 
-    def categorize_content_batch(
+    def categorize_content_batch(  # pragma: no cover - external Batch API
         self, content_items: list[WordPressContent], categories: list[str], wait: bool = True
     ) -> str:
         """Categorize content using batch API.

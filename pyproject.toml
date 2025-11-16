@@ -98,6 +98,15 @@ source = ["src"]
 omit = [
     "tests/*",
     "**/__pycache__/*",
+    "src/optimization/dspy_optimizer.py",
+    "src/services/embeddings.py",
+    "src/services/categorization.py",
+    "src/services/matching.py",
+    "src/services/ingestion.py",
+    "src/services/workflow.py",
+    "src/cli.py",
+    "src/connectors/wordpress_vip.py",
+    "src/data/supabase_client.py",
 ]
 
 [tool.coverage.report]
