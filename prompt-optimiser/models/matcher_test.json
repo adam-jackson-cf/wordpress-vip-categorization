@@ -1,0 +1,153 @@
+{
+  "predict.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "augmented": true,
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: WordPress 6.9 Beta 3\n   URL: https://wordpress.org/news/2025/11/wordpress-6-9-beta-3/\n   Preview: WordPress 6.9 Beta 3 is available for download and testing!    This beta version of the WordPress software is still under development. Please don’t install, run, or test this version of WordPress on production or missio...\n\n1. Title: Summary, Dev Chat, November 12, 2025\n   URL: https://make.wordpress.org/core/2025/11/12/summary-dev-chat-november-12-2025/\n   Preview: Start of the meeting in SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/. The WordPress community has its own Slack Channel at https://make.wordpress.org/chat/., facilitated by @amykamala 🔗 Agen...\n\n2. Title: Understanding digital marketing: explaining the basics\n   URL: https://woocommerce.com/posts/what-is-digital-marketing/\n   Preview: When you’re running an online store, digital marketing is at the center of nearly everything you do. Acquiring customers takes more than just a website — it requires a far-reaching online presence that repeatedly reache...\n\n3. Title: Abilities API in WordPress 6.9\n   URL: https://make.wordpress.org/core/2025/11/10/abilities-api-in-wordpress-6-9/\n   Preview: WordPress 6.9 introduces the Abilities APIAPI An API or Application Programming Interface is a software intermediary that allows programs to interact with each other and share data in limited, clearly defined ways., a ne...\n\n4. Title: Cart abandonment is quietly killing your revenue – here’s how to get it back\n   URL: https://woocommerce.com/posts/abandoned-cart-emails/\n   Preview: Every business knows cart abandonment only too well. In fact, just three out of ten shoppers who start the checkout process actually go ahead and buy. Giving up at the last minute is revenue lost under the radar, every...\n\n5. Title: Summary, Dev Chat, October 1, 2025\n   URL: https://make.wordpress.org/core/2025/10/02/summary-dev-chat-october-1-2025/\n   Preview: Start of the meeting in SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/. The WordPress community has its own Slack Channel at https://make.wordpress.org/chat/., facilitated by @benjamin_zekavic...",
+        "reasoning": "The content of the article about WordPress 6.9 Beta 3 directly aligns with the taxonomy category and description, providing relevant news and updates about WordPress.",
+        "best_match_index": 0,
+        "topic_alignment": 1.0,
+        "intent_fit": 1.0,
+        "entity_overlap": 1.0,
+        "temporal_relevance": 1.0,
+        "decision": "accept"
+      },
+      {
+        "augmented": true,
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: WordPress 6.9 Beta 2\n   URL: https://wordpress.org/news/2025/10/wordpress-6-9-beta-2/\n   Preview: WordPress 6.9 Beta 2 is now ready for testing!    This beta version of the WordPress software is under development. Please do not install, run, or test this version of WordPress on production or mission-critical website...\n\n1. Title: Styling accordions in WordPress 6.9\n   URL: https://developer.wordpress.org/news/2025/10/styling-accordions-in-wordpress-6-9/\n   Preview: An Accordion block is officially coming to WordPress. If you’re a theme designer like me, you’re probably breaking out the fireworks already. Boom! Pop! Hooray!    And if you’re anything like me, you’ve likely already b...\n\n2. Title: WordPress 6.7 Beta 2\n   URL: https://wordpress.org/news/2024/10/wordpress-6-7-beta-2/\n   Preview: WordPress 6.7 Beta 2 is now ready for testing!    This beta version of the WordPress software is under development. Please do not install, run, or test this version of WordPress on production or mission-critical website...\n\n3. Title: Women in WordPress: A Recap of Our International Women’s Day WordPress Events\n   URL: https://make.wordpress.org/community/2025/05/14/women-in-wordpress-a-recap-of-our-international-womens-day-wordpress-events/\n   Preview: The Women in Tech initiative started as a simple idea but turned into a powerful global movement, empowering women in the WordPress community to step into leadership roles. As part of the Make WordPress Community Team’s...\n\n4. Title: Introducing the WordPress Abilities API\n   URL: https://developer.wordpress.org/news/2025/11/introducing-the-wordpress-abilities-api/\n   Preview: Since the official announcement of the WordPress Core AI team, one of the most exciting projects this team has been working on is the brand new Abilities API. The Abilities API is a first-class, cross-context functional...\n\n5. Title: X-post: Online monthly Docs Team Contributor Day July 22, 2025\n   URL: https://make.wordpress.org/community/2025/06/24/xpost-online-monthly-docs-team-contributor-day-july-22-2025/\n   Preview: X-comment from +make.wordpress.org/docs: Comment on Online monthly Docs Team Contributor Day July 22, 2025 Login to ReplyTo-do...\n\n6. Title: WordPress Academy: A Case Study from WordCamp Krakow\n   URL: https://make.wordpress.org/community/2025/07/29/wordpress-academy-a-case-study-from-wordcamp-krakow/\n   Preview: WordCampWordCamp WordCamps are casual, locally-organized conferences covering everything related to WordPress. They're one of the places where the WordPress community comes together to teach one another what they’ve lear...\n\n7. Title: Summary, Dev Chat, October 8, 2025\n   URL: https://make.wordpress.org/core/2025/10/08/summary-dev-chat-october-8-2025/\n   Preview: Start of the meeting in SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/. The WordPress community has its own Slack Channel at https://make.wordpress.org/chat/., facilitated by @audrasjb. 🔗 Agen...",
+        "reasoning": "The content discusses the upcoming WordPress 6.9 release, which aligns well with the taxonomy description of WordPress news and information.",
+        "best_match_index": 0,
+        "topic_alignment": 1.0,
+        "intent_fit": 1.0,
+        "entity_overlap": 1.0,
+        "temporal_relevance": 1.0,
+        "decision": "accept"
+      },
+      {
+        "augmented": true,
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: Building a book review site with Block Bindings, part 2: Queries, patterns, and templates\n   URL: https://developer.wordpress.org/news/2024/06/building-a-book-review-site-with-block-bindings-part-2-queries-patterns-and-templates/\n   Preview: It’s been a little over a month since you and I built a book review site using custom fields together. In Part 1 of this series, we envisioned a client project with constraints that wouldn’t give you the time or resourc...\n\n1. Title: WordPress 6.8.3 Release\n   URL: https://wordpress.org/news/2025/09/wordpress-6-8-3-release/\n   Preview: WordPress 6.8.3 is now available!    This is a security release that features two fixes.    Because this is a security release, it is recommended that you update your sites immediately.    You can download WordPress 6.8...\n\n2. Title: WordPress 6.7 “Rollins”\n   URL: https://wordpress.org/news/2024/11/rollins/\n   Preview: Each WordPress release celebrates an artist who has made an indelible mark on the world of music. WordPress 6.7, code-named “Rollins,” pays tribute to the legendary jazz saxophonist Sonny Rollins. Known as one of th...\n\n3. Title: WordPress 6.8 Beta 1\n   URL: https://wordpress.org/news/2025/03/wordpress-6-8-beta-1/\n   Preview: WordPress 6.8 Beta 1 is ready for download and testing!    This beta version of the WordPress software is under development. Please do not install, run, or test this version of WordPress on production or mission-critica...\n\n4. Title: Summary, Dev Chat, November 5, 2025\n   URL: https://make.wordpress.org/core/2025/11/05/summary-dev-chat-november-5-2025/\n   Preview: Start of the meeting in SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/. The WordPress community has its own Slack Channel at https://make.wordpress.org/chat/., facilitated by @amykamala 🔗 Agen...\n\n5. Title: X-post: Online monthly Docs Team Contributor Day September 23, 2025\n   URL: https://make.wordpress.org/core/2025/09/18/xpost-online-monthly-docs-team-contributor-day-september-23-2025/\n   Preview: X-comment from +make.wordpress.org/docs: Comment on Online monthly Docs Team Contributor Day September 23, 2025 Login to Reply...\n\n6. Title: Expanding Our Code of Conduct to Protect Private Conversations\n   URL: https://wordpress.org/news/2024/10/protect-private-conversations/\n   Preview: At the heart of our community is our shared pledge to create a space that is harassment-free, welcoming, and inclusive for all. Our Community Code of Conduct already outlines a clear set of expectations, while also prov...\n\n7. Title: X-post: Week in Test: November 3, 2025\n   URL: https://make.wordpress.org/core/2025/10/31/xpost-week-in-test-november-3-2025/\n   Preview: X-comment from +make.wordpress.org/test: Comment on Week in Test: November 3, 2025 Login to Reply...",
+        "reasoning": "The content focuses on a specific WordPress release, providing relevant updates and information that align with the taxonomy description.",
+        "best_match_index": 1,
+        "topic_alignment": 0.9,
+        "intent_fit": 0.9,
+        "entity_overlap": 0.8,
+        "temporal_relevance": 0.8,
+        "decision": "accept"
+      },
+      {
+        "augmented": true,
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: WordPress 6.7 Release Candidate 3\n   URL: https://wordpress.org/news/2024/11/wordpress-6-7-release-candidate-3/\n   Preview: The third release candidate (RC3) for WordPress 6.7 is ready for download and testing!    This version of the WordPress software is under development. Please do not install, run, or test this version of WordPress on pro...\n\n1. Title: Registering custom aspect ratios in WordPress 6.6\n   URL: https://developer.wordpress.org/news/2024/08/registering-custom-aspect-ratios-in-wordpress-6-6/\n   Preview: With all the major theming features that landed in WordPress 6.6, it’s easy to overlook some of the smaller quality-of-life enhancements. One of those is custom aspect ratio support via theme.json.    Before 6.6, you ha...\n\n2. Title: Coding Standard Proposal: Make it explicit that PHP files must use the .php extension\n   URL: https://make.wordpress.org/core/2025/10/23/coding-standard-proposal-make-it-explicit-that-php-files-must-use-the-php-extension/\n   Preview: The current WordPress Coding Standard does not specify which file extensions should be used for PHPPHP The web scripting language in which WordPress is primarily architected. WordPress requires PHP 7.4 or higher files. T...\n\n3. Title: Portland Welcomes WordCamp US 2025: A Community Gathering\n   URL: https://wordpress.org/news/2025/08/portland-welcomes-wcus-2025/\n   Preview: A full house of attendees gathered in Portland, Oregon, for WordCamp US 2025, with thousands more tuning in online. Over four days, the flagship WordPress event brought together contributors, innovators, and community...\n\n4. Title: Registering block templates via plugins in WordPress 6.7\n   URL: https://developer.wordpress.org/news/2024/08/registering-block-templates-via-plugins-in-wordpress-6-7/\n   Preview: WordPress 6.7 development is moving along, and one of the biggest features of the release has now landed in the Gutenberg plugin: block templates via plugins.    If you’ve ever built a plugin with front-end template out...\n\n5. Title: The power of personalization: Converting browsers into buyers\n   URL: https://woocommerce.com/posts/personalized-email-marketing/\n   Preview: When it comes to ecommerce, personalization isn’t just a nice-to-have, it’s essential for creating a stronger customer brand bond. It also elevates the seamlessness of your marketing, so consumers come back for more and...\n\n6. Title: Women in WordPress: A Recap of Our International Women’s Day WordPress Events\n   URL: https://make.wordpress.org/community/2025/05/14/women-in-wordpress-a-recap-of-our-international-womens-day-wordpress-events/\n   Preview: The Women in Tech initiative started as a simple idea but turned into a powerful global movement, empowering women in the WordPress community to step into leadership roles. As part of the Make WordPress Community Team’s...\n\n7. Title: Dev Blog editorial meeting summary, October 2, 2025\n   URL: https://make.wordpress.org/core/2025/10/07/dev-blog-editorial-meeting-summary-october_2-2025/\n   Preview: Summary of the WordPress Developer Blogblog (versus network, site) meeting, which took place in the  #core-dev-blog channel on the Make WordPress SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/...",
+        "reasoning": "The content summary for \"Portland Welcomes WordCamp US 2025\" directly relates to WordPress news and events, aligning well with the taxonomy description and keywords.",
+        "best_match_index": 3,
+        "topic_alignment": 0.9,
+        "intent_fit": 0.8,
+        "entity_overlap": 0.5,
+        "temporal_relevance": 0.7,
+        "decision": "accept"
+      },
+      {
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: Dropping security updates for WordPress versions 4.1 through 4.6\n   URL: https://wordpress.org/news/2025/06/dropping-security-updates-for-wordpress-versions-4-1-through-4-6/\n   Preview: As of July 2025, the WordPress Security Team will no longer provide security updates for WordPress versions 4.1 through 4.6.    These versions were first released nine or more years ago and over 99% of WordPress install...\n\n1. Title: Holiday Break\n   URL: https://wordpress.org/news/2024/12/holiday-break/\n   Preview: In order to give myself and the many tired volunteers around WordPress.org a break for the holidays, we’re going to be pausing a few of the free services currently offered:     New account registrations on WordPress.org...\n\n2. Title: What’s new in Gutenberg 22.0? (5 November)\n   URL: https://make.wordpress.org/core/2025/11/05/whats-new-in-gutenberg-22-0-05-november/\n   Preview: “What’s new in GutenbergGutenberg The Gutenberg project is the new Editor Interface for WordPress. The editor improves the process and experience of creating new content, making writing rich content much simpler. It uses...\n\n3. Title: WordPress 6.7.1 Maintenance Release\n   URL: https://wordpress.org/news/2024/11/wordpress-6-7-1-maintenance-release/\n   Preview: WordPress 6.7.1 is now available!    This minor release features 16 bug fixes throughout Core and the Block Editor.    WordPress 6.7.1 is a fast-follow release with a strict focus on bugs introduced in WordPress 6.7. Th...\n\n4. Title: WordPress 6.8 “Cecil”\n   URL: https://wordpress.org/news/2025/04/cecil/\n   Preview: Each WordPress release celebrates an artist who has left an indelible mark on music.  WordPress 6.8, code-named “Cecil,” honors the legendary pianist and jazz pioneer Cecil Taylor.    Classically trained yet relentl...\n\n5. Title: Community Team September 2025 Meeting Recap\n   URL: https://make.wordpress.org/community/2025/09/11/community-team-september-2025-meeting-recap/\n   Preview: Attendance: @marutim @patricia70 @zinanga @Maruti @Webtechpooja @devmuhib @nilovelez @Mosescursor @muddassirnasim @alexcu21 @clk87    Notes:     This recap is a summary of the Community Team’s monthly meeting. It will co...",
+        "best_match_index": 0,
+        "reasoning": "Article addresses the taxonomy description with concrete updates."
+      },
+      {
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: WordPress 6.9 Release Candidate Phase\n   URL: https://make.wordpress.org/core/2025/11/11/wordpress-6-9-release-candidate-phase/\n   Preview: Now that WordPress 6.9 has entered the Release Candidaterelease candidate One of the final stages in the version release cycle, this version signals the potential to be a final release to the public. Also see alpha (beta...\n\n1. Title: WordCamp US 2025: See You in Portland, Oregon!\n   URL: https://wordpress.org/news/2025/06/wordcamp-us-2025-see-you-in-portland-oregon/\n   Preview: WordCamp US 2025 is heading to vibrant Portland, Oregon, from August 26–29, 2025! Join fellow open source enthusiasts, developers, designers, and WordPress professionals from across the United States and around the...\n\n2. Title: Heading Block CSS Specificity Fix in WordPress 6.9\n   URL: https://make.wordpress.org/core/2025/11/12/heading-block-css-specificity-fix-in-wordpress-6-9/\n   Preview: WordPress 6.9 fixes a specificity issue with the Heading block’s background padding. Previously, padding styles applied to headings with backgrounds were affecting other blocks that use heading elements, such as the Acco...\n\n3. Title: WordCamp Islamabad 2025 – A Celebration of Learning, Contribution, and Community\n   URL: https://make.wordpress.org/community/2025/10/28/wordcamp-islamabad-2025-a-celebration-of-learning-contribution-and-community/\n   Preview: WordCampWordCamp WordCamps are casual, locally-organized conferences covering everything related to WordPress. They're one of the places where the WordPress community comes together to teach one another what they’ve lear...\n\n4. Title: The 2025 WooCommerce holiday gift guide\n   URL: https://woocommerce.com/posts/2025-woocommerce-holiday-gift-guide/\n   Preview: For the past four years, we’ve curated a gift guide to feature some awesome Woo stores, and to offer a fun selection of gift ideas that span a broad range of geographies and interests. This year’s guide is a result of n...\n\n5. Title: X-post: Criteria for Creating or Migrating Repositories under the WordPress GitHub Organization\n   URL: https://make.wordpress.org/community/2025/06/04/xpost-criteria-for-creating-or-migrating-repositories-under-the-wordpress-github-organization/\n   Preview: X-comment from +make.wordpress.org/project: Comment on Criteria for Creating or Migrating Repositories under the WordPress GitHub Organization Login to ReplyTo-do...\n\n6. Title: US tariff and shipping policy changes: Navigating the end of the de minimis exemption\n   URL: https://woocommerce.com/posts/us-tariff-and-shipping-policy-changes-navigating-the-end-of-the-de-minimis-exemption/\n   Preview: On August 29, 2025, the US government suspended the de minimis exemption for goods imported from all countries. This exemption previously allowed international shipments valued under $800 to enter the US duty-free and w...\n\n7. Title: FHIR-Friendly Knowledge Base\n   URL: https://wpvip.com/blog/fhir-knowledge-base\n   Preview: Healthcare engineers mapped custom fields to FHIR resources, enabling providers to embed care pathways alongside Epic patient context....\n\n8. Title: How to grow revenue with automation and personalization\n   URL: https://woocommerce.com/posts/automate-personalization/\n   Preview: Operational efficiency and effective customer-facing processes are top priorities for growing ecommerce businesses. One of the best ways a business can boost these areas is by embracing automation, personalization, and...",
+        "best_match_index": 1,
+        "reasoning": "Matches wordpress focus keywords (wordpress, cms, blogging, open source)."
+      },
+      {
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: Integrated Returns Portal\n   URL: https://woocommerce.com/posts/integrated-returns-portal\n   Preview: A D2C apparel brand embedded a self-service returns portal using WooCommerce, Happy Returns, and Klaviyo status notifications....\n\n1. Title: Headless WooCommerce Storefront Accelerates Checkout\n   URL: https://woocommerce.com/posts/headless-b2b-checkout-upgrade\n   Preview: A B2B retailer rebuilt its WooCommerce experience with a headless architecture, cutting checkout time in half while keeping Stripe, Adyen, and Avalara integrations intact....\n\n2. Title: Please Welcome Mary Hubbard\n   URL: https://wordpress.org/news/2024/10/proud-mary/\n   Preview: We’re proud to announce that Mary Hubbard (@4thhubbard) has resigned as the Head of TikTok Americas, Governance and Experience, and will be starting as the next Executive Director of WordPress.org on October 21st!...\n\n3. Title: Shaping Tomorrow at WordCamp Asia 2025\n   URL: https://wordpress.org/news/2025/02/shaping-tomorrow-at-wordcamp-asia-2025/\n   Preview: Over 1,400 attendees from 71 countries gathered at the Philippine International Convention Center in Manila, and nearly 15,000 more joined online, for WordCamp Asia 2025.     It’s the people. It’s the friendships an...\n\n4. Title: What’s new for developers? (September 2025)\n   URL: https://developer.wordpress.org/news/2025/09/whats-new-for-developers-september-2025/\n   Preview: Table of Contents    HighlightsNew Composer package for the Abilities APIWordPress gets an Accordion blockStyle input elements with theme.jsonPlugins and ToolsData ViewsCreate Block: Variants can define their own files...\n\n5. Title: Maintenance Releases for WordPress branches 4.7 to 6.7\n   URL: https://wordpress.org/news/2025/08/maintenance-releases-for-wordpress-branches-4-7-to-6-7/\n   Preview: Following on from the WordPress 6.8.2 maintenance release last month, the included update to the root security certificate bundle has been backported to all branches back to 4.7. This ensures that when your site perform...\n\n6. Title: What’s new for developers? (October 2024)\n   URL: https://developer.wordpress.org/news/2024/10/whats-new-for-developers-october-2024/\n   Preview: The WordPress 6.7 release cycle is in full swing, with Beta 2 released earlier this week on October 8. The official release is scheduled for November 12 and will introduce many new features, including the Twenty Twenty-...",
+        "best_match_index": 5,
+        "reasoning": "Strong overlap between taxonomy keywords and the article’s subject matter."
+      },
+      {
+        "taxonomy_category": "WordPress",
+        "taxonomy_description": "WordPress news and information",
+        "taxonomy_keywords": "wordpress, cms, blogging, open source",
+        "content_summaries": "0. Title: Performance Budget for Holiday Drops\n   URL: https://wpvip.com/blog/performance-budget-holiday\n   Preview: The performance team set Core Web Vitals budgets for seasonal WooCommerce landers, combining edge caching with background image optimization....\n\n1. Title: Summary, Dev Chat, November 12, 2025\n   URL: https://make.wordpress.org/core/2025/11/12/summary-dev-chat-november-12-2025/\n   Preview: Start of the meeting in SlackSlack Slack is a Collaborative Group Chat Platform https://slack.com/. The WordPress community has its own Slack Channel at https://make.wordpress.org/chat/., facilitated by @amykamala 🔗 Agen...\n\n2. Title: What’s new for developers? (October 2024)\n   URL: https://developer.wordpress.org/news/2024/10/whats-new-for-developers-october-2024/\n   Preview: The WordPress 6.7 release cycle is in full swing, with Beta 2 released earlier this week on October 8. The official release is scheduled for November 12 and will introduce many new features, including the Twenty Twenty-...\n\n3. Title: X-post: Criteria for Creating or Migrating Repositories under the WordPress GitHub Organization\n   URL: https://make.wordpress.org/community/2025/06/04/xpost-criteria-for-creating-or-migrating-repositories-under-the-wordpress-github-organization/\n   Preview: X-comment from +make.wordpress.org/project: Comment on Criteria for Creating or Migrating Repositories under the WordPress GitHub Organization Login to ReplyTo-do...\n\n4. Title: Website security checks – WP-CLI for site owners and administrators\n   URL: https://developer.wordpress.org/news/2024/09/website-security-checks-wp-cli-for-site-owners-and-administrators/\n   Preview: If you are a website owner or administrator, one of many things you do is keep this website safe and protected. To achieve it, you need all the tools at your disposal to help you be productive and ensure you’re doing it...\n\n5. Title: Celebrating Kim Parsell: 2025 WordCamp US Scholarship Applications Open\n   URL: https://wordpress.org/news/2025/07/kim-parsell-2025-wcus-scholarship-applications-open/\n   Preview: The WordPress Foundation is pleased to announce the return of the Kim Parsell Memorial Scholarship for WordCamp US 2025. Applications are being accepted until July 25, 2025.               Remembering Kim Parsell...\n\n6. Title: Secure Imaging Download Center\n   URL: https://wpvip.com/blog/imaging-download-center\n   Preview: Radiology teams rely on presigned S3 URLs and expiring tokens to share CT scans with referring physicians inside WordPress....\n\n7. Title: WordPress 6.9 Release Candidate 1\n   URL: https://wordpress.org/news/2025/11/wordpress-6-9-release-candidate-1/\n   Preview: The first Release Candidate (“RC1”) for WordPress 6.9 is ready for download and testing!    This version of the WordPress software is still under development. Please do not install, run, or test this version of WordPres...",
+        "best_match_index": 5,
+        "reasoning": "Matches wordpress focus keywords (wordpress, cms, blogging, open source)."
+      }
+    ],
+    "signature": {
+      "instructions": "Match a taxonomy page to the most relevant content page with rubric scoring.",
+      "fields": [
+        {
+          "prefix": "Taxonomy Category:",
+          "description": "Category of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Description:",
+          "description": "Description of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Keywords:",
+          "description": "Keywords for the taxonomy page (comma-separated)"
+        },
+        {
+          "prefix": "Content Summaries:",
+          "description": "List of available content pages with index, title, URL, and preview"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Brief explanation of why this decision was chosen"
+        },
+        {
+          "prefix": "Best Match Index:",
+          "description": "Index of the best matching content page, or -1 if no good match"
+        },
+        {
+          "prefix": "Topic Alignment:",
+          "description": "Topical alignment score 0-1 (coverage of taxonomy topic)"
+        },
+        {
+          "prefix": "Intent Fit:",
+          "description": "Intent alignment score 0-1 (does the content's purpose match taxonomy intent)"
+        },
+        {
+          "prefix": "Entity Overlap:",
+          "description": "Named entity/keyword overlap score 0-1 (0 if none are present)"
+        },
+        {
+          "prefix": "Temporal Relevance:",
+          "description": "Temporal relevance score 0-1 (use 0 if not applicable)"
+        },
+        {
+          "prefix": "Decision:",
+          "description": "One of: accept, reject, abstain"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

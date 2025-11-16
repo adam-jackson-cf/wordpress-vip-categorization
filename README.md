@@ -5,10 +5,10 @@ AI-powered workflow that ingests content from WordPress VIP, stores it in Supaba
 ## System Workflow
 
 1. **Semantic matching (default ≥0.85)** – Embed taxonomy + content, compute cosine similarity, and write matches immediately.
-2. **LLM categorization fallback (default ≥0.9)** – Ask the configured chat model to choose the best remaining candidate per taxonomy page.
+2. **LLM categorization fallback (rubric-gated)** – Ask the configured chat model to choose the best remaining candidate per taxonomy page, then apply a deterministic rubric gate (topic/intent/entity thresholds) for precision-first acceptance.
 3. **Human review** – Export unmapped taxonomy rows (blank targets) for analysts.
 
-Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and `LLM_CONFIDENCE_THRESHOLD`.
+Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
 
 ## Operations Quick Reference
 
@@ -33,7 +33,8 @@ Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, virtualenv management, 
 - Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITES` (comma-separated list).
 - Semantic embedding provider: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`.
 - LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`.
-- Workflow tuning: `SIMILARITY_THRESHOLD`, `LLM_CONFIDENCE_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
+- Workflow tuning: `SIMILARITY_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
+- LLM rubric gate: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, `LLM_CONSENSUS_VOTES`, `LLM_MATCH_TEMPERATURE` (0–1).
 - Data inputs: `TAXONOMY_FILE_PATH` (default `./data/taxonomy.csv`).
 
 Legacy `OPENAI_*` keys are supported but should be replaced with the semantic / LLM-specific variables above. `.env.example` documents every option.

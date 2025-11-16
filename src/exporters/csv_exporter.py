@@ -41,7 +41,6 @@ class CSVExporter:
             target_url = ""
             similarity_score = 0.0
             category = taxonomy.category
-            confidence = 0.0
             match_stage: str | None = None
             failed_at_stage: str | None = None
 
@@ -56,11 +55,6 @@ class CSVExporter:
                 # Get match stage info
                 match_stage = match.match_stage.value if match.match_stage else None
                 failed_at_stage = match.failed_at_stage
-
-                # Get categorization for the content
-                categorizations = self.db.get_categorizations_by_content(match.content_id)
-                if categorizations:
-                    confidence = categorizations[0].confidence
             elif match:
                 # Match exists but no content_id (unmatched)
                 similarity_score = match.similarity_score
@@ -70,7 +64,6 @@ class CSVExporter:
             row = ExportRow(
                 source_url=str(taxonomy.url),
                 target_url=target_url,
-                confidence=confidence,
                 category=category,
                 similarity_score=similarity_score,
                 match_stage=match_stage,
@@ -123,7 +116,6 @@ class CSVExporter:
                     "target_url",
                     "category",
                     "similarity_score",
-                    "confidence",
                     "match_stage",
                     "failed_at_stage",
                 ],
@@ -137,7 +129,6 @@ class CSVExporter:
                         "target_url": row.target_url,
                         "category": row.category,
                         "similarity_score": f"{row.similarity_score:.4f}",
-                        "confidence": f"{row.confidence:.4f}",
                         "match_stage": row.match_stage or "",
                         "failed_at_stage": row.failed_at_stage or "",
                     }

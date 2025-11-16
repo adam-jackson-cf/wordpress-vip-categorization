@@ -72,7 +72,6 @@ def sample_categorization_result(
         id=uuid4(),
         content_id=sample_wordpress_content.id,
         category="Technology",
-        confidence=0.95,
         batch_id="test-batch-123",
     )
 
@@ -102,6 +101,7 @@ def mock_supabase_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.get_all_matchings.return_value = []
     mock_client.match_content_by_embedding.return_value = []
     mock_client.get_unmatched_taxonomy.return_value = []
+    mock_client.get_best_match_for_taxonomy.return_value = None
     mock_client.bulk_upsert_content.return_value = []
     mock_client.bulk_upsert_taxonomy.return_value = []
     mock_client.bulk_upsert_matchings.return_value = []
@@ -122,11 +122,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     # Mock chat completions
     mock_completion_response = mocker.Mock()
     mock_completion_response.choices = [
-        mocker.Mock(
-            message=mocker.Mock(
-                content='{"category": "Technology", "confidence": 0.95, "reasoning": "test"}'
-            )
-        )
+        mocker.Mock(message=mocker.Mock(content='{"category": "Technology", "reasoning": "test"}'))
     ]
     mock_client.chat.completions.create.return_value = mock_completion_response
 
@@ -149,7 +145,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.files.create.return_value = mock_file
 
     mock_file_content = mocker.Mock()
-    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Technology\\", \\"confidence\\": 0.95}"}}]}}}'
+    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Technology\\"}"}}]}}}'
     mock_client.files.content.return_value = mock_file_content
 
     return mock_client

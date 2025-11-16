@@ -24,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
+    "pytest-xdist>=3.5.0",
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
@@ -41,10 +42,18 @@ where = ["src"]
 [tool.black]
 line-length = 100
 target-version = ["py310", "py311", "py312"]
+extend-exclude = "(\\.cursor/|\\.claude/|\\.codex/)"
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = [
+    ".cursor",
+    ".claude",
+    ".codex",
+]
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -95,12 +104,15 @@ source = ["src"]
 omit = [
     "tests/*",
     "**/__pycache__/*",
-    "src/cli.py",  # CLI has integration tests, not unit tests
-    "src/optimization/*",  # Advanced features with DSPy - would need mock LLM
-    "src/connectors/*",  # External HTTP integrations, covered by integration tests
-    "src/exporters/*",  # Thin CSV wrappers, covered indirectly
-    "src/services/*",  # High-level orchestration; integration-tested via pipeline
-    "src/data/supabase_client.py",  # DB client wrapper with heavy I/O
+    "src/optimization/dspy_optimizer.py",
+    "src/services/embeddings.py",
+    "src/services/categorization.py",
+    "src/services/matching.py",
+    "src/services/ingestion.py",
+    "src/services/workflow.py",
+    "src/cli.py",
+    "src/connectors/wordpress_vip.py",
+    "src/data/supabase_client.py",
 ]
 
 [tool.coverage.report]

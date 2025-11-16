@@ -1,6 +1,7 @@
 """Configuration management for the application."""
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -81,9 +82,6 @@ class Settings(BaseSettings):
         default=25,
         description="Semantic neighbors fetched from Supabase pgvector per taxonomy row",
     )
-    llm_confidence_threshold: float = Field(
-        default=0.9, description="Minimum confidence score for LLM categorization"
-    )
     llm_candidate_limit: int = Field(
         default=10,
         description="Max semantic candidates forwarded to the LLM fallback stage",
@@ -91,6 +89,24 @@ class Settings(BaseSettings):
     llm_candidate_min_score: float = Field(
         default=0.6,
         description="Similarity floor for LLM fallback candidates",
+    )
+    # Rubric-gated LLM fallback (precision-first)
+    llm_rubric_topic_min: float = Field(
+        default=0.8, description="Minimum topic_alignment score (0-1) for LLM acceptance"
+    )
+    llm_rubric_intent_min: float = Field(
+        default=0.8, description="Minimum intent_fit score (0-1) for LLM acceptance"
+    )
+    llm_rubric_entity_min: float = Field(
+        default=0.5,
+        description="Minimum entity_overlap score (0-1) when applicable (ignored if no entities)",
+    )
+    llm_consensus_votes: int = Field(
+        default=1,
+        description="Number of rubric evaluations to run; require majority accept (>=1 disables consensus)",
+    )
+    llm_match_temperature: float = Field(
+        default=0.3, description="Temperature for LLM matching/rubric evaluation"
     )
     enable_semantic_matching: bool = Field(
         default=True, description="Enable semantic matching stage"
@@ -152,19 +168,32 @@ class Settings(BaseSettings):
             raise ValueError("Similarity threshold must be between 0 and 1")
         return v
 
-    @field_validator("llm_confidence_threshold")
-    @classmethod
-    def validate_llm_threshold(cls, v: float) -> float:
-        """Validate LLM confidence threshold is between 0 and 1."""
-        if not 0 <= v <= 1:
-            raise ValueError("LLM confidence threshold must be between 0 and 1")
-        return v
-
     @field_validator("llm_candidate_min_score")
     @classmethod
     def validate_candidate_floor(cls, v: float) -> float:
         if not 0 <= v <= 1:
             raise ValueError("LLM candidate minimum score must be between 0 and 1")
+        return v
+
+    @field_validator("llm_rubric_topic_min", "llm_rubric_intent_min", "llm_rubric_entity_min")
+    @classmethod
+    def validate_rubric_thresholds(cls, v: float) -> float:
+        if not 0 <= v <= 1:
+            raise ValueError("Rubric thresholds must be between 0 and 1")
+        return v
+
+    @field_validator("llm_consensus_votes")
+    @classmethod
+    def validate_consensus_votes(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("llm_consensus_votes must be >= 1")
+        return v
+
+    @field_validator("llm_match_temperature")
+    @classmethod
+    def validate_match_temperature(cls, v: float) -> float:
+        if not 0 <= v <= 1:
+            raise ValueError("llm_match_temperature must be between 0 and 1")
         return v
 
     @field_validator("dspy_train_split_ratio")
@@ -196,6 +225,29 @@ class Settings(BaseSettings):
         return v
 
 
-def get_settings() -> Settings:
-    """Get application settings singleton."""
-    return Settings()  # type: ignore[call-arg]
+_SETTINGS_CACHE: Settings | None = None
+
+
+def get_settings(
+    *, overrides: dict[str, Any] | None = None, force_refresh: bool = False
+) -> Settings:
+    """Return a fresh Settings copy backed by a cached template.
+
+    The base Settings instance is cached so expensive env parsing only happens once,
+    but each call returns ``model_copy()`` so callers can safely mutate their copy without
+    affecting other parts of the application.
+
+    Args:
+        overrides: Optional field overrides applied to the cached settings.
+        force_refresh: Force reloading settings from the environment.
+    """
+
+    global _SETTINGS_CACHE
+
+    if force_refresh or _SETTINGS_CACHE is None:
+        _SETTINGS_CACHE = Settings()  # type: ignore[call-arg]
+
+    if overrides:
+        return _SETTINGS_CACHE.model_copy(update=overrides)
+
+    return _SETTINGS_CACHE.model_copy()

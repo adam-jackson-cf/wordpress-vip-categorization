@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from src.data.supabase_client import SupabaseClient
-from src.models import CategorizationResult, MatchingResult
+from src.models import CategorizationResult, MatchingResult, MatchStage
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +33,16 @@ class Evaluator:
         if not results:
             return {
                 "count": 0,
-                "avg_confidence": 0.0,
-                "min_confidence": 0.0,
-                "max_confidence": 0.0,
+                "unique_categories": 0,
+                "category_distribution": {},
             }
 
-        confidences = [r.confidence for r in results]
         categories = [r.category for r in results]
 
         metrics = {
             "count": len(results),
-            "avg_confidence": sum(confidences) / len(confidences),
-            "min_confidence": min(confidences),
-            "max_confidence": max(confidences),
             "unique_categories": len(set(categories)),
             "category_distribution": self._get_distribution(categories),
-            "low_confidence_count": sum(1 for c in confidences if c < 0.5),
         }
 
         logger.info(f"Categorization evaluation: {metrics}")
@@ -106,6 +100,7 @@ class Evaluator:
         return {
             "categorization": self.evaluate_categorization(categorization_results),
             "matching": self.evaluate_matching(matching_results),
+            "rubric": self._summarize_rubric(matching_results),
         }
 
     def _get_distribution(self, items: list[str]) -> dict[str, int]:
@@ -152,3 +147,61 @@ class Evaluator:
 
         logger.info(f"Found {len(unmatched)} unmatched taxonomy pages")
         return unmatched
+
+    def _summarize_rubric(self, results: list[MatchingResult]) -> dict[str, Any]:
+        """Summarize rubric distributions for accepted vs. review items.
+
+        Returns:
+            Dictionary with averages for numeric rubric fields per group and counts by decision.
+        """
+        if not results:
+            return {
+                "accepted_count": 0,
+                "review_count": 0,
+                "accepted_avg": {},
+                "review_avg": {},
+                "decisions": {},
+            }
+
+        def _avg(items: list[float]) -> float:
+            return sum(items) / len(items) if items else 0.0
+
+        numeric_keys = ("topic_alignment", "intent_fit", "entity_overlap", "temporal_relevance")
+        accepted = [r for r in results if r.match_stage == MatchStage.LLM_CATEGORIZED and r.rubric]
+        review = [r for r in results if r.match_stage == MatchStage.NEEDS_HUMAN_REVIEW and r.rubric]
+
+        accepted_avg: dict[str, float] = {}
+        review_avg: dict[str, float] = {}
+
+        for key in numeric_keys:
+            accepted_vals: list[float] = []
+            for r in accepted:
+                try:
+                    accepted_vals.append(float((r.rubric or {}).get(key, 0.0)))
+                except (ValueError, TypeError):
+                    accepted_vals.append(0.0)
+            review_vals: list[float] = []
+            for r in review:
+                try:
+                    review_vals.append(float((r.rubric or {}).get(key, 0.0)))
+                except (ValueError, TypeError):
+                    review_vals.append(0.0)
+            accepted_avg[key] = _avg(accepted_vals)
+            review_avg[key] = _avg(review_vals)
+
+        # Decisions distribution across all rubric-bearing results
+        decisions: dict[str, int] = {}
+        for r in (x for x in results if x.rubric):
+            d = str((r.rubric or {}).get("decision", "")).strip().lower()
+            if d:
+                decisions[d] = decisions.get(d, 0) + 1
+
+        summary = {
+            "accepted_count": len(accepted),
+            "review_count": len(review),
+            "accepted_avg": accepted_avg,
+            "review_avg": review_avg,
+            "decisions": decisions,
+        }
+        logger.info("Rubric summary: %s", summary)
+        return summary

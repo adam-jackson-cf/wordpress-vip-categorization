@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS categorization_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     content_id UUID NOT NULL REFERENCES wordpress_content(id) ON DELETE CASCADE,
     category TEXT NOT NULL,
-    confidence FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     batch_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -64,17 +63,26 @@ CREATE TABLE IF NOT EXISTS matching_results (
     taxonomy_id UUID NOT NULL REFERENCES taxonomy_pages(id) ON DELETE CASCADE,
     content_id UUID REFERENCES wordpress_content(id) ON DELETE CASCADE,
     similarity_score FLOAT NOT NULL CHECK (similarity_score >= 0 AND similarity_score <= 1),
+    candidate_content_id UUID REFERENCES wordpress_content(id) ON DELETE SET NULL,
+    candidate_similarity_score FLOAT CHECK (
+        candidate_similarity_score >= 0 AND candidate_similarity_score <= 1
+    ),
+    llm_topic_score FLOAT CHECK (llm_topic_score >= 0 AND llm_topic_score <= 1),
     match_stage TEXT,
     failed_at_stage TEXT,
+    rubric JSONB DEFAULT '{}'::jsonb,
+    is_current BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(taxonomy_id)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create indexes for faster queries
 CREATE INDEX IF NOT EXISTS idx_matching_taxonomy_id ON matching_results(taxonomy_id);
 CREATE INDEX IF NOT EXISTS idx_matching_content_id ON matching_results(content_id);
 CREATE INDEX IF NOT EXISTS idx_matching_similarity_score ON matching_results(similarity_score DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matching_taxonomy_current
+    ON matching_results(taxonomy_id)
+    WHERE is_current;
 
 -- Create a view for export with denormalized data
 CREATE OR REPLACE VIEW export_results AS
@@ -83,13 +91,11 @@ SELECT
     COALESCE(wc.url, '') as target_url,
     COALESCE(mr.similarity_score, 0.0) as similarity_score,
     tp.category,
-    COALESCE(cr.confidence, 0.0) as confidence,
     mr.match_stage,
     mr.failed_at_stage
 FROM taxonomy_pages tp
-LEFT JOIN matching_results mr ON tp.id = mr.taxonomy_id
+LEFT JOIN matching_results mr ON tp.id = mr.taxonomy_id AND mr.is_current IS TRUE
 LEFT JOIN wordpress_content wc ON mr.content_id = wc.id
-LEFT JOIN categorization_results cr ON wc.id = cr.content_id
 ORDER BY tp.category, mr.similarity_score DESC NULLS LAST;
 
 -- Vector similarity helper for Supabase RPC usage
@@ -129,7 +135,7 @@ LANGUAGE SQL STABLE
 AS $$
 SELECT tp.*
 FROM taxonomy_pages tp
-LEFT JOIN matching_results mr ON mr.taxonomy_id = tp.id
+LEFT JOIN matching_results mr ON mr.taxonomy_id = tp.id AND mr.is_current IS TRUE
 WHERE mr.taxonomy_id IS NULL OR COALESCE(mr.similarity_score, 0.0) < min_similarity;
 $$;
 

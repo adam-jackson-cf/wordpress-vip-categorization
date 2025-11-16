@@ -39,7 +39,6 @@ class TestCSVExporter:
         row = rows[0]
         assert isinstance(row, ExportRow)
         assert row.category == "Technology"
-        assert row.confidence == 0.95
         assert row.similarity_score == 0.85
 
     def test_export_to_csv(

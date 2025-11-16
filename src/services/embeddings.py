@@ -11,6 +11,16 @@ from src.config import Settings
 logger = logging.getLogger(__name__)
 
 
+OPENAI_RETRY_EXCEPTIONS = (
+    openai.APIError,
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    openai.APIStatusError,
+)
+
+
 class EmbeddingService:
     """Wrapper around the semantic embedding provider."""
 
@@ -24,9 +34,10 @@ class EmbeddingService:
         logger.info("Initialized embedding service with model %s", self.model)
 
     @retry(
-        retry=retry_if_exception_type(openai.APIError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
     )
     def embed(self, text: str) -> list[float]:
         """Create a single embedding for the provided text."""

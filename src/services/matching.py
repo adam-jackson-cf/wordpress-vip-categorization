@@ -163,7 +163,7 @@ class MatchingService:
         try:
             matches = self.db.match_content_by_embedding(
                 taxonomy_embedding,
-                min_threshold,
+                0.0,
                 limit,
             )
         except Exception as exc:  # pragma: no cover - network failure
@@ -197,15 +197,26 @@ class MatchingService:
         Returns:
             (content, score) tuple if match found above threshold, None otherwise.
         """
-        if min_threshold is None:
-            min_threshold = self.settings.similarity_threshold
-
-        matches = self.match_taxonomy_to_content(
-            taxonomy, limit=self.settings.semantic_candidate_limit, min_threshold=min_threshold
+        threshold = (
+            min_threshold if min_threshold is not None else self.settings.similarity_threshold
         )
 
-        if matches and matches[0][1] >= min_threshold:
-            return matches[0]
+        matches = self.match_taxonomy_to_content(
+            taxonomy,
+            limit=self.settings.semantic_candidate_limit,
+            min_threshold=min_threshold,
+        )
+
+        if matches:
+            top = matches[0]
+            if top[1] < threshold:
+                logger.debug(
+                    "Top semantic candidate for %s below threshold %.2f (score=%.3f)",
+                    taxonomy.url,
+                    threshold,
+                    top[1],
+                )
+            return top
 
         return None
 
@@ -273,13 +284,18 @@ class MatchingService:
 
         for taxonomy in taxonomy_pages:
             best_match = self.find_best_match(taxonomy, min_threshold)
-
+            candidate_content: WordPressContent | None = None
+            candidate_score = 0.0
             if best_match:
-                content, score = best_match
+                candidate_content, candidate_score = best_match
+
+            if candidate_content and candidate_score >= min_threshold:
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
-                    content_id=content.id,
-                    similarity_score=score,
+                    content_id=candidate_content.id,
+                    similarity_score=candidate_score,
+                    candidate_content_id=candidate_content.id,
+                    candidate_similarity_score=candidate_score,
                     match_stage=MatchStage.SEMANTIC_MATCHED,
                     updated_at=datetime.utcnow(),
                 )
@@ -291,14 +307,16 @@ class MatchingService:
 
                 results[taxonomy.id] = matching_result
                 logger.info(
-                    f"Matched taxonomy {taxonomy.url} to {content.url} (score: {score:.3f})"
+                    f"Matched taxonomy {taxonomy.url} to {candidate_content.url} "
+                    f"(score: {candidate_score:.3f})"
                 )
             else:
-                # Create result with no match
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=None,
-                    similarity_score=0.0,
+                    similarity_score=candidate_score,
+                    candidate_content_id=candidate_content.id if candidate_content else None,
+                    candidate_similarity_score=(candidate_score if candidate_content else None),
                     match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
                     failed_at_stage="semantic_matching",
                     updated_at=datetime.utcnow(),
@@ -311,7 +329,10 @@ class MatchingService:
 
                 results[taxonomy.id] = matching_result
                 logger.warning(
-                    f"No match found for taxonomy {taxonomy.url} above threshold {min_threshold}"
+                    "No semantic match above threshold %.2f for taxonomy %s (best=%.3f)",
+                    min_threshold,
+                    taxonomy.url,
+                    candidate_score,
                 )
 
         flush_pending()

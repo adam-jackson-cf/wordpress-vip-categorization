@@ -92,7 +92,6 @@ class CategorizationResult(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     content_id: UUID
     category: str
-    confidence: float = Field(ge=0.0, le=1.0)
     batch_id: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -109,12 +108,38 @@ class MatchingResult(BaseModel):
     taxonomy_id: UUID
     content_id: UUID | None = None
     similarity_score: float = Field(ge=0.0, le=1.0)
+    candidate_content_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Best semantic candidate regardless of acceptance; duplicates content_id when "
+            "the semantic stage succeeded so analysts can compare semantic vs. LLM picks."
+        ),
+    )
+    candidate_similarity_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Similarity score for candidate_content_id to preserve semantic evidence "
+            "even when the LLM ultimately rejects the match."
+        ),
+    )
+    llm_topic_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="LLM rubric topic score when available",
+    )
     match_stage: MatchStage | None = Field(
         default=None, description="Stage where match was determined"
     )
     failed_at_stage: str | None = Field(
         default=None, description="Stage where matching failed (for debugging)"
     )
+    rubric: dict[str, Any] | None = Field(
+        default=None, description="Rubric scores and decision from judge"
+    )
+    is_current: bool = Field(default=True, description="Whether this row is the active match")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime | None = None
 
@@ -126,7 +151,6 @@ class ExportRow(BaseModel):
 
     source_url: str
     target_url: str
-    confidence: float
     category: str
     similarity_score: float
     match_stage: str | None = None

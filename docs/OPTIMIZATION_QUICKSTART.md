@@ -117,6 +117,21 @@ python scripts/run_optimization_workflow.py \
 
 If you prefer to manage artifacts manually, you can still use `python -m src.cli optimize-dataset ...` with explicit budgets—both scripts ultimately call the same optimizer under the hood. Promotion simply controls which artifact `CategorizationService` loads.
 
+### Running Heavy Budgets Reliably
+
+- **Clear GEPA state first:** `rm -f prompt-optimiser/gepa_logs/gepa_state.bin` before every new heavy run so you don’t resume an old search.
+- **Use tmux for long runs:** Heavy budgets easily exceed a couple of minutes, so wrap the command in a tmux session, e.g.
+
+  ```bash
+  tmux new-session -d -s gepa_heavy \
+    'cd /Users/you/path && rm -f prompt-optimiser/gepa_logs/gepa_state.bin && \
+     python scripts/run_optimization_workflow.py --dataset data/dspy_training_dataset.csv \
+       --train-split 0.2 --seed 42 --budget heavy --num-threads 4'
+  tmux attach -t gepa_heavy  # watch progress / scroll back after completion
+  ```
+
+- Kill the session (or let it exit naturally) once the run finishes, then check `prompt-optimiser/models/` and `reports/` for the new version.
+
 ## Next Steps
 
 After running the quick optimization:

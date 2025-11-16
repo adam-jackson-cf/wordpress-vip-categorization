@@ -20,7 +20,6 @@ def sample_dspy_example() -> dspy.Example:
         taxonomy_keywords="technology, innovation",
         content_summaries="0. Title: Tech Post\n   URL: https://example.com/tech\n   Preview: Content...",
         best_match_index=0,
-        confidence=0.9,
         reasoning="Good match",
     ).with_inputs(
         "taxonomy_category",
@@ -55,7 +54,6 @@ class TestLoadTrainingDataset:
                     "taxonomy_keywords",
                     "content_summaries",
                     "best_match_index",
-                    "confidence",
                     "reasoning",
                 ],
             )
@@ -67,7 +65,6 @@ class TestLoadTrainingDataset:
                     "taxonomy_keywords": "tech, innovation",
                     "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                     "best_match_index": "0",
-                    "confidence": "0.9",
                     "reasoning": "Good match",
                 }
             )
@@ -77,7 +74,8 @@ class TestLoadTrainingDataset:
         assert len(examples) == 1
         assert examples[0].taxonomy_category == "Technology"
         assert examples[0].best_match_index == 0
-        assert examples[0].confidence == 0.9
+        # Confidence is no longer emitted; ensure attribute is absent
+        assert not hasattr(examples[0], "confidence")
 
     def test_load_json_dataset_success(self, mock_dspy_optimizer, tmp_path: Path) -> None:
         """Test loading a valid JSON dataset."""
@@ -89,7 +87,6 @@ class TestLoadTrainingDataset:
                 "taxonomy_keywords": "tech, innovation",
                 "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                 "best_match_index": 0,
-                "confidence": 0.9,
                 "reasoning": "Good match",
             }
         ]

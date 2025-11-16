@@ -1,0 +1,9 @@
+{
+    "reasoning": "The content that best aligns with the taxonomy of \"Technology news and updates\" is the article titled \"What\u2019s new for developers? (June 2025).\" This article provides updates on recent developments in WordPress, including the release of WordPress 6.8 and its subsequent updates, which are relevant to the technology sector. The topic alignment is high as it directly discusses software updates, which is a key aspect of technology news. The intent fit is also strong since the article aims to inform developers about the latest changes. Additionally, it includes relevant keywords such as \"technology\" and \"software.\" The temporal relevance is high as it discusses recent events from June 2025. Overall, this content provides a comprehensive overview of current technology updates in the WordPress ecosystem.",
+    "best_match_index": 4,
+    "topic_alignment": 0.9,
+    "intent_fit": 0.9,
+    "entity_overlap": 0.5,
+    "temporal_relevance": 1.0,
+    "decision": "accept"
+}

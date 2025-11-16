@@ -50,7 +50,7 @@ class WorkflowService:
         logger.info(
             f"Initialized workflow service - "
             f"Semantic: {settings.enable_semantic_matching} (threshold: {settings.similarity_threshold}), "
-            f"LLM: {settings.enable_llm_categorization} (threshold: {settings.llm_confidence_threshold})"
+            f"LLM: {settings.enable_llm_categorization}"
         )
 
     def run_matching_workflow(
@@ -163,7 +163,7 @@ class WorkflowService:
         if self.settings.enable_llm_categorization and unmatched_taxonomy:
             logger.info(
                 f"Stage 2: Running LLM categorization for {len(unmatched_taxonomy)} unmatched items "
-                f"(confidence >= {self.settings.llm_confidence_threshold})"
+                f"with rubric gating"
             )
 
             for taxonomy in unmatched_taxonomy:
@@ -188,7 +188,6 @@ class WorkflowService:
                 taxonomy_pages=unmatched_taxonomy,
                 content_items=content_items,
                 candidate_map=candidate_map,
-                min_confidence=self.settings.llm_confidence_threshold,
             )
 
             stats["llm_categorized"] = llm_results.get("matched", 0)

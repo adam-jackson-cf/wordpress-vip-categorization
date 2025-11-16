@@ -166,11 +166,7 @@ class TestCategorizationService:
             {
                 "custom_id": fake_id,
                 "response": {
-                    "body": {
-                        "choices": [
-                            {"message": {"content": '{"category": "Tech", "confidence": 0.91}'}}
-                        ]
-                    }
+                    "body": {"choices": [{"message": {"content": '{"category": "Tech"}'}}]}
                 },
             }
         ]
@@ -211,16 +207,103 @@ class TestCategorizationService:
         """Ensure matched taxonomy rows are persisted with stage metadata."""
 
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(return_value=(sample_wordpress_content, 0.95))
+        service._find_best_match_llm = Mock(
+            return_value=(
+                sample_wordpress_content,
+                {
+                    "topic_alignment": 0.9,
+                    "intent_fit": 0.9,
+                    "entity_overlap": 0.6,
+                    "temporal_relevance": 0.5,
+                    "decision": "accept",
+                    "reasoning": "good match",
+                },
+            )
+        )
 
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
             [sample_wordpress_content],
-            min_confidence=0.9,
         )
 
         assert stats == {"matched": 1, "below_threshold": 0, "total": 1}
         mock_supabase_client.upsert_matching.assert_called_once()
+
+    def test_accept_by_rubric_skips_entity_without_keywords(
+        self,
+        mocker,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """Entity threshold should only apply when taxonomy keywords exist."""
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.keywords = []
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 0.9,
+            "intent_fit": 0.9,
+            "entity_overlap": 0.1,
+            "temporal_relevance": 0.9,
+        }
+
+        assert service._accept_by_rubric(sample_taxonomy_page, rubric)
+
+    def test_accept_by_rubric_enforces_entity_with_keywords(
+        self,
+        mocker,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """When keywords are present, low entity overlap should fail."""
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.keywords = ["ai"]
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 0.9,
+            "intent_fit": 0.9,
+            "entity_overlap": 0.1,
+            "temporal_relevance": 0.9,
+        }
+
+        assert not service._accept_by_rubric(sample_taxonomy_page, rubric)
+
+    def test_accept_by_rubric_logs_warning_when_clamping(
+        self,
+        mocker,
+        caplog,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """Clamping rubric scores outside [0, 1] should log a warning."""
+        import logging
+
+        mocker.patch("src.services.categorization.DSPyOptimizer")
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        rubric = {
+            "decision": "accept",
+            "topic_alignment": 1.5,  # Above 1.0, will be clamped to 1.0
+            "intent_fit": 0.75,  # Below threshold, will be rejected
+            "entity_overlap": -0.1,  # Below 0.0, will be clamped to 0.0
+            "temporal_relevance": 0.9,
+        }
+
+        with caplog.at_level(logging.WARNING):
+            result = service._accept_by_rubric(sample_taxonomy_page, rubric)
+
+        # Should reject because intent_fit (0.75) is below threshold (0.8)
+        assert not result
+
+        # Should have logged warnings for topic and entity
+        assert "Clamped topic_alignment from 1.50 to 1.00" in caplog.text
+        assert "Clamped entity_overlap from -0.10 to 0.00" in caplog.text
+        assert "Clamped intent_fit" not in caplog.text
 
     def test_categorize_for_matching_marks_review(
         self,
@@ -229,15 +312,14 @@ class TestCategorizationService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Items below confidence threshold should become needs_human_review."""
+        """Items failing rubric gate should become needs_human_review."""
 
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(return_value=(None, 0.0))
+        service._find_best_match_llm = Mock(return_value=(None, {}))
 
         stats = service.categorize_for_matching(
             [sample_taxonomy_page],
             [sample_wordpress_content],
-            min_confidence=0.9,
         )
 
         assert stats == {"matched": 0, "below_threshold": 1, "total": 1}
@@ -254,23 +336,35 @@ class TestCategorizationService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Test that _find_best_match_llm correctly parses DSPy response."""
+        """Test that _find_best_match_llm correctly parses DSPy response into rubric."""
         mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (0, 0.91)
+        # Selector returns index only (rubric ignored by new flow)
+        mock_dspy_optimizer.predict_match.return_value = (0, {})
+        # Judge returns the rubric used for gating
+        judge_rubric = {
+            "topic_alignment": 0.91,
+            "intent_fit": 0.88,
+            "entity_overlap": 0.7,
+            "temporal_relevance": 0.4,
+            "decision": "accept",
+            "reasoning": "valid",
+        }
+        mock_dspy_optimizer.judge_candidate.return_value = judge_rubric
         mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
         mock_path_exists.return_value = False
 
         service = CategorizationService(mock_settings, mock_supabase_client)
 
-        best_match, confidence = service._find_best_match_llm(
+        best_match, rubric = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
         )
 
         assert best_match == sample_wordpress_content
-        assert confidence == 0.91
+        assert rubric == judge_rubric
         mock_dspy_optimizer.predict_match.assert_called_once_with(
             sample_taxonomy_page, [sample_wordpress_content]
         )
+        mock_dspy_optimizer.judge_candidate.assert_called_once()
 
     @patch("src.services.categorization.Path.exists")
     @patch("src.services.categorization.DSPyOptimizer")
@@ -285,18 +379,18 @@ class TestCategorizationService:
     ) -> None:
         """Test that _find_best_match_llm handles no match case."""
         mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (-1, 0.4)
+        mock_dspy_optimizer.predict_match.return_value = (-1, {})
         mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
         mock_path_exists.return_value = False
 
         service = CategorizationService(mock_settings, mock_supabase_client)
 
-        best_match, confidence = service._find_best_match_llm(
+        best_match, rubric = service._find_best_match_llm(
             sample_taxonomy_page, [sample_wordpress_content]
         )
 
         assert best_match is None
-        assert confidence == 0.0
+        assert rubric == {}
         mock_dspy_optimizer.predict_match.assert_called_once_with(
             sample_taxonomy_page, [sample_wordpress_content]
         )

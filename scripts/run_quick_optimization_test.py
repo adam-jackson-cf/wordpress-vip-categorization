@@ -111,7 +111,7 @@ def run_bootstrap_test(
         training_size=train_size,
         validation_size=val_size,
         model_file_path=str(model_path),
-        validation_score=validation_score,
+        validation_score=float(validation_score) if validation_score is not None else None,
         duration_seconds=duration,
     )
     with open(config_path, "w", encoding="utf-8") as config_file:
@@ -124,7 +124,7 @@ def run_bootstrap_test(
         optimizer_config=optimizer_config,
         training_size=train_size,
         validation_size=val_size,
-        validation_score=validation_score,
+        validation_score=float(validation_score) if validation_score is not None else None,
         duration_seconds=duration,
     )
     report_path.write_text(report_content, encoding="utf-8")
@@ -205,7 +205,14 @@ def main() -> None:
     print("\n" + "=" * 70)
     print("BOOTSTRAP SMOKE TEST SUMMARY")
     print("=" * 70)
-    print(f"Validation Score: {score:.3f}" if score is not None else "Validation Score: N/A")
+    if score is not None:
+        try:
+            score_str = f"{float(score):.3f}"
+        except (ValueError, TypeError):
+            score_str = "N/A"
+    else:
+        score_str = "N/A"
+    print(f"Validation Score: {score_str}")
     print(f"Duration: {format_duration(duration)}")
     print("Estimated Cost: ~30 LLM calls per 100 examples")
     print("\nArtifacts:")

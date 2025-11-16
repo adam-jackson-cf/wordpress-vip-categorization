@@ -2,11 +2,13 @@
 
 import json
 import logging
+import random
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import openai
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -24,6 +26,15 @@ from src.models import (
 from src.optimization.dspy_optimizer import DSPyOptimizer
 
 logger = logging.getLogger(__name__)
+
+OPENAI_RETRY_EXCEPTIONS = (
+    openai.APIError,
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    openai.APIStatusError,
+)
 
 
 class CategorizationService:
@@ -58,6 +69,8 @@ class CategorizationService:
             logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
 
         logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
+        self.batch_artifact_root = Path("data/batch")
+        self.batch_artifact_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _coerce_datetime(value: Any) -> datetime:
@@ -113,11 +126,8 @@ Content: {content.content[:2000]}...
 Respond with a JSON object in this exact format:
 {{
   "category": "the most appropriate category",
-  "confidence": 0.95,
   "reasoning": "brief explanation of why this category was chosen"
 }}
-
-The confidence should be a number between 0 and 1.
 """
         return prompt
 
@@ -168,8 +178,10 @@ The confidence should be a number between 0 and 1.
         Returns:
             Path to created JSONL file.
         """
-        file_path = Path(f"/tmp/batch_requests_{int(time.time())}.jsonl")
-        with open(file_path, "w") as f:
+        run_dir = self.batch_artifact_root / f"batch_{int(time.time())}_{uuid4().hex[:8]}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        file_path = run_dir / "requests.jsonl"
+        with open(file_path, "w", encoding="utf-8") as f:
             for request in requests:
                 f.write(json.dumps(request) + "\n")
 
@@ -177,9 +189,10 @@ The confidence should be a number between 0 and 1.
         return str(file_path)
 
     @retry(
-        retry=retry_if_exception_type(openai.APIError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
     )
     def submit_batch(self, file_path: str, description: str = "") -> str:
         """Submit batch job to OpenAI.
@@ -206,6 +219,29 @@ The confidence should be a number between 0 and 1.
         logger.info(f"Submitted batch {batch.id} with file {file_response.id}")
         return str(batch.id)
 
+    def _cleanup_batch_artifacts(self, file_path: str) -> None:
+        """Remove temporary batch JSONL files/directories."""
+
+        path = Path(file_path)
+        try:
+            if path.exists():
+                path.unlink()
+            parent = path.parent
+            if (
+                parent.is_dir()
+                and parent != self.batch_artifact_root
+                and self.batch_artifact_root in parent.parents
+            ):
+                shutil.rmtree(parent, ignore_errors=True)
+        except OSError as exc:  # pragma: no cover - best effort cleanup
+            logger.warning("Failed to clean up batch artifacts at %s: %s", file_path, exc)
+
+    @retry(
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
+    )
     def get_batch_status(self, batch_id: str) -> BatchJobStatus:
         """Get status of a batch job.
 
@@ -236,7 +272,9 @@ The confidence should be a number between 0 and 1.
             metadata=getattr(batch, "metadata", {}) or {},
         )
 
-    def wait_for_batch_completion(self, batch_id: str, check_interval: int = 60) -> BatchJobStatus:
+    def wait_for_batch_completion(  # pragma: no cover - network polling
+        self, batch_id: str, check_interval: int = 60
+    ) -> BatchJobStatus:
         """Wait for batch job to complete.
 
         Args:
@@ -254,6 +292,7 @@ The confidence should be a number between 0 and 1.
         timeout = self.settings.llm_batch_timeout
 
         logger.info(f"Waiting for batch {batch_id} to complete...")
+        interval = max(10, check_interval)
 
         while True:
             status = self.get_batch_status(batch_id)
@@ -278,9 +317,20 @@ The confidence should be a number between 0 and 1.
                 f"{status.request_counts.get('total', 0)} completed)"
             )
 
-            time.sleep(check_interval)
+            sleep_for = min(interval, 120) + random.uniform(0, 5)
+            logger.debug("Sleeping %.1fs before next batch poll", sleep_for)
+            time.sleep(sleep_for)
+            interval = min(int(interval * 1.5), 120)
 
-    def retrieve_batch_results(self, batch_id: str) -> list[dict[str, Any]]:
+    @retry(
+        retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        reraise=True,
+    )
+    def retrieve_batch_results(  # pragma: no cover - network I/O
+        self, batch_id: str
+    ) -> list[dict[str, Any]]:
         """Retrieve results from completed batch.
 
         Args:
@@ -331,7 +381,6 @@ The confidence should be a number between 0 and 1.
                 categorization = CategorizationResult(
                     content_id=content_id,
                     category=parsed["category"],
-                    confidence=float(parsed["confidence"]),
                     batch_id=batch_id,
                 )
                 categorizations.append(categorization)
@@ -343,7 +392,7 @@ The confidence should be a number between 0 and 1.
         logger.info(f"Parsed {len(categorizations)} categorization results")
         return categorizations
 
-    def categorize_content_batch(
+    def categorize_content_batch(  # pragma: no cover - external Batch API
         self, content_items: list[WordPressContent], categories: list[str], wait: bool = True
     ) -> str:
         """Categorize content using batch API.
@@ -366,6 +415,7 @@ The confidence should be a number between 0 and 1.
         batch_id = self.submit_batch(
             file_path, description=f"Categorize {len(content_items)} content items"
         )
+        self._cleanup_batch_artifacts(file_path)
 
         # Optionally wait for completion
         if wait:
@@ -399,9 +449,8 @@ The confidence should be a number between 0 and 1.
         taxonomy_pages: list[TaxonomyPage],
         content_items: list[WordPressContent],
         candidate_map: dict[UUID, list[WordPressContent]] | None = None,
-        min_confidence: float = 0.9,
     ) -> dict[str, Any]:
-        """Use LLM to match taxonomy pages to content with confidence threshold.
+        """Use LLM to match taxonomy pages to content with rubric-based deterministic gating.
 
         This method provides a fallback for items that didn't match via semantic similarity.
         It uses the LLM to evaluate each taxonomy page against content and determine
@@ -411,7 +460,6 @@ The confidence should be a number between 0 and 1.
             taxonomy_pages: Taxonomy pages to match (typically unmatched from semantic stage).
             content_items: Available content items to match against (fallback pool).
             candidate_map: Optional per-taxonomy shortlist of semantic candidates.
-            min_confidence: Minimum confidence threshold (0-1) for accepting matches.
 
         Returns:
             Dictionary with statistics:
@@ -421,7 +469,7 @@ The confidence should be a number between 0 and 1.
         """
         logger.info(
             f"Starting LLM categorization for {len(taxonomy_pages)} taxonomy pages "
-            f"against {len(content_items)} content items (min confidence: {min_confidence})"
+            f"against {len(content_items)} content items with rubric gating"
         )
 
         matched_count = 0
@@ -452,34 +500,64 @@ The confidence should be a number between 0 and 1.
                 self.db.upsert_matching(matching_result)
                 continue
 
-            best_match, confidence = self._find_best_match_llm(taxonomy, pool)
+            best_match, rubric = self._find_best_match_llm(taxonomy, pool)
+            existing_record = self.db.get_best_match_for_taxonomy(taxonomy.id)
+            semantic_score = (
+                existing_record.candidate_similarity_score
+                if existing_record and existing_record.candidate_similarity_score is not None
+                else (existing_record.similarity_score if existing_record else 0.0)
+            )
+            previous_candidate_id = (
+                existing_record.candidate_content_id
+                if existing_record and existing_record.candidate_content_id
+                else (existing_record.content_id if existing_record else None)
+            )
+            candidate_content_id = best_match.id if best_match else previous_candidate_id
+            candidate_score = semantic_score if candidate_content_id is not None else None
+            llm_topic_score = float(rubric.get("topic_alignment", 0.0)) if rubric else None
 
-            if best_match and confidence >= min_confidence:
+            if best_match and self._accept_by_rubric(taxonomy, rubric):
                 # Match found above threshold
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=best_match.id,
-                    similarity_score=confidence,
+                    similarity_score=semantic_score,
+                    candidate_content_id=candidate_content_id,
+                    candidate_similarity_score=candidate_score,
+                    llm_topic_score=llm_topic_score,
                     match_stage=MatchStage.LLM_CATEGORIZED,
+                    rubric=rubric,
                 )
                 matched_count += 1
                 logger.info(
                     f"LLM matched taxonomy {taxonomy.url} to {best_match.url} "
-                    f"(confidence: {confidence:.3f})"
+                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
+                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
+                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
+                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
+                    f"decision={rubric.get('decision','')})"
                 )
             else:
                 # Below threshold or no match - needs human review
                 matching_result = MatchingResult(
                     taxonomy_id=taxonomy.id,
                     content_id=None,
-                    similarity_score=confidence if best_match else 0.0,
+                    similarity_score=semantic_score,
+                    candidate_content_id=candidate_content_id,
+                    candidate_similarity_score=candidate_score,
+                    llm_topic_score=llm_topic_score,
                     match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
                     failed_at_stage="llm_categorization",
+                    rubric=rubric if rubric else None,
                 )
                 below_threshold_count += 1
                 logger.warning(
-                    f"LLM match for taxonomy {taxonomy.url} below threshold "
-                    f"(confidence: {confidence if best_match else 0.0:.3f}, threshold: {min_confidence})"
+                    f"LLM match for taxonomy {taxonomy.url} below rubric thresholds "
+                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
+                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
+                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
+                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
+                    f"decision={rubric.get('decision','')})"
                 )
 
             # Store result
@@ -498,28 +576,100 @@ The confidence should be a number between 0 and 1.
 
     def _find_best_match_llm(
         self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
-    ) -> tuple[WordPressContent | None, float]:
-        """Use DSPy-optimized LLM to find best matching content for a taxonomy page.
+    ) -> tuple[WordPressContent | None, dict[str, float | str]]:
+        """Use selector (DSPy) to choose best index, then judge to compute rubric for that candidate.
 
         Args:
             taxonomy: Taxonomy page to match.
             content_items: Available content items.
 
         Returns:
-            Tuple of (best_match, confidence) or (None, 0.0) if no good match.
+            Tuple of (best_match, rubric_dict) or (None, {}) if no good match.
         """
         try:
-            # Use DSPy optimizer to get prediction
-            best_match_index, confidence = self.dspy_optimizer.predict_match(
-                taxonomy, content_items
-            )
+            votes = max(1, getattr(self.settings, "llm_consensus_votes", 1))
+            if votes == 1:
+                best_match_index, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
+                if 0 <= best_match_index < len(content_items):
+                    best = content_items[best_match_index]
+                    rubric = self.dspy_optimizer.judge_candidate(taxonomy, best)
+                    return best, rubric
+                return None, {}
 
-            # Validate index and return result
-            if best_match_index >= 0 and best_match_index < len(content_items):
-                return content_items[best_match_index], confidence
-            else:
-                return None, 0.0
+            # Consensus voting across multiple rubric evaluations
+            index_counts: dict[int, int] = {}
+            for _ in range(votes):
+                idx, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
+                if idx < 0 or idx >= len(content_items):
+                    continue
+                index_counts[idx] = index_counts.get(idx, 0) + 1
+                # Defer rubric scoring to judge on the winning index later
+
+            if not index_counts:
+                return None, {}
+
+            # Pick index with most votes
+            best_index = max(index_counts.items(), key=lambda kv: kv[1])[0]
+            best_candidate = content_items[best_index]
+            rubric = self.dspy_optimizer.judge_candidate(taxonomy, best_candidate)
+            return best_candidate, rubric
 
         except Exception as e:
-            logger.error(f"Error in DSPy matching for taxonomy {taxonomy.url}: {e}")
-            raise  # Raise exception rather than falling back to hardcoded prompt
+            logger.error(
+                "Error in DSPy matching for taxonomy %s: %s", taxonomy.url, e, exc_info=True
+            )
+            return None, {}
+
+    def _accept_by_rubric(self, taxonomy: TaxonomyPage, rubric: dict[str, float | str]) -> bool:
+        """Deterministically accept or reject an LLM-selected match based on rubric scores."""
+        try:
+            decision = str(rubric.get("decision", "")).strip().lower()
+            if decision not in {"accept", "abstain", "reject"}:
+                return False
+            if decision != "accept":
+                return False
+            topic = float(rubric.get("topic_alignment", 0.0) or 0.0)
+            intent = float(rubric.get("intent_fit", 0.0) or 0.0)
+            entity = float(rubric.get("entity_overlap", 0.0) or 0.0)
+        except (ValueError, TypeError):
+            return False
+
+        # Clamp rubric scores into [0, 1] to satisfy data constraints and avoid overflows
+        original_topic, original_intent, original_entity = topic, intent, entity
+        topic = max(0.0, min(topic, 1.0))
+        intent = max(0.0, min(intent, 1.0))
+        entity = max(0.0, min(entity, 1.0))
+
+        # Log warning if any scores were clamped to aid debugging
+        if original_topic != topic:
+            logger.warning(
+                "Clamped topic_alignment from %.2f to %.2f for taxonomy %s",
+                original_topic,
+                topic,
+                taxonomy.url,
+            )
+        if original_intent != intent:
+            logger.warning(
+                "Clamped intent_fit from %.2f to %.2f for taxonomy %s",
+                original_intent,
+                intent,
+                taxonomy.url,
+            )
+        if original_entity != entity:
+            logger.warning(
+                "Clamped entity_overlap from %.2f to %.2f for taxonomy %s",
+                original_entity,
+                entity,
+                taxonomy.url,
+            )
+
+        if topic < self.settings.llm_rubric_topic_min:
+            return False
+        if intent < self.settings.llm_rubric_intent_min:
+            return False
+        # Only enforce entity threshold when taxonomy defines keywords, otherwise treat entity
+        # overlap as optional (many taxonomy pages have no keyword metadata yet).
+        enforce_entity = bool(taxonomy.keywords)
+        if enforce_entity and entity < self.settings.llm_rubric_entity_min:
+            return False
+        return True

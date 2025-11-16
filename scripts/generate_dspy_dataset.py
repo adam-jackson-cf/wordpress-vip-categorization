@@ -13,8 +13,8 @@ import html
 import logging
 import random
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import requests
 
@@ -275,12 +275,37 @@ def format_ordered_summaries(posts: list[dict]) -> str:
 
 
 def post_matches_keywords(post: dict, category: str, keywords: list[str]) -> bool:
-    text = f"{post.get('title', {}).get('rendered', '')} {post.get('content', {}).get('rendered', '')}"
+    text = (
+        f"{post.get('title', {}).get('rendered', '')} {post.get('content', {}).get('rendered', '')}"
+    )
     text = html.unescape(re.sub(r"<[^>]+>", " ", text)).lower()
-    tokens = [token.strip() for token in keywords if token.strip()]
-    if category.lower() in text:
+    category_lower = category.lower()
+    if category_lower and category_lower in text:
         return True
-    return any(token in text for token in tokens)
+    return any(token in text for token in keywords if token)
+
+
+TEMPORAL_KEYWORDS = (
+    "news",
+    "update",
+    "updates",
+    "release",
+    "releases",
+    "trend",
+    "trends",
+    "today",
+    "weekly",
+    "monthly",
+    "recap",
+    "report",
+    "announcement",
+    "announcements",
+)
+
+
+def taxonomy_is_temporal(description: str, keywords: str) -> bool:
+    blob = f"{description} {keywords}".lower()
+    return any(token in blob for token in TEMPORAL_KEYWORDS)
 
 
 def build_candidate_list(
@@ -307,8 +332,8 @@ def generate_reasoning(taxonomy_category: str, taxonomy_keywords: str) -> str:
     reasons = [
         f"Matches {taxonomy_category.lower()} focus keywords ({taxonomy_keywords}).",
         f"Content describes {taxonomy_category.lower()} initiatives highlighted in the taxonomy.",
-        f"Article addresses the taxonomy description with concrete updates.",
-        f"Strong overlap between taxonomy keywords and the article’s subject matter.",
+        "Article addresses the taxonomy description with concrete updates.",
+        "Strong overlap between taxonomy keywords and the article’s subject matter.",
     ]
     return random.choice(reasons)
 
@@ -317,7 +342,10 @@ def generate_dataset(
     taxonomy_path: Path,
     output_path: Path,
     num_examples: int = 360,
+    seed: int = 42,
 ) -> None:
+    # Local seeding keeps this script deterministic without affecting callers
+    random.seed(seed)
     taxonomy = load_taxonomy(taxonomy_path)
     posts_by_category, global_posts = assemble_category_posts()
 
@@ -332,6 +360,7 @@ def generate_dataset(
             logger.warning("Skipping category %s (no posts found)", tax["category"])
             continue
         keywords = [k.strip().lower() for k in tax["keywords"].split(",")]
+        temporal_applicable = taxonomy_is_temporal(tax["description"], tax["keywords"])
 
         for example_idx in range(num_for_category):
             # ensure positive contains taxonomy cues
@@ -351,6 +380,16 @@ def generate_dataset(
             content_summaries = format_ordered_summaries(candidates)
             confidence = generate_confidence_score(best_match_index, candidate_total)
             reasoning = generate_reasoning(tax["category"], tax["keywords"])
+            topic_alignment = round(random.uniform(0.9, 0.97), 2)
+            intent_fit = round(random.uniform(0.85, 0.95), 2)
+            entity_overlap = (
+                round(random.uniform(0.75, 0.93), 2)
+                if post_matches_keywords(positive_post, tax["category"], keywords)
+                else 0.0
+            )
+            temporal_relevance = (
+                round(random.uniform(0.82, 0.94), 2) if temporal_applicable else 0.0
+            )
 
             examples.append(
                 {
@@ -359,6 +398,11 @@ def generate_dataset(
                     "taxonomy_keywords": tax["keywords"],
                     "content_summaries": content_summaries,
                     "best_match_index": str(best_match_index),
+                    "topic_alignment": f"{topic_alignment:.2f}",
+                    "intent_fit": f"{intent_fit:.2f}",
+                    "entity_overlap": f"{entity_overlap:.2f}",
+                    "temporal_relevance": f"{temporal_relevance:.2f}",
+                    "decision": "accept",
                     "confidence": str(confidence),
                     "reasoning": reasoning,
                 }
@@ -372,6 +416,11 @@ def generate_dataset(
         "taxonomy_keywords",
         "content_summaries",
         "best_match_index",
+        "topic_alignment",
+        "intent_fit",
+        "entity_overlap",
+        "temporal_relevance",
+        "decision",
         "confidence",
         "reasoning",
     ]

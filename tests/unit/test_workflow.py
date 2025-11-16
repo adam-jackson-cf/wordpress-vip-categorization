@@ -15,7 +15,6 @@ def mock_settings() -> Settings:
     """Create mock settings."""
     settings = Mock(spec=Settings)
     settings.similarity_threshold = 0.85
-    settings.llm_confidence_threshold = 0.9
     settings.enable_semantic_matching = True
     settings.enable_llm_categorization = True
     settings.semantic_candidate_limit = 25

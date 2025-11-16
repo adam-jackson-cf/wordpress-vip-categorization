@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "timestamp": "2025-11-16T15:55:15.799182",
+  "model_file": "matcher_v2.json",
+  "optimizer": {
+    "type": "gepa",
+    "settings": {
+      "optimizer": "gepa",
+      "budget": "heavy",
+      "train_split": 0.2,
+      "num_threads": 4,
+      "seed": 42
+    }
+  },
+  "model_config": {
+    "llm_model": "gpt-4o-mini",
+    "llm_base_url": "https://api.openai.com/v1",
+    "temperature": 0.3
+  },
+  "before_optimization": {
+    "instructions": "Default DSPy ChainOfThought instructions",
+    "num_demos": 0,
+    "demonstrations": []
+  },
+  "after_optimization": {
+    "instructions": "Optimized DSPy ChainOfThought instructions",
+    "num_demos": 0,
+    "demonstrations": []
+  },
+  "metrics": {
+    "training_size": 72,
+    "validation_size": 288,
+    "validation_score": 46.88,
+    "duration_seconds": 0.9601669311523438
+  }
+}

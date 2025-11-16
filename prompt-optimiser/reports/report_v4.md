@@ -1,24 +1,23 @@
 # DSPy Optimization Report
 
-**Generated:** 2025-11-16 00:21:15
+**Generated:** 2025-11-16 17:56:17
 
 ## Summary
 
-- **Optimizer:** bootstrap
-- **Training Examples:** 20
-- **Validation Examples:** 80
-- **Validation Score:** 23.750
-- **Duration:** 177.2 seconds
+- **Optimizer:** gepa
+- **Training Examples:** 72
+- **Validation Examples:** 288
+- **Validation Score:** 46.880
+- **Duration:** 4.6 seconds
 
 ## Configuration
 
 ### Optimizer Settings
-- **optimizer:** bootstrap
+- **optimizer:** gepa
+- **budget:** heavy
 - **train_split:** 0.2
-- **num_threads:** 1
+- **num_threads:** 2
 - **seed:** 42
-- **max_bootstrapped_demos:** 4
-- **max_labeled_demos:** 8
 
 ### Model Settings
 - **LLM Model:** gpt-4o-mini
