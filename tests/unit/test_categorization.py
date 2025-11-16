@@ -166,11 +166,7 @@ class TestCategorizationService:
             {
                 "custom_id": fake_id,
                 "response": {
-                    "body": {
-                        "choices": [
-                            {"message": {"content": '{"category": "Tech"}'}}
-                        ]
-                    }
+                    "body": {"choices": [{"message": {"content": '{"category": "Tech"}'}}]}
                 },
             }
         ]

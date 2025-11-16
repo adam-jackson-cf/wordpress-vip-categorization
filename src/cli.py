@@ -594,6 +594,7 @@ def compare_matchers(baseline: Path | None, candidate: Path) -> None:
         f"- Avg similarity Δ: {_delta(base_metrics['matching'].get('avg_similarity', 0.0), cand_metrics['matching'].get('avg_similarity', 0.0))}"
     )
 
+
 @cli.command()
 def stats() -> None:
     """Show statistics about ingested data."""

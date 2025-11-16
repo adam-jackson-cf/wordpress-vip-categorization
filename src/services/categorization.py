@@ -517,9 +517,7 @@ Respond with a JSON object in this exact format:
         try:
             votes = max(1, getattr(self.settings, "llm_consensus_votes", 1))
             if votes == 1:
-                best_match_index, _ = self.dspy_optimizer.predict_match(
-                    taxonomy, content_items
-                )
+                best_match_index, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
                 if 0 <= best_match_index < len(content_items):
                     best = content_items[best_match_index]
                     rubric = self.dspy_optimizer.judge_candidate(taxonomy, best)
@@ -528,7 +526,6 @@ Respond with a JSON object in this exact format:
 
             # Consensus voting across multiple rubric evaluations
             index_counts: dict[int, int] = {}
-            per_index_rubrics: dict[int, list[dict[str, float | str]]] = {}
             for _ in range(votes):
                 idx, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
                 if idx < 0 or idx >= len(content_items):

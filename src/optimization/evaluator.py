@@ -167,8 +167,16 @@ class Evaluator:
             return sum(items) / len(items) if items else 0.0
 
         numeric_keys = ("topic_alignment", "intent_fit", "entity_overlap", "temporal_relevance")
-        accepted = [r for r in results if r.match_stage and r.match_stage.value == "llm_categorized" and r.rubric]
-        review = [r for r in results if r.match_stage and r.match_stage.value == "needs_human_review" and r.rubric]
+        accepted = [
+            r
+            for r in results
+            if r.match_stage and r.match_stage.value == "llm_categorized" and r.rubric
+        ]
+        review = [
+            r
+            for r in results
+            if r.match_stage and r.match_stage.value == "needs_human_review" and r.rubric
+        ]
 
         accepted_avg: dict[str, float] = {}
         review_avg: dict[str, float] = {}
