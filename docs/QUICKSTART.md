@@ -43,7 +43,7 @@ Open `results/results.csv` in your spreadsheet application:
 
 ## 📎 Next Steps
 
-- Need to customize ingestion, adjust thresholds, or troubleshoot? See the detailed [SETUP guide](docs/SETUP.md).
-- Want to understand the full architecture and developer workflow? Read [AGENTS.md](AGENTS.md).
+- Need to customize ingestion, adjust thresholds, or troubleshoot? See the detailed [SETUP guide](SETUP.md).
+- Want to understand the full architecture and developer workflow? Read [AGENTS.md](../AGENTS.md).
 
 🎉 Once the schema is in place, `python -m src.cli full-run --output results/results.csv` gives you export-ready matches in minutes.
