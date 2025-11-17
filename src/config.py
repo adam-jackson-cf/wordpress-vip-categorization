@@ -1,10 +1,13 @@
 """Configuration management for the application."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -63,7 +66,6 @@ class Settings(BaseSettings):
     taxonomy_file_path: Path = Field(
         default=Path("./data/taxonomy.csv"), description="Path to taxonomy CSV file"
     )
-    batch_size: int = Field(default=1000, description="Batch processing size")
     log_level: str = Field(default="INFO", description="Logging level")
     ingestion_batch_size: int = Field(
         default=200,
@@ -225,6 +227,19 @@ class Settings(BaseSettings):
         return v
 
 
+def _apply_log_level(level: str) -> None:
+    """Set root logger level based on configuration."""
+    effective = getattr(logging, str(level).upper(), None)
+    if not isinstance(effective, int):
+        logger.warning("Invalid LOG_LEVEL '%s'; defaulting to INFO", level)
+        effective = logging.INFO
+
+    root = logging.getLogger()
+    root.setLevel(effective)
+    for handler in root.handlers:
+        handler.setLevel(effective)
+
+
 _SETTINGS_CACHE: Settings | None = None
 
 
@@ -246,6 +261,7 @@ def get_settings(
 
     if force_refresh or _SETTINGS_CACHE is None:
         _SETTINGS_CACHE = Settings()  # type: ignore[call-arg]
+        _apply_log_level(_SETTINGS_CACHE.log_level)
 
     if overrides:
         return _SETTINGS_CACHE.model_copy(update=overrides)

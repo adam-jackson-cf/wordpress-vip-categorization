@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     similarity_threshold: float = 0.85
-    llm_confidence_threshold: float = 0.9
+    llm_rubric_topic_min: float = 0.8
 
 
 class TaxonomyPage(BaseModel):
