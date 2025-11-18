@@ -860,6 +860,7 @@ def optimize_dataset(
         "train_split": train_split_ratio,
         "num_threads": num_threads or settings.dspy_num_threads,
         "seed": seed or settings.dspy_optimization_seed,
+        "metric": settings.dspy_optimization_metric,
     }
 
     # Determine version for this run and capture before state
@@ -897,7 +898,7 @@ def optimize_dataset(
             val_set = training_data[split_point:]
             evaluator = Evaluate(
                 devset=val_set,
-                metric=optimizer_instance.accuracy_metric,
+                metric=optimizer_instance.metric_fn,
                 num_threads=1,
                 display_progress=False,
             )

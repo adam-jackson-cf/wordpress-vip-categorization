@@ -4,6 +4,7 @@ import csv
 import json
 import logging
 import shutil
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -126,7 +127,17 @@ class DSPyOptimizer:
         dspy.configure(lm=lm)
 
         self.matcher = MatchingModule()
-        logger.info(f"Initialized DSPy optimizer with model: {settings.llm_model}")
+        self.metric_name = self._normalize_metric_name(settings.dspy_optimization_metric)
+        self.metric_fn: Callable[
+            [dspy.Example, dspy.Prediction, Any, str | None, Any],
+            float,
+        ]
+        self.metric_fn = self._resolve_metric(self.metric_name)
+        logger.info(
+            "Initialized DSPy optimizer with model: %s (metric=%s)",
+            settings.llm_model,
+            self.metric_name,
+        )
 
     def _format_content_summaries(self, content_items: list[WordPressContent]) -> str:
         """Format content items as indexed summaries for DSPy input.
@@ -231,6 +242,39 @@ class DSPyOptimizer:
         logger.info(f"Prepared {len(examples)} training examples from matching results")
         return examples
 
+    @staticmethod
+    def _normalize_metric_name(metric: str) -> str:
+        """Normalize metric name for consistent comparisons."""
+        cleaned = (metric or "").strip().lower().replace(" ", "_").replace("-", "_")
+        return cleaned or "accuracy"
+
+    def _resolve_metric(
+        self, metric_name: str
+    ) -> Callable[[dspy.Example, dspy.Prediction, Any, str | None, Any], float]:
+        """Return the configured metric callable."""
+        metrics: dict[str, Callable[..., float]] = {
+            "accuracy": self.accuracy_metric,
+            "strict_accuracy": self.strict_accuracy_metric,
+            "confidence_weighted": self.confidence_weighted_metric,
+        }
+        metric = metrics.get(metric_name)
+        if metric is None:
+            logger.warning(
+                "Unknown DSPY_OPTIMIZATION_METRIC '%s'; defaulting to accuracy",
+                metric_name,
+            )
+            return self.accuracy_metric
+        return metric
+
+    @staticmethod
+    def _coerce_rubric_score(value: Any) -> float:
+        """Convert rubric score-like values into [0, 1] floats."""
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(score, 1.0))
+
     def accuracy_metric(
         self,
         gold: dspy.Example,
@@ -266,6 +310,47 @@ class DSPyOptimizer:
         index_match = 1.0 if predicted_index == expected_index else 0.0
 
         return index_match
+
+    def strict_accuracy_metric(
+        self,
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: Any = None,
+        pred_name: str | None = None,
+        pred_trace: Any = None,
+    ) -> float:
+        """Accuracy that also requires the model to emit an ACCEPT decision."""
+        base = self.accuracy_metric(gold, pred, trace, pred_name, pred_trace)
+        if base == 0.0:
+            return 0.0
+        decision = str(getattr(pred, "decision", "") or "").strip().lower()
+        return 1.0 if decision == "accept" else 0.0
+
+    def confidence_weighted_metric(
+        self,
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: Any = None,
+        pred_name: str | None = None,
+        pred_trace: Any = None,
+    ) -> float:
+        """Accuracy multiplied by the mean rubric confidence."""
+        base = self.accuracy_metric(gold, pred, trace, pred_name, pred_trace)
+        if base == 0.0:
+            return 0.0
+
+        topic = self._coerce_rubric_score(getattr(pred, "topic_alignment", 0.0))
+        intent = self._coerce_rubric_score(getattr(pred, "intent_fit", 0.0))
+        entity = self._coerce_rubric_score(getattr(pred, "entity_overlap", 0.0))
+
+        scores = [topic, intent]
+        # Only include entity overlap if taxonomy keywords exist; zero scores often
+        # indicate intentionally skipped entity matching.
+        if entity > 0.0:
+            scores.append(entity)
+
+        confidence = sum(scores) / len(scores) if scores else 0.0
+        return base * confidence
 
     def _extract_prompt_info(
         self, model: MatchingModule
@@ -370,7 +455,7 @@ class DSPyOptimizer:
 
         # Set up optimizer
         optimizer = BootstrapFewShot(
-            metric=self.accuracy_metric,
+            metric=self.metric_fn,
             max_bootstrapped_demos=max_bootstrapped_demos,
             max_labeled_demos=max_labeled_demos,
         )
@@ -385,7 +470,7 @@ class DSPyOptimizer:
             # Evaluate on validation set for basic bootstrap optimizer
             evaluator = dspy_evaluate.Evaluate(
                 devset=val_set,
-                metric=self.accuracy_metric,
+                metric=self.metric_fn,
                 num_threads=1,
                 display_progress=True,
             )
@@ -1109,7 +1194,7 @@ class DSPyOptimizer:
 
         optimizer = GEPA(
             reflection_lm=reflection_lm,
-            metric=self.accuracy_metric,
+            metric=self.metric_fn,
             num_threads=num_threads or self.settings.dspy_num_threads,
             failure_score=0.0,
             perfect_score=1.0,
@@ -1137,7 +1222,7 @@ class DSPyOptimizer:
             # Evaluate on validation set
             evaluator = dspy_evaluate.Evaluate(
                 devset=val_set,
-                metric=self.accuracy_metric,
+                metric=self.metric_fn,
                 num_threads=num_threads or self.settings.dspy_num_threads,
                 display_progress=True,
                 display_table=(
@@ -1230,10 +1315,22 @@ class DSPyOptimizer:
                 f"Optimizing with BootstrapFewShotWithRandomSearch: {len(train_set)} training, {len(val_set)} validation examples"
             )
 
+            num_trials_override = kwargs.get("num_trials")
+            trials = self.settings.dspy_num_trials
+            if num_trials_override is not None:
+                try:
+                    trials = int(num_trials_override)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid num_trials override '%s'; using default %s",
+                        num_trials_override,
+                        self.settings.dspy_num_trials,
+                    )
             optimizer = dspy_teleprompt.BootstrapFewShotWithRandomSearch(
-                metric=self.accuracy_metric,
+                metric=self.metric_fn,
                 max_bootstrapped_demos=kwargs.get("max_bootstrapped_demos", 4),
                 max_labeled_demos=kwargs.get("max_labeled_demos", 8),
+                num_candidate_programs=trials,
             )
 
             try:

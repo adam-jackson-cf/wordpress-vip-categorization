@@ -3,6 +3,7 @@
 import csv
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import dspy
@@ -188,6 +189,69 @@ class TestLoadTrainingDataset:
             mock_dspy_optimizer.load_training_dataset(csv_file)
 
 
+class TestMetricSelection:
+    """Tests for configurable optimization metrics."""
+
+    def test_strict_accuracy_requires_accept_decision(
+        self,
+        mock_settings,
+        mock_supabase_client,
+        sample_dspy_example,
+    ) -> None:
+        """Strict accuracy should only score when decision is ACCEPT."""
+        mock_settings.dspy_optimization_metric = "strict_accuracy"
+        with patch("src.optimization.dspy_optimizer.dspy.LM") as mock_lm:
+            mock_lm.return_value = Mock()
+            with patch("src.optimization.dspy_optimizer.dspy.configure"):
+                optimizer = DSPyOptimizer(mock_settings, mock_supabase_client)
+
+        accept_pred = SimpleNamespace(best_match_index=0, decision="accept")
+        reject_pred = SimpleNamespace(best_match_index=0, decision="reject")
+
+        assert optimizer.metric_fn(sample_dspy_example, accept_pred) == 1.0
+        assert optimizer.metric_fn(sample_dspy_example, reject_pred) == 0.0
+
+    def test_confidence_weighted_metric_multiplies_rubric_scores(
+        self,
+        mock_settings,
+        mock_supabase_client,
+        sample_dspy_example,
+    ) -> None:
+        """Confidence-weighted accuracy should use rubric averages."""
+        mock_settings.dspy_optimization_metric = "confidence_weighted"
+        with patch("src.optimization.dspy_optimizer.dspy.LM") as mock_lm:
+            mock_lm.return_value = Mock()
+            with patch("src.optimization.dspy_optimizer.dspy.configure"):
+                optimizer = DSPyOptimizer(mock_settings, mock_supabase_client)
+
+        pred = SimpleNamespace(
+            best_match_index=0,
+            topic_alignment=0.9,
+            intent_fit=0.6,
+            entity_overlap=0.3,
+        )
+        expected = (0.9 + 0.6 + 0.3) / 3
+        assert optimizer.metric_fn(sample_dspy_example, pred) == pytest.approx(expected, rel=1e-6)
+
+    def test_unknown_metric_falls_back_to_accuracy(
+        self,
+        mock_settings,
+        mock_supabase_client,
+        sample_dspy_example,
+    ) -> None:
+        """Unsupported metric strings should fall back gracefully."""
+        mock_settings.dspy_optimization_metric = "totally-unknown"
+        with patch("src.optimization.dspy_optimizer.dspy.LM") as mock_lm:
+            mock_lm.return_value = Mock()
+            with patch("src.optimization.dspy_optimizer.dspy.configure"):
+                optimizer = DSPyOptimizer(mock_settings, mock_supabase_client)
+
+        pred = SimpleNamespace(best_match_index=0)
+        assert optimizer.metric_fn(sample_dspy_example, pred) == optimizer.accuracy_metric(
+            sample_dspy_example, pred
+        )
+
+
 class TestOptimizeWithGEPA:
     """Tests for optimize_with_gepa method."""
 
@@ -337,6 +401,35 @@ class TestOptimizeWithDataset:
 
         assert result == mock_optimized_module
         mock_bootstrap_rs.assert_called_once()
+        call_kwargs = mock_bootstrap_rs.call_args.kwargs
+        assert call_kwargs["num_candidate_programs"] == mock_dspy_optimizer.settings.dspy_num_trials
+
+    @patch("dspy.teleprompt.BootstrapFewShotWithRandomSearch")
+    @patch("dspy.evaluate.Evaluate")
+    def test_bootstrap_random_search_respects_num_trials_override(
+        self,
+        mock_evaluate,
+        mock_bootstrap_rs,
+        mock_dspy_optimizer,
+        sample_dspy_example,
+    ) -> None:
+        """The num_trials kwarg should override default candidate count."""
+        mock_optimizer_instance = Mock()
+        mock_optimizer_instance.compile.return_value = Mock(spec=MatchingModule)
+        mock_bootstrap_rs.return_value = mock_optimizer_instance
+
+        mock_evaluator = Mock()
+        mock_evaluator.return_value = 0.75
+        mock_evaluate.return_value = mock_evaluator
+
+        training_examples = [sample_dspy_example] * 12
+
+        mock_dspy_optimizer.optimize_with_dataset(
+            training_examples, optimizer_type="bootstrap-random-search", num_trials=7
+        )
+
+        call_kwargs = mock_bootstrap_rs.call_args.kwargs
+        assert call_kwargs["num_candidate_programs"] == 7
 
     @patch("src.optimization.dspy_optimizer.DSPyOptimizer.optimize")
     def test_optimize_with_dataset_bootstrap(

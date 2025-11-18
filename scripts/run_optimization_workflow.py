@@ -101,7 +101,7 @@ def run_gepa(
         val_set = training_data[split_point:]
         evaluator = Evaluate(
             devset=val_set,
-            metric=optimizer.accuracy_metric,
+            metric=optimizer.metric_fn,
             num_threads=1,
             display_progress=False,
         )

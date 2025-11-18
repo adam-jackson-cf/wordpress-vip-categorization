@@ -69,7 +69,6 @@ def test_match_only_unmatched_triggers_llm_retry(
 
     mock_settings = mocker.Mock()
     mock_settings.similarity_threshold = 0.85
-    mock_settings.llm_confidence_threshold = 0.9
     mock_settings.enable_semantic_matching = False
     mock_settings.enable_llm_categorization = True
 

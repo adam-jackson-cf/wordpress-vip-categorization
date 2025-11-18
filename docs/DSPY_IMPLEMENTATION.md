@@ -70,6 +70,12 @@ DSPY_NUM_THREADS=1
 # Number of example results to display in evaluation (0 disables)
 DSPY_DISPLAY_TABLE=5
 
+# Optimization metric (accuracy, strict_accuracy, confidence_weighted)
+DSPY_OPTIMIZATION_METRIC=accuracy
+
+# Candidate programs to explore per BootstrapFewShotWithRandomSearch round
+DSPY_NUM_TRIALS=50
+
 # Explicit GEPA budget (alternative to auto budget)
 # DSPY_MAX_FULL_EVALS=10
 # DSPY_MAX_METRIC_CALLS=1000
@@ -144,9 +150,13 @@ The `prepare_training_data()` method converts database matching results into DSP
 
 ### Evaluation Metrics
 
-The `accuracy_metric()` method:
-- Checks exact match on `best_match_index`
-- Returns score between 0 and 1
+`DSPY_OPTIMIZATION_METRIC` controls which callable the optimizer feeds into DSPy:
+
+- `accuracy` (default): requires an exact match on `best_match_index`
+- `strict_accuracy`: accuracy plus an emitted `decision=accept`
+- `confidence_weighted`: accuracy multiplied by the rubric’s average confidence
+
+Unknown values automatically fall back to simple accuracy and emit a warning, so experimentation is low-risk.
 
 ### Selector vs. Judge
 

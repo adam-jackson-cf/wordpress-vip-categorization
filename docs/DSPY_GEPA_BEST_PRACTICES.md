@@ -137,7 +137,7 @@ Use `BootstrapFewShot` to automatically generate and select high-quality demonst
 from dspy.teleprompt import BootstrapFewShot
 
 optimizer = BootstrapFewShot(
-    metric=self.accuracy_metric,
+    metric=self.metric_fn,
     max_bootstrapped_demos=4,
     max_labeled_demos=8,
 )
@@ -156,7 +156,7 @@ Use `LabeledFewShot` when you have pre-labelled examples and want to select the 
 from dspy.teleprompt import LabeledFewShot
 
 optimizer = LabeledFewShot(
-    metric=self.accuracy_metric,
+    metric=self.metric_fn,
     max_labeled_demos=8,
 )
 ```
@@ -196,7 +196,7 @@ from dspy.evaluate import Evaluate
 
 evaluator = Evaluate(
     devset=val_set,
-    metric=self.accuracy_metric,
+    metric=self.metric_fn,
     num_threads=1,
     display_progress=True,
     display_table=5,  # Show first 5 examples with scores (0 = no table)
@@ -259,7 +259,7 @@ Configure parallel evaluation and metric ranges for efficient optimisation.
 
 ```python
 optimizer = GEPA(
-    metric=self.accuracy_metric,
+    metric=self.metric_fn,
     num_threads=4,  # Parallel evaluation
     failure_score=0.0,  # Minimum acceptable score
     perfect_score=1.0,  # Target score
