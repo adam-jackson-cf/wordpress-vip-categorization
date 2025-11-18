@@ -79,12 +79,12 @@ def run_bootstrap_test(
 
         split_point = int(len(training_data) * train_split)
         val_set = training_data[split_point:]
-            evaluator = Evaluate(
-                devset=val_set,
-                metric=optimizer.metric_fn,
-                num_threads=1,
-                display_progress=False,
-            )
+        evaluator = Evaluate(
+            devset=val_set,
+            metric=optimizer.metric_fn,
+            num_threads=1,
+            display_progress=False,
+        )
         validation_score = evaluator(optimized_model)
     except Exception as exc:  # pragma: no cover - defensive logging only
         logger.warning("Could not compute validation score: %s", exc)
