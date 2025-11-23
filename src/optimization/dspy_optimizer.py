@@ -481,7 +481,7 @@ class DSPyOptimizer:
                 score = float(eval_result.score)
             elif hasattr(eval_result, "average"):
                 score = float(eval_result.average)
-            elif isinstance(eval_result, (int, float)):
+            elif isinstance(eval_result, int | float):
                 score = float(eval_result)
             else:
                 # Try to convert to float directly
@@ -1236,7 +1236,7 @@ class DSPyOptimizer:
                 score = float(eval_result.score)
             elif hasattr(eval_result, "average"):
                 score = float(eval_result.average)
-            elif isinstance(eval_result, (int, float)):
+            elif isinstance(eval_result, int | float):
                 score = float(eval_result)
             else:
                 # Try to convert to float directly

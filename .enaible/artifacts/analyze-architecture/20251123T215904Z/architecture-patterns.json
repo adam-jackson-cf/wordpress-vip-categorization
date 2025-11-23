@@ -1,0 +1,94 @@
+{
+  "project": "wordpress-vip-categorization",
+  "analysis_timestamp": "2025-11-23T21:59:04Z",
+  "patterns_observed": [
+    {
+      "pattern": "Layered Architecture",
+      "description": "Clean separation between CLI, services, connectors, data access, and exporters",
+      "evidence": [
+        "src/cli.py - CLI entrypoint layer",
+        "src/services/* - Business logic layer (workflow, matching, categorization, ingestion, embeddings)",
+        "src/connectors/* - External API adapters (WordPress VIP)",
+        "src/data/* - Data access layer (Supabase client)",
+        "src/exporters/* - Output formatters (CSV)"
+      ],
+      "quality": "strong"
+    },
+    {
+      "pattern": "Dependency Injection",
+      "description": "Services accept dependencies through constructors rather than creating them internally",
+      "evidence": [
+        "WorkflowService.__init__(settings, db_client, matching_service?, categorization_service?)",
+        "MatchingService.__init__(settings, db_client, embedding_service?)",
+        "IngestionService.__init__(settings, db_client, embedding_service?)",
+        "CLI commands instantiate Settings -> SupabaseClient -> Services"
+      ],
+      "quality": "strong"
+    },
+    {
+      "pattern": "Repository Pattern",
+      "description": "SupabaseClient encapsulates all database operations with consistent interface",
+      "evidence": [
+        "get_all_content(), get_all_taxonomy(), get_all_matchings()",
+        "insert_*, upsert_*, bulk_upsert_* methods",
+        "clear_matching_results() with filtering capabilities"
+      ],
+      "quality": "strong"
+    },
+    {
+      "pattern": "Strategy Pattern",
+      "description": "Multiple optimization strategies selectable at runtime (GEPA, Bootstrap, BootstrapRandomSearch)",
+      "evidence": [
+        "DSPyOptimizer.optimize_with_dataset(optimizer_type='gepa'|'bootstrap'|'bootstrap-random-search')",
+        "Pluggable metric functions (accuracy, strict_accuracy, confidence_weighted)"
+      ],
+      "quality": "moderate"
+    },
+    {
+      "pattern": "Cascading Workflow",
+      "description": "Multi-stage processing pipeline with progressive fallback",
+      "evidence": [
+        "Stage 1: Semantic matching with embedding similarity",
+        "Stage 2: LLM categorization with rubric gating for unmatched items",
+        "Stage 3: Human review queue for items failing both stages"
+      ],
+      "quality": "strong"
+    },
+    {
+      "pattern": "Configuration-Driven Behavior",
+      "description": "Runtime behavior controlled via pydantic-settings with validation",
+      "evidence": [
+        "Settings class with 40+ configurable parameters",
+        "Field validators for threshold ranges, budget levels, etc.",
+        "AliasChoices for backward-compatible env var naming"
+      ],
+      "quality": "strong"
+    },
+    {
+      "pattern": "Retry with Exponential Backoff",
+      "description": "All external API calls wrapped with tenacity retry decorators",
+      "evidence": [
+        "SupabaseClient._with_retry() wrapping all DB operations",
+        "EmbeddingService.embed() with OPENAI_RETRY_EXCEPTIONS",
+        "WordPressVIPConnector._make_request() with requests.exceptions.RequestException"
+      ],
+      "quality": "strong"
+    }
+  ],
+  "anti_patterns_detected": [
+    {
+      "anti_pattern": "Global Mutable State",
+      "description": "_SETTINGS_CACHE global variable for settings caching",
+      "location": "src/config.py:243",
+      "severity": "low",
+      "mitigation": "Isolated to settings module; get_settings() returns model_copy()"
+    },
+    {
+      "anti_pattern": "Optional Dependency Ambiguity",
+      "description": "Services accept optional collaborators but create defaults internally",
+      "location": "WorkflowService.__init__(), MatchingService.__init__()",
+      "severity": "low",
+      "mitigation": "Useful for convenience but consider explicit factory pattern"
+    }
+  ]
+}

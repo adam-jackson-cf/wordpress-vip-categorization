@@ -1,0 +1,76 @@
+{
+  "project": "wordpress-vip-categorization",
+  "analysis_timestamp": "2025-11-23T21:59:04Z",
+  "dependency_graph": {
+    "nodes": [
+      {"id": "cli", "layer": "presentation", "file": "src/cli.py"},
+      {"id": "config", "layer": "infrastructure", "file": "src/config.py"},
+      {"id": "models", "layer": "domain", "file": "src/models.py"},
+      {"id": "supabase_client", "layer": "infrastructure", "file": "src/data/supabase_client.py"},
+      {"id": "workflow", "layer": "application", "file": "src/services/workflow.py"},
+      {"id": "matching", "layer": "application", "file": "src/services/matching.py"},
+      {"id": "categorization", "layer": "application", "file": "src/services/categorization.py"},
+      {"id": "ingestion", "layer": "application", "file": "src/services/ingestion.py"},
+      {"id": "embeddings", "layer": "application", "file": "src/services/embeddings.py"},
+      {"id": "dspy_optimizer", "layer": "application", "file": "src/optimization/dspy_optimizer.py"},
+      {"id": "evaluator", "layer": "application", "file": "src/optimization/evaluator.py"},
+      {"id": "wordpress_vip", "layer": "infrastructure", "file": "src/connectors/wordpress_vip.py"},
+      {"id": "csv_exporter", "layer": "infrastructure", "file": "src/exporters/csv_exporter.py"}
+    ],
+    "edges": [
+      {"from": "cli", "to": "config", "type": "uses"},
+      {"from": "cli", "to": "supabase_client", "type": "creates"},
+      {"from": "cli", "to": "workflow", "type": "creates"},
+      {"from": "cli", "to": "matching", "type": "creates"},
+      {"from": "cli", "to": "categorization", "type": "creates"},
+      {"from": "cli", "to": "ingestion", "type": "creates"},
+      {"from": "cli", "to": "dspy_optimizer", "type": "creates"},
+      {"from": "cli", "to": "evaluator", "type": "creates"},
+      {"from": "cli", "to": "csv_exporter", "type": "creates"},
+      {"from": "workflow", "to": "matching", "type": "depends"},
+      {"from": "workflow", "to": "categorization", "type": "depends"},
+      {"from": "workflow", "to": "supabase_client", "type": "depends"},
+      {"from": "matching", "to": "embeddings", "type": "depends"},
+      {"from": "matching", "to": "supabase_client", "type": "depends"},
+      {"from": "categorization", "to": "dspy_optimizer", "type": "depends"},
+      {"from": "categorization", "to": "supabase_client", "type": "depends"},
+      {"from": "ingestion", "to": "wordpress_vip", "type": "creates"},
+      {"from": "ingestion", "to": "embeddings", "type": "depends"},
+      {"from": "ingestion", "to": "supabase_client", "type": "depends"},
+      {"from": "embeddings", "to": "config", "type": "uses"},
+      {"from": "dspy_optimizer", "to": "supabase_client", "type": "depends"},
+      {"from": "evaluator", "to": "supabase_client", "type": "depends"},
+      {"from": "csv_exporter", "to": "supabase_client", "type": "depends"}
+    ]
+  },
+  "layer_violations": [],
+  "circular_dependencies": [],
+  "high_in_degree_modules": [
+    {
+      "module": "supabase_client",
+      "in_degree": 8,
+      "dependents": ["cli", "workflow", "matching", "categorization", "ingestion", "dspy_optimizer", "evaluator", "csv_exporter"],
+      "note": "Central data access - appropriate high coupling"
+    },
+    {
+      "module": "config",
+      "in_degree": 3,
+      "dependents": ["cli", "embeddings", "all services via Settings"],
+      "note": "Configuration root - expected high coupling"
+    }
+  ],
+  "high_out_degree_modules": [
+    {
+      "module": "cli",
+      "out_degree": 9,
+      "dependencies": ["config", "supabase_client", "workflow", "matching", "categorization", "ingestion", "dspy_optimizer", "evaluator", "csv_exporter"],
+      "note": "Composition root - appropriate for CLI entry point"
+    },
+    {
+      "module": "workflow",
+      "out_degree": 3,
+      "dependencies": ["matching", "categorization", "supabase_client"],
+      "note": "Orchestration service - expected coordination role"
+    }
+  ]
+}

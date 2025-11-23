@@ -1,0 +1,79 @@
+{
+  "project": "wordpress-vip-categorization",
+  "analysis_timestamp": "2025-11-23T21:59:04Z",
+  "scalability_assessment": {
+    "overall_rating": "good",
+    "notes": "Architecture supports moderate scale with batch processing patterns"
+  },
+  "bottlenecks": [
+    {
+      "component": "EmbeddingService.embed_batch()",
+      "issue": "Sequential embedding generation in loop",
+      "location": "src/services/embeddings.py:52-62",
+      "impact": "Linear scaling for large content sets; no parallelism",
+      "recommendation": "Implement concurrent embedding requests or use OpenAI batch embedding endpoint"
+    },
+    {
+      "component": "MatchingService._local_similarity_search()",
+      "issue": "O(n) content iteration for fallback similarity search",
+      "location": "src/services/matching.py:127-140",
+      "impact": "Performance degrades with content corpus size",
+      "recommendation": "Ensure pgvector RPC is always available; add index optimization"
+    },
+    {
+      "component": "CategorizationService.categorize_for_matching()",
+      "issue": "Synchronous LLM calls per taxonomy page",
+      "location": "src/services/categorization.py:478-564",
+      "impact": "LLM rate limits and latency compound linearly",
+      "recommendation": "Consider batch LLM inference or async processing"
+    },
+    {
+      "component": "Evaluator.evaluate_all()",
+      "issue": "N+1 query pattern for categorization lookup",
+      "location": "src/optimization/evaluator.py:95-98",
+      "impact": "One DB call per matched content item",
+      "recommendation": "Batch categorization lookup or join query"
+    }
+  ],
+  "scaling_strengths": [
+    {
+      "feature": "Bulk upsert operations",
+      "description": "bulk_upsert_content(), bulk_upsert_taxonomy(), bulk_upsert_matchings() with configurable chunk_size",
+      "benefit": "Efficient batch persistence reduces DB round-trips"
+    },
+    {
+      "feature": "Configurable batch sizes",
+      "description": "ingestion_batch_size, matching_batch_size settings",
+      "benefit": "Tunable for different deployment scales"
+    },
+    {
+      "feature": "pgvector similarity search",
+      "description": "match_content_by_embedding() uses Supabase RPC",
+      "benefit": "Database-side vector search scales better than client-side"
+    },
+    {
+      "feature": "Resumable workflow runs",
+      "description": "WorkflowRun model with status/stage tracking",
+      "benefit": "Can recover from failures without full reprocessing"
+    },
+    {
+      "feature": "Incremental ingestion",
+      "description": "resume flag and since parameter for WordPress ingestion",
+      "benefit": "Only fetches new/modified content"
+    }
+  ],
+  "capacity_recommendations": [
+    {
+      "scale": "small (<1000 content items)",
+      "recommendation": "Current architecture sufficient"
+    },
+    {
+      "scale": "medium (1000-10000 content items)",
+      "recommendation": "Ensure pgvector indexes are optimized; consider async embedding generation"
+    },
+    {
+      "scale": "large (>10000 content items)",
+      "recommendation": "Add worker queue for parallel processing; implement batch LLM inference; consider caching layer"
+    }
+  ]
+}

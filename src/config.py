@@ -36,6 +36,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SEMANTIC_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"),
         description="Embedding model used for semantic similarity.",
     )
+    embedding_batch_size: int = Field(
+        default=2048,
+        validation_alias=AliasChoices("EMBEDDING_BATCH_SIZE"),
+        description="Maximum number of texts to include in a single embedding API batch request.",
+    )
 
     # LLM Categorization Configuration
     llm_api_key: str = Field(
@@ -219,6 +224,7 @@ class Settings(BaseSettings):
         "llm_candidate_limit",
         "ingestion_batch_size",
         "matching_batch_size",
+        "embedding_batch_size",
     )
     @classmethod
     def validate_positive(cls, v: int) -> int:
