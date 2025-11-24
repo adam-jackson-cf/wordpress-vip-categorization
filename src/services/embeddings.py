@@ -143,7 +143,7 @@ class EmbeddingService:
                     chunk_start,
                     chunk_end - 1,
                     result,
-                    exc_info=True,
+                    exc_info=result,
                 )
             else:
                 # Place embeddings back into their original positions
