@@ -424,6 +424,29 @@ class SupabaseClient:
         )
         return [CategorizationResult.model_validate(item) for item in result.data]
 
+    def get_categorizations_by_content_ids(
+        self, content_ids: list[UUID]
+    ) -> list[CategorizationResult]:
+        """Get categorization results for multiple content items in a single query.
+
+        Args:
+            content_ids: List of content UUIDs.
+
+        Returns:
+            List of categorization results for all provided content IDs.
+        """
+        if not content_ids:
+            return []
+
+        id_strings = [str(cid) for cid in content_ids]
+        result = self._with_retry(
+            lambda: self.client.table("categorization_results")
+            .select("*")
+            .in_("content_id", id_strings)
+            .execute()
+        )
+        return [CategorizationResult.model_validate(item) for item in result.data]
+
     def get_categorizations_by_batch(self, batch_id: str) -> list[CategorizationResult]:
         """Get all categorization results for a batch.
 

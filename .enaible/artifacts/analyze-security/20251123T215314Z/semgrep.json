@@ -1,0 +1,172 @@
+{
+  "tool": "security:semgrep",
+  "analyzer_type": "performance",
+  "success": true,
+  "exit_code": 0,
+  "started_at": "2025-11-23T21:53:32.008461+00:00",
+  "completed_at": "2025-11-23T21:53:38.912823+00:00",
+  "duration_ms": 6904,
+  "target": "/Users/adamjackson/LocalDev/wordpress-vip-categorization",
+  "findings": [],
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 0
+  },
+  "metadata": {
+    "analyzer_type": "security",
+    "target_path": ".",
+    "files_analyzed": "handled_by_semgrep",
+    "files_processed": 0,
+    "files_skipped": 0,
+    "processing_errors": 0,
+    "total_findings": 0,
+    "severity_breakdown": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "analyzer_config": {
+      "max_files": null,
+      "max_file_size_mb": 5,
+      "extensions_count": 26,
+      "skip_patterns_count": 23
+    },
+    "name": "Semgrep Security Analyzer",
+    "version": "2.0.0",
+    "description": "Semantic security analysis using Semgrep (replacing bespoke regex patterns)",
+    "category": "security",
+    "priority": "critical",
+    "capabilities": [
+      "OWASP Top 10 vulnerability detection",
+      "SQL injection analysis",
+      "XSS vulnerability detection",
+      "Authentication/authorization analysis",
+      "Hardcoded secrets detection",
+      "Input validation analysis",
+      "Cryptographic weakness detection",
+      "Multi-language semantic analysis",
+      "Real-time security rule updates"
+    ],
+    "supported_languages": [
+      "Python",
+      "JavaScript",
+      "TypeScript",
+      "Java",
+      "C#",
+      "PHP",
+      "Ruby",
+      "Go",
+      "Rust",
+      "C/C++",
+      "Swift",
+      "Kotlin",
+      "Scala",
+      "Dart",
+      "HTML",
+      "SQL",
+      "Shell",
+      "YAML",
+      "Terraform"
+    ],
+    "tool": "semgrep",
+    "replaces": [
+      "scan_vulnerabilities.py",
+      "check_auth.py",
+      "validate_inputs.py"
+    ]
+  },
+  "stats": {
+    "execution_time_seconds": 6.904300928115845
+  },
+  "errors": [],
+  "raw": {
+    "analysis_type": "performance",
+    "script_name": "security_analyzer.py",
+    "target_path": "/Users/adamjackson/LocalDev/wordpress-vip-categorization",
+    "timestamp": "2025-11-23T21:53:32.008521",
+    "execution_time": 6.904,
+    "success": true,
+    "error_message": null,
+    "summary": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "findings": [],
+    "metadata": {
+      "analyzer_type": "security",
+      "target_path": ".",
+      "files_analyzed": "handled_by_semgrep",
+      "files_processed": 0,
+      "files_skipped": 0,
+      "processing_errors": 0,
+      "total_findings": 0,
+      "severity_breakdown": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0
+      },
+      "analyzer_config": {
+        "max_files": null,
+        "max_file_size_mb": 5,
+        "extensions_count": 26,
+        "skip_patterns_count": 23
+      },
+      "name": "Semgrep Security Analyzer",
+      "version": "2.0.0",
+      "description": "Semantic security analysis using Semgrep (replacing bespoke regex patterns)",
+      "category": "security",
+      "priority": "critical",
+      "capabilities": [
+        "OWASP Top 10 vulnerability detection",
+        "SQL injection analysis",
+        "XSS vulnerability detection",
+        "Authentication/authorization analysis",
+        "Hardcoded secrets detection",
+        "Input validation analysis",
+        "Cryptographic weakness detection",
+        "Multi-language semantic analysis",
+        "Real-time security rule updates"
+      ],
+      "supported_languages": [
+        "Python",
+        "JavaScript",
+        "TypeScript",
+        "Java",
+        "C#",
+        "PHP",
+        "Ruby",
+        "Go",
+        "Rust",
+        "C/C++",
+        "Swift",
+        "Kotlin",
+        "Scala",
+        "Dart",
+        "HTML",
+        "SQL",
+        "Shell",
+        "YAML",
+        "Terraform"
+      ],
+      "tool": "semgrep",
+      "replaces": [
+        "scan_vulnerabilities.py",
+        "check_auth.py",
+        "validate_inputs.py"
+      ]
+    },
+    "min_severity_filter": "high",
+    "total_findings_before_filter": 0,
+    "total_findings_after_filter": 0
+  }
+}

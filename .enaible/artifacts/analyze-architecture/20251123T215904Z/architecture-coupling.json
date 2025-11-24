@@ -1,0 +1,51 @@
+{
+  "project": "wordpress-vip-categorization",
+  "analysis_timestamp": "2025-11-23T21:59:04Z",
+  "coupling_analysis": {
+    "overall_assessment": "Well-structured with appropriate coupling levels",
+    "afferent_coupling": {
+      "description": "Modules that others depend on (instability factor)",
+      "high_stability": [
+        {"module": "models", "ca": 10, "note": "Domain models used throughout - appropriate"},
+        {"module": "config", "ca": 8, "note": "Settings used by all services - appropriate"},
+        {"module": "supabase_client", "ca": 8, "note": "Central data access - appropriate"}
+      ]
+    },
+    "efferent_coupling": {
+      "description": "Modules that depend on others",
+      "high_instability": [
+        {"module": "cli", "ce": 9, "note": "Composition root - expected"},
+        {"module": "categorization", "ce": 4, "note": "Coordinates DSPy + DB + models"},
+        {"module": "workflow", "ce": 4, "note": "Orchestrates matching + categorization"}
+      ]
+    }
+  },
+  "coupling_hotspots": [
+    {
+      "component": "CategorizationService",
+      "issue": "Direct dependency on DSPyOptimizer internals",
+      "impact": "Changes to DSPy module structure require CategorizationService updates",
+      "recommendation": "Consider interface abstraction for LLM matching"
+    },
+    {
+      "component": "SupabaseClient",
+      "issue": "653 lines with 30+ public methods",
+      "impact": "Large surface area increases maintenance burden",
+      "recommendation": "Consider splitting into focused repositories (ContentRepository, TaxonomyRepository, MatchingRepository)"
+    }
+  ],
+  "decoupling_opportunities": [
+    {
+      "area": "External API Integration",
+      "current": "Direct OpenAI client instantiation in services",
+      "proposed": "Abstract LLM provider interface for easier testing and provider swapping",
+      "priority": "low"
+    },
+    {
+      "area": "Batch Processing",
+      "current": "CategorizationService handles batch file creation, submission, polling",
+      "proposed": "Extract BatchProcessor for reuse across services",
+      "priority": "low"
+    }
+  ]
+}

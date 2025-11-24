@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from src.data.supabase_client import SupabaseClient
 from src.models import CategorizationResult, MatchingResult, MatchStage
@@ -90,12 +91,29 @@ class Evaluator:
         # Get all matching results
         matching_results = self.db.get_all_matchings()
 
-        # Get categorization results for matched content
+        # Collect unique content_ids from matched results (filter out None)
+        content_ids = list(
+            {match.content_id for match in matching_results if match.content_id is not None}
+        )
+
+        # Batch fetch all categorizations in a single query
+        all_categorizations = (
+            self.db.get_categorizations_by_content_ids(content_ids) if content_ids else []
+        )
+
+        # Build lookup dictionary mapping content_id to list of categorizations
+        categorizations_by_content: dict[UUID, list[CategorizationResult]] = {}
+        for cat in all_categorizations:
+            if cat.content_id not in categorizations_by_content:
+                categorizations_by_content[cat.content_id] = []
+            categorizations_by_content[cat.content_id].append(cat)
+
+        # Reconstruct categorization_results list in same order as current implementation
+        # (iterating through matches and extending categorizations for each)
         categorization_results = []
         for match in matching_results:
-            if match.content_id:
-                cats = self.db.get_categorizations_by_content(match.content_id)
-                categorization_results.extend(cats)
+            if match.content_id and match.content_id in categorizations_by_content:
+                categorization_results.extend(categorizations_by_content[match.content_id])
 
         return {
             "categorization": self.evaluate_categorization(categorization_results),

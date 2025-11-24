@@ -909,15 +909,15 @@ def optimize_dataset(
         def _coerce_validation_score(value: object) -> float | None:
             if value is None:
                 return None
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 return float(value)
             score_attr = getattr(value, "score", None)
-            if isinstance(score_attr, (int, float)):
+            if isinstance(score_attr, int | float):
                 return float(score_attr)
             summary_attr = getattr(value, "summary", None)
             if isinstance(summary_attr, dict):
                 maybe_score = summary_attr.get("score")
-                if isinstance(maybe_score, (int, float)):
+                if isinstance(maybe_score, int | float):
                     return float(maybe_score)
             return None
 
