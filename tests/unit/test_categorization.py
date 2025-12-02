@@ -240,7 +240,7 @@ class TestCategorizationService:
 
         mocker.patch("src.services.categorization.DSPyOptimizer")
         service = CategorizationService(mock_settings, mock_supabase_client)
-        sample_taxonomy_page.keywords = []
+        sample_taxonomy_page.key_topics = []
         rubric = {
             "decision": "accept",
             "topic_alignment": 0.9,
@@ -262,7 +262,7 @@ class TestCategorizationService:
 
         mocker.patch("src.services.categorization.DSPyOptimizer")
         service = CategorizationService(mock_settings, mock_supabase_client)
-        sample_taxonomy_page.keywords = ["ai"]
+        sample_taxonomy_page.key_topics = ["ai"]
         rubric = {
             "decision": "accept",
             "topic_alignment": 0.9,

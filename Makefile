@@ -1,5 +1,10 @@
 .PHONY: help install test lint format type-check quality-check clean
 
+CA_RUNNER :=
+ifeq ($(ENABLE_CORP_CA),1)
+CA_RUNNER = scripts/corp_ca_exec.sh
+endif
+
 help:
 	@echo "Available targets:"
 	@echo "  install        - Install dependencies"
@@ -32,13 +37,13 @@ format:
 	black src tests
 
 format-check:
-	black --check src tests
+	$(CA_RUNNER) black --check src tests
 
 type-check:
-	mypy src
+	$(CA_RUNNER) mypy src
 
 quality-check: format-check lint type-check
-	pytest -n 4 --cov=src --cov-report=term-missing --cov-fail-under=80 -m "not integration and not slow"
+	$(CA_RUNNER) pytest -n 4 --cov=src --cov-report=term-missing --cov-fail-under=80 -m "not integration and not slow"
 	@echo "✓ All quality checks passed!"
 
 clean:

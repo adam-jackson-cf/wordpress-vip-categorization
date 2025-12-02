@@ -50,10 +50,10 @@ def test_get_taxonomy_by_urls_filters_empty(supabase_client, mocker, sample_taxo
     table = _build_table_chain(mocker, data=[sample_taxonomy_page.model_dump(mode="json")])
     supabase_client.client.table.return_value = table
 
-    rows = supabase_client.get_taxonomy_by_urls([str(sample_taxonomy_page.url)])
+    rows = supabase_client.get_taxonomy_by_urls([str(sample_taxonomy_page.destination_url)])
 
     assert len(rows) == 1
-    assert rows[0].url == sample_taxonomy_page.url
+    assert rows[0].destination_url == sample_taxonomy_page.destination_url
     table.in_.assert_called_once()
 
 
@@ -214,10 +214,10 @@ def test_upsert_taxonomy_and_get_by_id(
     supabase_client.client.table.return_value = table
 
     stored = supabase_client.upsert_taxonomy(sample_taxonomy_page)
-    assert stored.category == sample_taxonomy_page.category
+    assert stored.content_type == sample_taxonomy_page.content_type
 
     fetched = supabase_client.get_taxonomy_by_id(sample_taxonomy_page.id)
-    assert fetched.url == sample_taxonomy_page.url
+    assert fetched.destination_url == sample_taxonomy_page.destination_url
 
 
 def test_get_categorizations_by_content(

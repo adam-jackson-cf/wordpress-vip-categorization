@@ -47,7 +47,7 @@ The repo ships with `scripts/bootstrap_supabase.py`, which sequentially calls th
 
 ```bash
 scripts/bootstrap_supabase.py \
-  --taxonomy-file data/taxonomy.csv \
+  --taxonomy-file data/Spain_New.csv \
   --sites https://wordpress.org/news \
   --max-pages 2 \
   --run-tests
@@ -78,8 +78,20 @@ LLM_BATCH_TIMEOUT=86400
 LLM_CANDIDATE_LIMIT=10
 LLM_CANDIDATE_MIN_SCORE=0.6
 
-# WordPress sites to ingest (comma-separated)
-WORDPRESS_VIP_SITES=https://wordpress.org/news
+# Optional corporate CA bundle
+ENABLE_CORP_CA=0
+CORP_CA_BUNDLE_PATH=/path/to/corp-ca-bundle.pem
+
+# WordPress sites to ingest (comma-separated `site|token`)
+WORDPRESS_VIP_SITE_TOKENS="https://wordpress.org/news|example-token"
+
+### Corporate CA helper
+
+When `ENABLE_CORP_CA=1`, the Makefile automatically wraps Black/Mypy/Pytest through `scripts/corp_ca_exec.sh` so every tool honours `CORP_CA_BUNDLE_PATH`. Use the same helper for manual commands that need network access:
+
+```bash
+scripts/corp_ca_exec.sh python -m src.cli ingest --max-pages 1
+```
 
 # Batch tuning
 INGESTION_BATCH_SIZE=200
@@ -114,10 +126,10 @@ You should see:
 
 ### Step 1: Load Taxonomy
 
-Create or update `data/taxonomy.csv`:
+Create or update `data/Spain_New.csv`:
 ```csv
-url,category,description,keywords
-https://example.com/wordpress,WordPress,WordPress news,wordpress;cms;blogging
+UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics
+TAX-001,https://example.com/wordpress,WordPress,WordPress,News,All,Media,WordPress news and updates,wordpress, cms, blogging
 ```
 
 Then load it:
@@ -300,7 +312,7 @@ wordpress-vip-categorization/
 │   └── exporters/
 │       └── csv_exporter.py       # Results export
 ├── data/
-│   └── taxonomy.csv              # Your taxonomy
+│   └── Spain_New.csv             # Your taxonomy
 ├── src/
 │   └── data/
 │       └── schema.sql            # Database schema

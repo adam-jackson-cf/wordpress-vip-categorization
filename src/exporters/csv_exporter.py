@@ -40,7 +40,7 @@ class CSVExporter:
             # Default values
             target_url = ""
             similarity_score = 0.0
-            category = taxonomy.category
+            category = taxonomy.content_type
             match_stage: str | None = None
             failed_at_stage: str | None = None
 
@@ -62,7 +62,7 @@ class CSVExporter:
                 failed_at_stage = match.failed_at_stage
 
             row = ExportRow(
-                source_url=str(taxonomy.url),
+                source_url=str(taxonomy.destination_url),
                 target_url=target_url,
                 category=category,
                 similarity_score=similarity_score,

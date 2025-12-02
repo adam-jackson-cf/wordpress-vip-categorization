@@ -29,9 +29,9 @@ class TestMatchingService:
 
         text = service.create_taxonomy_text(sample_taxonomy_page)
 
-        assert "Category: Technology" in text
-        assert "Description: Technology-related content" in text
-        assert "Keywords: technology, innovation, digital" in text
+        assert "Content Type: Technology" in text
+        assert "Summary: Technology-related content" in text
+        assert "Key Topics: technology, innovation, digital" in text
 
     def test_create_content_text(
         self,
@@ -153,10 +153,15 @@ class TestMatchingService:
 
         second_taxonomy = TaxonomyPage(
             id=uuid4(),
-            url="https://taxonomy.com/second",
-            category="News",
-            description="News",
-            keywords=[],
+            uid="TAX-SECOND",
+            destination_url="https://taxonomy.com/second",
+            english_page_name="News Page",
+            es_page_name="Pagina Noticias",
+            content_type="News",
+            primary_audiance="All",
+            secondary_audiance="Media",
+            semantic_summary="News summary",
+            key_topics=[],
         )
 
         mock_supabase_client.get_unmatched_taxonomy.return_value = [second_taxonomy]

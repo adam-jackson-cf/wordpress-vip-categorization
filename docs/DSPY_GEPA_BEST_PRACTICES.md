@@ -14,9 +14,9 @@ Define input/output contracts using `dspy.Signature`. Use descriptive field name
 class TaxonomyMatcher(dspy.Signature):
     """Match a taxonomy page to the most relevant content page."""
 
-    taxonomy_category: str = dspy.InputField(desc="Category of the taxonomy page")
-    taxonomy_description: str = dspy.InputField(desc="Description of the taxonomy page")
-    taxonomy_keywords: str = dspy.InputField(desc="Keywords for the taxonomy page (comma-separated)")
+    taxonomy_content_type: str = dspy.InputField(desc="Content type of the taxonomy page")
+    taxonomy_summary: str = dspy.InputField(desc="Semantic summary of the taxonomy page")
+    taxonomy_topics: str = dspy.InputField(desc="Key topics for the taxonomy page (comma-separated)")
     content_summaries: str = dspy.InputField(desc="List of available content pages with index, title, URL, and preview")
 
     best_match_index: int = dspy.OutputField(desc="Index of the best matching content page, or -1 if no good match")
@@ -38,15 +38,15 @@ class MatchingModule(dspy.Module):
 
     def forward(
         self,
-        taxonomy_category: str,
-        taxonomy_description: str,
-        taxonomy_keywords: str,
+        taxonomy_content_type: str,
+        taxonomy_summary: str,
+        taxonomy_topics: str,
         content_summaries: str,
     ) -> dspy.Prediction:
         return self.predict(
-            taxonomy_category=taxonomy_category,
-            taxonomy_description=taxonomy_description,
-            taxonomy_keywords=taxonomy_keywords,
+            taxonomy_content_type=taxonomy_content_type,
+            taxonomy_summary=taxonomy_summary,
+            taxonomy_topics=taxonomy_topics,
             content_summaries=content_summaries,
         )
 ```
@@ -110,17 +110,17 @@ Convert domain data into `dspy.Example` objects. Mark input fields explicitly us
 
 ```python
 example = dspy.Example(
-    taxonomy_category=taxonomy.category,
-    taxonomy_description=taxonomy.description,
-    taxonomy_keywords=keywords_str,
+    taxonomy_content_type=taxonomy.content_type,
+    taxonomy_summary=taxonomy.semantic_summary,
+    taxonomy_topics=keywords_str,
     content_summaries=content_summaries,
     best_match_index=best_match_index,
     confidence=matching.similarity_score,
     reasoning="",
 ).with_inputs(
-    "taxonomy_category",
-    "taxonomy_description",
-    "taxonomy_keywords",
+    "taxonomy_content_type",
+    "taxonomy_summary",
+    "taxonomy_topics",
     "content_summaries",
 )
 ```

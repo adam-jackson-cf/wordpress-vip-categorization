@@ -65,7 +65,7 @@ class TestCSVExporter:
             lines = f.readlines()
             assert len(lines) == 2  # Header + 1 data row
             assert "source_url" in lines[0]
-            assert str(sample_taxonomy_page.url) in lines[1]
+            assert str(sample_taxonomy_page.destination_url) in lines[1]
 
     def test_export_unmatched_only(
         self,

@@ -30,8 +30,8 @@ def mock_settings() -> Settings:
             "LLM_API_KEY": "test-llm-key",
             "LLM_BASE_URL": "https://llm.example.com/v1",
             "LLM_MODEL": "gpt-4o-mini",
-            "WORDPRESS_VIP_SITES": "https://test1.com,https://test2.com",
-            "TAXONOMY_FILE_PATH": "./data/taxonomy.csv",
+            "WORDPRESS_VIP_SITE_TOKENS": "https://test1.com|token1,https://test2.com|token2",
+            "TAXONOMY_FILE_PATH": "./data/Spain_New.csv",
         }
     )
     return Settings()
@@ -56,10 +56,15 @@ def sample_taxonomy_page() -> TaxonomyPage:
     """Create sample taxonomy page."""
     return TaxonomyPage(
         id=uuid4(),
-        url="https://taxonomy.com/tech",
-        category="Technology",
-        description="Technology-related content",
-        keywords=["technology", "innovation", "digital"],
+        uid="TAX-001",
+        destination_url="https://taxonomy.com/tech",
+        english_page_name="Technology Overview",
+        es_page_name="Tecnologia",
+        content_type="Technology",
+        primary_audiance="Developers",
+        secondary_audiance="General Public",
+        semantic_summary="Technology-related content and updates.",
+        key_topics=["technology", "innovation", "digital"],
     )
 
 

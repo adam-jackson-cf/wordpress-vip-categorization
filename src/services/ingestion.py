@@ -46,15 +46,27 @@ class IngestionService:
 
     @staticmethod
     def _render_taxonomy_embedding_text(taxonomy: TaxonomyPage) -> str:
-        keywords = ", ".join(taxonomy.keywords) if taxonomy.keywords else ""
-        parts = [f"Category: {taxonomy.category}", f"Description: {taxonomy.description}"]
-        if keywords:
-            parts.append(f"Keywords: {keywords}")
+        topics = ", ".join(taxonomy.key_topics) if taxonomy.key_topics else ""
+        audiences = ", ".join(
+            filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
+        )
+        parts = [
+            f"Content Type: {taxonomy.content_type}",
+            f"Summary: {taxonomy.semantic_summary}",
+        ]
+        if taxonomy.english_page_name:
+            parts.append(f"English Name: {taxonomy.english_page_name}")
+        if taxonomy.es_page_name:
+            parts.append(f"Spanish Name: {taxonomy.es_page_name}")
+        if audiences:
+            parts.append(f"Audiences: {audiences}")
+        if topics:
+            parts.append(f"Key Topics: {topics}")
         return "\n".join(parts)
 
     def ingest_wordpress_sites(
         self,
-        site_urls: list[str],
+        site_configs: list[tuple[str, str]],
         max_pages: int | None = None,
         since: datetime | None = None,
         resume: bool = False,
@@ -72,7 +84,7 @@ class IngestionService:
         """
         total_ingested = 0
 
-        for site_url in site_urls:
+        for site_url, token in site_configs:
             logger.info(f"Starting ingestion from {site_url}")
 
             site_since = since
@@ -91,10 +103,7 @@ class IngestionService:
                     site_since.isoformat(),
                 )
 
-            connector = WordPressVIPConnector(
-                site_url=site_url,
-                auth_token=self.settings.wordpress_vip_auth_token or None,
-            )
+            connector = WordPressVIPConnector(site_url=site_url, auth_token=token)
 
             # Test connection
             if not connector.test_connection():
@@ -154,10 +163,11 @@ class IngestionService:
     def load_taxonomy_from_csv(self, csv_path: Path) -> int:
         """Load taxonomy from CSV file.
 
-        Expected CSV format:
-        url,category,description,keywords
+        Expected CSV format (Spain canonical):
+        UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,
+        Secondary_Audiance,Semantic_Summary,Key_Topics
 
-        Where keywords is a semicolon-separated list.
+        Key_Topics is comma-separated.
 
         Args:
             csv_path: Path to taxonomy CSV file.
@@ -174,16 +184,20 @@ class IngestionService:
 
             for row in reader:
                 try:
-                    # Parse keywords if present
-                    keywords = []
-                    if "keywords" in row and row["keywords"]:
-                        keywords = [kw.strip() for kw in row["keywords"].split(";") if kw.strip()]
+                    topics = []
+                    if row.get("Key_Topics"):
+                        topics = [kw.strip() for kw in row["Key_Topics"].split(",") if kw.strip()]
 
                     taxonomy = TaxonomyPage(
-                        url=cast(HttpUrl, row["url"]),
-                        category=row["category"],
-                        description=row["description"],
-                        keywords=keywords,
+                        uid=row.get("UID") or None,
+                        destination_url=cast(HttpUrl, row["Destination_URL"]),
+                        english_page_name=row.get("English_Page Name") or None,
+                        es_page_name=row.get("ES_Page_Name") or None,
+                        content_type=row["Content_Type"],
+                        primary_audiance=row.get("Primary_Audiance") or None,
+                        secondary_audiance=row.get("Secondary_Audiance") or None,
+                        semantic_summary=row["Semantic_Summary"],
+                        key_topics=topics,
                     )
 
                     enriched = taxonomy
@@ -201,7 +215,7 @@ class IngestionService:
                         except Exception as exc:  # pragma: no cover - external API
                             logger.warning(
                                 "Embedding generation failed for taxonomy %s: %s",
-                                taxonomy.url,
+                                taxonomy.destination_url,
                                 exc,
                             )
 

@@ -64,12 +64,13 @@ class Settings(BaseSettings):
     )
 
     # WordPress VIP Configuration
-    wordpress_vip_sites: str = Field(..., description="Comma-separated list of WordPress sites")
-    wordpress_vip_auth_token: str = Field(default="", description="Optional auth token")
+    wordpress_vip_site_tokens: str = Field(
+        ..., description="Comma-separated list of site|token pairs"
+    )
 
     # Application Configuration
     taxonomy_file_path: Path = Field(
-        default=Path("./data/taxonomy.csv"), description="Path to taxonomy CSV file"
+        default=Path("./data/Spain_New.csv"), description="Path to taxonomy CSV file"
     )
     log_level: str = Field(default="INFO", description="Logging level")
     ingestion_batch_size: int = Field(
@@ -154,18 +155,43 @@ class Settings(BaseSettings):
         default=None, description="Explicit GEPA budget: max metric calls"
     )
 
-    @field_validator("wordpress_vip_sites", mode="before")
+    @field_validator("supabase_url", mode="before")
     @classmethod
-    def parse_sites(cls, v: str) -> str:
-        """Validate and return sites string."""
-        if not v:
-            raise ValueError("At least one WordPress site must be specified")
-        return v
+    def normalize_supabase_url(cls, v: str) -> str:
+        """Normalize Supabase URL by removing trailing slashes and path components.
 
-    def get_wordpress_sites(self) -> list[str]:
-        """Parse and return list of WordPress sites."""
-        sites = [site.strip() for site in self.wordpress_vip_sites.split(",")]
-        return [site for site in sites if site]
+        Args:
+            v: Raw Supabase URL from environment.
+
+        Returns:
+            Normalized URL in format: https://<project-ref>.supabase.co
+        """
+        if not v:
+            raise ValueError("Supabase URL cannot be empty")
+        normalized = v.rstrip("/")
+        # Remove any /rest/v1 or other path components if present
+        if "/rest" in normalized:
+            normalized = normalized.split("/rest")[0]
+        return normalized
+
+    def get_wordpress_site_tokens(self) -> list[tuple[str, str]]:
+        """Return list of (site_url, token) tuples."""
+        pairs = []
+        for raw in self.wordpress_vip_site_tokens.split(","):
+            entry = raw.strip()
+            if not entry:
+                continue
+            if "|" not in entry:
+                raise ValueError("WORDPRESS_VIP_SITE_TOKENS entries must use 'site|token' format")
+            base, token = entry.split("|", 1)
+            base = base.strip().rstrip("/")
+            token = token.strip()
+            if not base or not token:
+                raise ValueError("WORDPRESS_VIP_SITE_TOKENS contains empty site or token")
+            pairs.append((base, token))
+        if not pairs:
+            raise ValueError("WORDPRESS_VIP_SITE_TOKENS must include at least one site|token pair")
+        return pairs
 
     @field_validator("similarity_threshold")
     @classmethod

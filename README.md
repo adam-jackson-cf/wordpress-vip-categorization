@@ -30,12 +30,13 @@ Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, virtualenv management, 
 
 ### Configuration Keys
 
-- Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITES` (comma-separated list).
+- Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITE_TOKENS` (comma-separated `site|token` list).
+- Optional: `ENABLE_CORP_CA` + `CORP_CA_BUNDLE_PATH` – set `ENABLE_CORP_CA=1` to have the build/test workflow wrap every command via `scripts/corp_ca_exec.sh`, which exports the bundle into `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, etc. You can also run ad-hoc commands (e.g. `scripts/corp_ca_exec.sh python -m src.cli full-run ...`) to ensure the CA chain is applied.
 - Semantic embedding provider: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`.
 - LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`.
 - Workflow tuning: `SIMILARITY_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
 - LLM rubric gate: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, `LLM_CONSENSUS_VOTES`, `LLM_MATCH_TEMPERATURE` (0–1).
-- Data inputs: `TAXONOMY_FILE_PATH` (default `./data/taxonomy.csv`).
+- Data inputs: `TAXONOMY_FILE_PATH` (default `./data/Spain_New.csv`).
 
 Legacy `OPENAI_*` keys are supported but should be replaced with the semantic / LLM-specific variables above. `.env.example` documents every option.
 
@@ -51,7 +52,7 @@ Deep dives live in [docs/OPTIMIZATION_QUICKSTART.md](docs/OPTIMIZATION_QUICKSTAR
 
 ### DSPy Dataset
 
-The default dataset (`data/dspy_training_dataset.csv`) now contains 360 labeled examples (60 per taxonomy category). Each example injects a guaranteed positive match drawn from:
+The default dataset (`data/dspy_training_dataset.csv`) now contains 360 labeled examples (60 per taxonomy content type). Each example injects a guaranteed positive match drawn from:
 
 - **Live feeds** – `wordpress.org/news`, `developer.wordpress.org/news`, `make.wordpress.org/community`, `woocommerce.com`, etc.
 - **Curated enterprise cases** – Additional WooCommerce and healthcare-focused stories to keep underrepresented taxonomies well covered.
@@ -60,7 +61,7 @@ Regenerate or grow the dataset any time:
 
 ```bash
 python scripts/generate_dspy_dataset.py \
-  --taxonomy data/taxonomy.csv \
+  --taxonomy data/Spain_New.csv \
   --output data/dspy_training_dataset.csv \
   --num-examples 360
 ```

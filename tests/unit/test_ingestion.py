@@ -35,7 +35,7 @@ class TestIngestionService:
 
         with patch("src.services.ingestion.WordPressVIPConnector", return_value=connector):
             ingested = service.ingest_wordpress_sites(
-                ["https://example.com"],
+                [("https://example.com", "token")],
                 since=cutoff,
                 resume=False,
             )
@@ -59,7 +59,7 @@ class TestIngestionService:
 
         with patch("src.services.ingestion.WordPressVIPConnector", return_value=connector):
             ingested = service.ingest_wordpress_sites(
-                ["https://example.com"],
+                [("https://example.com", "token")],
                 max_pages=1,
                 since=None,
                 resume=True,

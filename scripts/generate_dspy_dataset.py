@@ -194,9 +194,9 @@ def load_taxonomy(taxonomy_path: Path) -> list[dict[str, str]]:
         for row in reader:
             taxonomy.append(
                 {
-                    "category": row["category"],
-                    "description": row["description"],
-                    "keywords": row["keywords"].replace(";", ", "),
+                    "content_type": row["Content_Type"],
+                    "semantic_summary": row["Semantic_Summary"],
+                    "key_topics": row["Key_Topics"],
                 }
             )
     return taxonomy
@@ -303,8 +303,8 @@ TEMPORAL_KEYWORDS = (
 )
 
 
-def taxonomy_is_temporal(description: str, keywords: str) -> bool:
-    blob = f"{description} {keywords}".lower()
+def taxonomy_is_temporal(summary: str, key_topics: str) -> bool:
+    blob = f"{summary} {key_topics}".lower()
     return any(token in blob for token in TEMPORAL_KEYWORDS)
 
 
@@ -328,12 +328,12 @@ def generate_confidence_score(best_match_index: int, total_posts: int) -> float:
     return round(confidence, 2)
 
 
-def generate_reasoning(taxonomy_category: str, taxonomy_keywords: str) -> str:
+def generate_reasoning(taxonomy_content_type: str, taxonomy_topics: str) -> str:
     reasons = [
-        f"Matches {taxonomy_category.lower()} focus keywords ({taxonomy_keywords}).",
-        f"Content describes {taxonomy_category.lower()} initiatives highlighted in the taxonomy.",
-        "Article addresses the taxonomy description with concrete updates.",
-        "Strong overlap between taxonomy keywords and the article’s subject matter.",
+        f"Matches {taxonomy_content_type.lower()} focus topics ({taxonomy_topics}).",
+        f"Content describes {taxonomy_content_type.lower()} initiatives highlighted in the taxonomy.",
+        "Article addresses the taxonomy summary with concrete updates.",
+        "Strong overlap between taxonomy topics and the article’s subject matter.",
     ]
     return random.choice(reasons)
 
@@ -355,19 +355,21 @@ def generate_dataset(
 
     for idx, tax in enumerate(taxonomy):
         num_for_category = examples_per_category + (1 if idx < remainder else 0)
-        category_posts = posts_by_category.get(tax["category"], [])
+        content_type = tax["content_type"]
+        category_posts = posts_by_category.get(content_type, global_posts)
         if not category_posts:
-            logger.warning("Skipping category %s (no posts found)", tax["category"])
+            logger.warning("Skipping content type %s (no posts found)", content_type)
             continue
-        keywords = [k.strip().lower() for k in tax["keywords"].split(",")]
-        temporal_applicable = taxonomy_is_temporal(tax["description"], tax["keywords"])
+        topics = tax["key_topics"]
+        keywords = [k.strip().lower() for k in topics.split(",")]
+        temporal_applicable = taxonomy_is_temporal(tax["semantic_summary"], topics)
 
         for example_idx in range(num_for_category):
             # ensure positive contains taxonomy cues
             positive_post = None
             for offset in range(len(category_posts)):
                 candidate = category_posts[(example_idx + offset) % len(category_posts)]
-                if post_matches_keywords(candidate, tax["category"], keywords):
+                if post_matches_keywords(candidate, content_type, keywords):
                     positive_post = candidate
                     break
             if positive_post is None:
@@ -379,12 +381,12 @@ def generate_dataset(
             )
             content_summaries = format_ordered_summaries(candidates)
             confidence = generate_confidence_score(best_match_index, candidate_total)
-            reasoning = generate_reasoning(tax["category"], tax["keywords"])
+            reasoning = generate_reasoning(content_type, topics)
             topic_alignment = round(random.uniform(0.9, 0.97), 2)
             intent_fit = round(random.uniform(0.85, 0.95), 2)
             entity_overlap = (
                 round(random.uniform(0.75, 0.93), 2)
-                if post_matches_keywords(positive_post, tax["category"], keywords)
+                if post_matches_keywords(positive_post, content_type, keywords)
                 else 0.0
             )
             temporal_relevance = (
@@ -393,9 +395,9 @@ def generate_dataset(
 
             examples.append(
                 {
-                    "taxonomy_category": tax["category"],
-                    "taxonomy_description": tax["description"],
-                    "taxonomy_keywords": tax["keywords"],
+                    "taxonomy_content_type": content_type,
+                    "taxonomy_summary": tax["semantic_summary"],
+                    "taxonomy_topics": topics,
                     "content_summaries": content_summaries,
                     "best_match_index": str(best_match_index),
                     "topic_alignment": f"{topic_alignment:.2f}",
@@ -411,9 +413,9 @@ def generate_dataset(
     logger.info("Generated %s examples", len(examples))
 
     fieldnames = [
-        "taxonomy_category",
-        "taxonomy_description",
-        "taxonomy_keywords",
+        "taxonomy_content_type",
+        "taxonomy_summary",
+        "taxonomy_topics",
         "content_summaries",
         "best_match_index",
         "topic_alignment",
@@ -438,8 +440,8 @@ def main() -> None:
     parser.add_argument(
         "--taxonomy",
         type=Path,
-        default=Path("data/taxonomy.csv"),
-        help="Path to taxonomy CSV (default: data/taxonomy.csv)",
+        default=Path("data/Spain_New.csv"),
+        help="Path to taxonomy CSV (default: data/Spain_New.csv)",
     )
     parser.add_argument(
         "--output",

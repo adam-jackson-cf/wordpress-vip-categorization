@@ -50,7 +50,7 @@ class TestFullPipeline:
 
         def upsert_taxonomy(taxonomy):
             for i, t in enumerate(mock_db._taxonomy):
-                if t.url == taxonomy.url:
+                if t.destination_url == taxonomy.destination_url:
                     mock_db._taxonomy[i] = taxonomy
                     return taxonomy
             mock_db._taxonomy.append(taxonomy)
@@ -141,7 +141,9 @@ class TestFullPipeline:
         ingestion_service = IngestionService(mock_settings, mock_db_client)
 
         # Ingest limited content (5 posts max per API call)
-        count = ingestion_service.ingest_wordpress_sites([public_wordpress_site], max_pages=1)
+        count = ingestion_service.ingest_wordpress_sites(
+            [(public_wordpress_site, "token")], max_pages=1
+        )
 
         assert count == 1
         stored_content = mock_db_client.get_all_content()
@@ -164,9 +166,9 @@ class TestFullPipeline:
         # Create test taxonomy CSV
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
-            "url,category,description,keywords\n"
-            "https://example.com/page1,News,News articles,wordpress;updates;news\n"
-            "https://example.com/page2,Tech,Technology content,technology;development;code\n"
+            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
+            "TAX-1,https://example.com/page1,News Page,Pagina de Noticias,News,All,Media,News articles,wordpress, updates, news\n"
+            "TAX-2,https://example.com/page2,Tech Page,Pagina Tech,Technology,Developers,General Public,Technology content,technology, development, code\n"
         )
 
         ingestion_service = IngestionService(mock_settings, mock_db_client)
@@ -176,8 +178,8 @@ class TestFullPipeline:
 
         taxonomy_pages = mock_db_client.get_all_taxonomy()
         assert len(taxonomy_pages) == 2
-        assert taxonomy_pages[0].category in ["News", "Tech"]
-        assert len(taxonomy_pages[0].keywords) > 0
+        assert taxonomy_pages[0].content_type in ["News", "Technology"]
+        assert len(taxonomy_pages[0].key_topics) > 0
 
     def test_semantic_matching_integration(
         self,
@@ -190,13 +192,13 @@ class TestFullPipeline:
         """Test semantic matching integration with real WordPress content."""
         # Step 1: Ingest content
         ingestion_service = IngestionService(mock_settings, mock_db_client)
-        ingestion_service.ingest_wordpress_sites([public_wordpress_site], max_pages=1)
+        ingestion_service.ingest_wordpress_sites([(public_wordpress_site, "token")], max_pages=1)
 
         # Step 2: Load taxonomy
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
-            "url,category,description,keywords\n"
-            "https://example.com/wordpress-news,News,WordPress news and updates,wordpress;news;updates;announcements\n"
+            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
+            "TAX-3,https://example.com/wordpress-news,WordPress News,Noticias de WordPress,News,All,Media,WordPress news and updates,wordpress, news, updates, announcements\n"
         )
         ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
 
@@ -235,16 +237,16 @@ class TestFullPipeline:
         # 1. Ingest content
         ingestion_service = IngestionService(mock_settings, mock_db_client)
         content_count = ingestion_service.ingest_wordpress_sites(
-            [public_wordpress_site], max_pages=1
+            [(public_wordpress_site, "token")], max_pages=1
         )
         assert content_count == 1
 
         # 2. Load taxonomy
         taxonomy_csv = tmp_path / "taxonomy.csv"
         taxonomy_csv.write_text(
-            "url,category,description,keywords\n"
-            "https://example.com/wp-news,WordPress News,WordPress announcements,wordpress;release;update;announcement\n"
-            "https://example.com/tech,Technology,Tech articles,technology;development;programming\n"
+            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
+            "TAX-4,https://example.com/wp-news,WordPress News,Noticias WordPress,News,All,Media,WordPress announcements,wordpress, release, update, announcement\n"
+            "TAX-5,https://example.com/tech,Technology,Tech Articulos,Technology,Developers,General Public,Tech articles,technology, development, programming\n"
         )
         taxonomy_count = ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
         assert taxonomy_count == 2
@@ -265,5 +267,5 @@ class TestFullPipeline:
         # 5. Verify export content
         with open(output_path) as f:
             content = f.read()
-            assert "WordPress News" in content
+            assert "News" in content
             assert "Technology" in content

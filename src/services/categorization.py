@@ -440,7 +440,7 @@ Respond with a JSON object in this exact format:
             List of unique category names.
         """
         taxonomy_pages = self.db.get_all_taxonomy()
-        categories = list({page.category for page in taxonomy_pages})
+        categories = list({page.content_type for page in taxonomy_pages})
         logger.info(f"Found {len(categories)} categories in taxonomy")
         return categories
 
@@ -530,7 +530,7 @@ Respond with a JSON object in this exact format:
                 )
                 matched_count += 1
                 logger.info(
-                    f"LLM matched taxonomy {taxonomy.url} to {best_match.url} "
+                    f"LLM matched taxonomy {taxonomy.destination_url} to {best_match.url} "
                     f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
                     f"intent={rubric.get('intent_fit', 0.0):.2f}, "
                     f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
@@ -552,7 +552,7 @@ Respond with a JSON object in this exact format:
                 )
                 below_threshold_count += 1
                 logger.warning(
-                    f"LLM match for taxonomy {taxonomy.url} below rubric thresholds "
+                    f"LLM match for taxonomy {taxonomy.destination_url} below rubric thresholds "
                     f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
                     f"intent={rubric.get('intent_fit', 0.0):.2f}, "
                     f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
@@ -616,7 +616,10 @@ Respond with a JSON object in this exact format:
 
         except Exception as e:
             logger.error(
-                "Error in DSPy matching for taxonomy %s: %s", taxonomy.url, e, exc_info=True
+                "Error in DSPy matching for taxonomy %s: %s",
+                taxonomy.destination_url,
+                e,
+                exc_info=True,
             )
             return None, {}
 
@@ -646,30 +649,30 @@ Respond with a JSON object in this exact format:
                 "Clamped topic_alignment from %.2f to %.2f for taxonomy %s",
                 original_topic,
                 topic,
-                taxonomy.url,
+                taxonomy.destination_url,
             )
         if original_intent != intent:
             logger.warning(
                 "Clamped intent_fit from %.2f to %.2f for taxonomy %s",
                 original_intent,
                 intent,
-                taxonomy.url,
+                taxonomy.destination_url,
             )
         if original_entity != entity:
             logger.warning(
                 "Clamped entity_overlap from %.2f to %.2f for taxonomy %s",
                 original_entity,
                 entity,
-                taxonomy.url,
+                taxonomy.destination_url,
             )
 
         if topic < self.settings.llm_rubric_topic_min:
             return False
         if intent < self.settings.llm_rubric_intent_min:
             return False
-        # Only enforce entity threshold when taxonomy defines keywords, otherwise treat entity
-        # overlap as optional (many taxonomy pages have no keyword metadata yet).
-        enforce_entity = bool(taxonomy.keywords)
+        # Only enforce entity threshold when taxonomy defines key topics, otherwise treat entity
+        # overlap as optional (many taxonomy pages have no topic metadata yet).
+        enforce_entity = bool(taxonomy.key_topics)
         if enforce_entity and entity < self.settings.llm_rubric_entity_min:
             return False
         return True

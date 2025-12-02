@@ -46,8 +46,9 @@ class WordPressVIPConnector:
         self.timeout = timeout
         self.session = requests.Session()
 
+        self._auth_params: dict[str, str] = {}
         if auth_token:
-            self.session.headers.update({"Authorization": f"Bearer {auth_token}"})
+            self._auth_params["token"] = auth_token
 
         self.session.headers.update(
             {
@@ -83,7 +84,10 @@ class WordPressVIPConnector:
             requests.exceptions.RequestException: If request fails after retries.
         """
         url = urljoin(self.api_base, endpoint)
-        response = self.session.get(url, params=params, timeout=self.timeout)
+        request_params = dict(params or {})
+        if self._auth_params:
+            request_params.update(self._auth_params)
+        response = self.session.get(url, params=request_params, timeout=self.timeout)
         response.raise_for_status()
         data = response.json()
         if include_headers:

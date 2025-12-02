@@ -24,6 +24,22 @@ from src.models import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_supabase_url(url: str) -> str:
+    """Normalize Supabase URL by removing trailing slashes and path components.
+
+    Args:
+        url: Raw Supabase URL from settings.
+
+    Returns:
+        Normalized URL in format: https://<project-ref>.supabase.co
+    """
+    normalized = url.rstrip("/")
+    # Remove any /rest/v1 or other path components if present
+    if "/rest" in normalized:
+        normalized = normalized.split("/rest")[0]
+    return normalized
+
+
 class SupabaseClient:
     """Client for interacting with Supabase database."""
 
@@ -33,7 +49,9 @@ class SupabaseClient:
         Args:
             settings: Application settings containing Supabase credentials.
         """
-        self.client: Client = create_client(settings.supabase_url, settings.supabase_key)
+        normalized_url = _normalize_supabase_url(settings.supabase_url)
+        logger.debug("Normalized Supabase URL: %s -> %s", settings.supabase_url, normalized_url)
+        self.client: Client = create_client(normalized_url, settings.supabase_key)
         self._retryer = Retrying(
             retry=retry_if_exception_type((requests.RequestException, PostgrestAPIError)),
             stop=stop_after_attempt(5),
@@ -285,7 +303,7 @@ class SupabaseClient:
         result = self._with_retry(
             lambda: self.client.table("taxonomy_pages").insert(data).execute()
         )
-        logger.debug(f"Inserted taxonomy: {taxonomy.url}")
+        logger.debug(f"Inserted taxonomy: {taxonomy.destination_url}")
         return TaxonomyPage.model_validate(result.data[0])
 
     def upsert_taxonomy(self, taxonomy: TaxonomyPage) -> TaxonomyPage:
@@ -299,9 +317,11 @@ class SupabaseClient:
         """
         data = taxonomy.model_dump(mode="json")
         result = self._with_retry(
-            lambda: self.client.table("taxonomy_pages").upsert(data, on_conflict="url").execute()
+            lambda: self.client.table("taxonomy_pages")
+            .upsert(data, on_conflict="destination_url")
+            .execute()
         )
-        logger.debug(f"Upserted taxonomy: {taxonomy.url}")
+        logger.debug(f"Upserted taxonomy: {taxonomy.destination_url}")
         return TaxonomyPage.model_validate(result.data[0])
 
     def bulk_upsert_taxonomy(
@@ -316,7 +336,11 @@ class SupabaseClient:
             payload = [item.model_dump(mode="json") for item in chunk]
 
             def _exec_upsert(data: list[dict[str, Any]] = payload) -> Any:
-                return self.client.table("taxonomy_pages").upsert(data, on_conflict="url").execute()
+                return (
+                    self.client.table("taxonomy_pages")
+                    .upsert(data, on_conflict="destination_url")
+                    .execute()
+                )
 
             result = self._with_retry(_exec_upsert)
             persisted.extend(TaxonomyPage.model_validate(item) for item in result.data)
@@ -354,7 +378,10 @@ class SupabaseClient:
             return []
 
         result = self._with_retry(
-            lambda: self.client.table("taxonomy_pages").select("*").in_("url", urls).execute()
+            lambda: self.client.table("taxonomy_pages")
+            .select("*")
+            .in_("destination_url", urls)
+            .execute()
         )
         return [TaxonomyPage.model_validate(item) for item in result.data]
 

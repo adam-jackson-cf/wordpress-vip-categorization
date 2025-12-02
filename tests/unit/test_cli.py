@@ -121,9 +121,9 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "taxonomy_category",
-                "taxonomy_description",
-                "taxonomy_keywords",
+                "taxonomy_content_type",
+                "taxonomy_summary",
+                "taxonomy_topics",
                 "content_summaries",
                 "best_match_index",
                 "confidence",
@@ -132,9 +132,9 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
         writer.writeheader()
         writer.writerow(
             {
-                "taxonomy_category": "Tech",
-                "taxonomy_description": "Tech content",
-                "taxonomy_keywords": "tech",
+                "taxonomy_content_type": "Tech",
+                "taxonomy_summary": "Tech content",
+                "taxonomy_topics": "tech",
                 "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                 "best_match_index": "0",
                 "confidence": "0.9",

@@ -28,18 +28,23 @@ CREATE INDEX IF NOT EXISTS idx_wordpress_content_embedding
 -- Taxonomy pages table
 CREATE TABLE IF NOT EXISTS taxonomy_pages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    url TEXT UNIQUE NOT NULL,
-    category TEXT NOT NULL,
-    description TEXT NOT NULL,
-    keywords JSONB DEFAULT '[]'::jsonb,
+    uid TEXT,
+    destination_url TEXT UNIQUE NOT NULL,
+    english_page_name TEXT,
+    es_page_name TEXT,
+    content_type TEXT NOT NULL,
+    primary_audiance TEXT,
+    secondary_audiance TEXT,
+    semantic_summary TEXT NOT NULL,
+    key_topics JSONB DEFAULT '[]'::jsonb,
     taxonomy_embedding VECTOR(1536),
     embedding_updated_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create index on URL
-CREATE INDEX IF NOT EXISTS idx_taxonomy_pages_url ON taxonomy_pages(url);
-CREATE INDEX IF NOT EXISTS idx_taxonomy_pages_category ON taxonomy_pages(category);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_pages_destination_url ON taxonomy_pages(destination_url);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_pages_content_type ON taxonomy_pages(content_type);
 CREATE INDEX IF NOT EXISTS idx_taxonomy_pages_embedding
     ON taxonomy_pages USING ivfflat (taxonomy_embedding vector_cosine_ops)
     WITH (lists = 50);
@@ -87,16 +92,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_matching_taxonomy_current
 -- Create a view for export with denormalized data
 CREATE OR REPLACE VIEW export_results AS
 SELECT
-    tp.url as source_url,
+    tp.destination_url as source_url,
     COALESCE(wc.url, '') as target_url,
     COALESCE(mr.similarity_score, 0.0) as similarity_score,
-    tp.category,
+    tp.content_type,
     mr.match_stage,
     mr.failed_at_stage
 FROM taxonomy_pages tp
 LEFT JOIN matching_results mr ON tp.id = mr.taxonomy_id AND mr.is_current IS TRUE
 LEFT JOIN wordpress_content wc ON mr.content_id = wc.id
-ORDER BY tp.category, mr.similarity_score DESC NULLS LAST;
+ORDER BY tp.content_type, mr.similarity_score DESC NULLS LAST;
 
 -- Vector similarity helper for Supabase RPC usage
 CREATE OR REPLACE FUNCTION match_wordpress_content(

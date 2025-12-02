@@ -60,12 +60,15 @@ class TaxonomyPage(BaseModel):
     )
 
     id: UUID = Field(default_factory=uuid4)
-    url: HttpUrl = Field(..., description="Source URL from taxonomy")
-    category: str = Field(..., description="Category for this taxonomy page")
-    description: str = Field(..., description="Description of the page content/purpose")
-    keywords: list[str] = Field(
-        default_factory=list, description="Keywords and phrases to match against"
-    )
+    uid: str | None = Field(default=None, description="Optional taxonomy UID from source CSV")
+    destination_url: HttpUrl = Field(..., description="Destination URL from taxonomy")
+    english_page_name: str | None = Field(default=None, description="English page name")
+    es_page_name: str | None = Field(default=None, description="Spanish page name")
+    content_type: str = Field(..., description="Content type/category for this taxonomy page")
+    primary_audiance: str | None = Field(default=None, description="Primary audience")
+    secondary_audiance: str | None = Field(default=None, description="Secondary audience")
+    semantic_summary: str = Field(..., description="Semantic summary of the page content")
+    key_topics: list[str] = Field(default_factory=list, description="Key topics (keywords)")
     taxonomy_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

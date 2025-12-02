@@ -57,14 +57,23 @@ class MatchingService:
         Returns:
             Combined text for embedding.
         """
+        audiences = ", ".join(
+            filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
+        )
         parts = [
-            f"Category: {taxonomy.category}",
-            f"Description: {taxonomy.description}",
+            f"Content Type: {taxonomy.content_type}",
+            f"Summary: {taxonomy.semantic_summary}",
         ]
 
-        if taxonomy.keywords:
-            keywords_str = ", ".join(taxonomy.keywords)
-            parts.append(f"Keywords: {keywords_str}")
+        if taxonomy.english_page_name:
+            parts.append(f"English Name: {taxonomy.english_page_name}")
+        if taxonomy.es_page_name:
+            parts.append(f"Spanish Name: {taxonomy.es_page_name}")
+        if audiences:
+            parts.append(f"Audiences: {audiences}")
+        if taxonomy.key_topics:
+            keywords_str = ", ".join(taxonomy.key_topics)
+            parts.append(f"Key Topics: {keywords_str}")
 
         return "\n".join(parts)
 
@@ -175,7 +184,7 @@ class MatchingService:
             matches = self._local_similarity_search(taxonomy, taxonomy_embedding, limit)
 
         logger.debug(
-            f"Matched taxonomy {taxonomy.url} to {len(matches)} content items. "
+            f"Matched taxonomy {taxonomy.destination_url} to {len(matches)} content items. "
             f"Best match score: {matches[0][1]:.3f}"
             if matches
             else "No matches found"
@@ -212,7 +221,7 @@ class MatchingService:
             if top[1] < threshold:
                 logger.debug(
                     "Top semantic candidate for %s below threshold %.2f (score=%.3f)",
-                    taxonomy.url,
+                    taxonomy.destination_url,
                     threshold,
                     top[1],
                 )
@@ -307,7 +316,7 @@ class MatchingService:
 
                 results[taxonomy.id] = matching_result
                 logger.info(
-                    f"Matched taxonomy {taxonomy.url} to {candidate_content.url} "
+                    f"Matched taxonomy {taxonomy.destination_url} to {candidate_content.url} "
                     f"(score: {candidate_score:.3f})"
                 )
             else:
@@ -331,7 +340,7 @@ class MatchingService:
                 logger.warning(
                     "No semantic match above threshold %.2f for taxonomy %s (best=%.3f)",
                     min_threshold,
-                    taxonomy.url,
+                    taxonomy.destination_url,
                     candidate_score,
                 )
 

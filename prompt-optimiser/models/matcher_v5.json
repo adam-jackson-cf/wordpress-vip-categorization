@@ -1,0 +1,64 @@
+{
+  "predict.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "Match a taxonomy page to the most relevant content page with rubric scoring.",
+      "fields": [
+        {
+          "prefix": "Taxonomy Content Type:",
+          "description": "Content type of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Summary:",
+          "description": "Semantic summary of the taxonomy page"
+        },
+        {
+          "prefix": "Taxonomy Topics:",
+          "description": "Key topics for the taxonomy page (comma-separated)"
+        },
+        {
+          "prefix": "Content Summaries:",
+          "description": "List of available content pages with index, title, URL, and preview"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "Brief explanation of why this decision was chosen"
+        },
+        {
+          "prefix": "Best Match Index:",
+          "description": "Index of the best matching content page, or -1 if no good match"
+        },
+        {
+          "prefix": "Topic Alignment:",
+          "description": "Topical alignment score 0-1 (coverage of taxonomy topic)"
+        },
+        {
+          "prefix": "Intent Fit:",
+          "description": "Intent alignment score 0-1 (does the content's purpose match taxonomy intent)"
+        },
+        {
+          "prefix": "Entity Overlap:",
+          "description": "Named entity/keyword overlap score 0-1 (0 if none are present)"
+        },
+        {
+          "prefix": "Temporal Relevance:",
+          "description": "Temporal relevance score 0-1 (use 0 if not applicable)"
+        },
+        {
+          "prefix": "Decision:",
+          "description": "One of: accept, reject, abstain"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.12",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}

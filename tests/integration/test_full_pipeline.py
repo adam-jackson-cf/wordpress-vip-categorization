@@ -63,9 +63,9 @@ def public_wordpress_site() -> str:
 def _write_taxonomy(tmp_path: Path) -> Path:
     taxonomy_csv = tmp_path / "live_taxonomy.csv"
     taxonomy_csv.write_text(
-        "url,category,description,keywords\n"
-        "https://example.com/wp-news,WordPress News,WordPress announcements,wordpress;release;update;announcement\n"
-        "https://example.com/tech,Technology,Tech articles,technology;development;programming\n"
+        "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
+        "TAX-1,https://example.com/wp-news,WordPress News,Noticias de WordPress,News,All,Media,WordPress announcements and updates.,wordpress, release, update, announcement\n"
+        "TAX-2,https://example.com/tech,Technology Overview,Tecnologia,Technology,Developers,General Public,Tech articles and resources.,technology, development, programming\n"
     )
     return taxonomy_csv
 

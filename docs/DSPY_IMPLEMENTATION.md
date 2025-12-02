@@ -13,18 +13,18 @@ Our implementation provides two optimization paths:
 ### CSV Format
 
 Required columns:
-- `taxonomy_category`: Category of the taxonomy page
-- `taxonomy_description`: Description of the taxonomy page
+- `taxonomy_content_type`: Content type of the taxonomy page
+- `taxonomy_summary`: Semantic summary of the taxonomy page
 - `content_summaries`: Formatted list of content pages with index, title, URL, and preview
 - `best_match_index`: Index of the best matching content page (integer)
 
 Optional columns:
-- `taxonomy_keywords`: Comma-separated keywords (defaults to "None" if missing)
+- `taxonomy_topics`: Comma-separated key topics (defaults to "None" if missing)
 - `reasoning`: Explanation text (defaults to empty string if missing)
 
 Example:
 ```csv
-taxonomy_category,taxonomy_description,taxonomy_keywords,content_summaries,best_match_index,reasoning
+taxonomy_content_type,taxonomy_summary,taxonomy_topics,content_summaries,best_match_index,reasoning
 Technology,Tech content,tech innovation,"0. Title: Tech Post
    URL: https://example.com/tech
    Preview: Content about technology...",0,"Good semantic match"
@@ -37,9 +37,9 @@ Array of objects with the same fields as CSV columns:
 ```json
 [
   {
-    "taxonomy_category": "Technology",
-    "taxonomy_description": "Tech content",
-    "taxonomy_keywords": "tech, innovation",
+    "taxonomy_content_type": "Technology",
+    "taxonomy_summary": "Tech content",
+    "taxonomy_topics": "tech, innovation",
     "content_summaries": "0. Title: Tech Post\n   URL: https://example.com/tech\n   Preview: Content...",
     "best_match_index": 0,
     "reasoning": "Good match"

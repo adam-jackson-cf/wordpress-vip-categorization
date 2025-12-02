@@ -21,8 +21,7 @@ class TestWordPressVIPConnector:
     def test_init_with_auth(self) -> None:
         """Test connector initialization with auth token."""
         connector = WordPressVIPConnector("https://example.com", auth_token="test-token")
-        assert "Authorization" in connector.session.headers
-        assert connector.session.headers["Authorization"] == "Bearer test-token"
+        assert connector._auth_params == {"token": "test-token"}
 
     @patch("src.connectors.wordpress_vip.requests.Session.get")
     def test_get_posts_success(self, mock_get: Mock) -> None:

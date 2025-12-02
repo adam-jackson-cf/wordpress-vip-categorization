@@ -63,11 +63,11 @@ def test_wordpress_connector(settings):
     """Test WordPress connector with WordPress.org news."""
     logger.info("\nTesting WordPress connector...")
     try:
-        sites = settings.get_wordpress_sites()
-        test_site = sites[0]
+        site_tokens = settings.get_wordpress_site_tokens()
+        test_site, token = site_tokens[0]
         logger.info(f"Testing with site: {test_site}")
 
-        connector = WordPressVIPConnector(test_site)
+        connector = WordPressVIPConnector(test_site, auth_token=token)
 
         # Test connection
         if not connector.test_connection():

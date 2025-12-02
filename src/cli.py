@@ -57,14 +57,14 @@ def cli() -> None:
 
 
 def _load_taxonomy_urls(csv_path: Path) -> list[str]:
-    """Extract the `url` column from a taxonomy CSV file."""
+    """Extract the `Destination_URL` column from a taxonomy CSV file."""
 
     with open(csv_path, encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if not reader.fieldnames or "url" not in reader.fieldnames:
-            raise click.ClickException("Expected 'url' column in taxonomy file")
+        if not reader.fieldnames or "Destination_URL" not in reader.fieldnames:
+            raise click.ClickException("Expected 'Destination_URL' column in taxonomy file")
 
-        urls = [row["url"].strip() for row in reader if row.get("url")]
+        urls = [row["Destination_URL"].strip() for row in reader if row.get("Destination_URL")]
 
     return [url for url in urls if url]
 
@@ -160,16 +160,17 @@ def ingest(
     ingestion_service = IngestionService(settings, db)
 
     # Use provided sites or get from config
-    site_urls = sites.split(",") if sites else settings.get_wordpress_sites()
+    default_site_tokens = settings.get_wordpress_site_tokens()
+    site_tokens = _resolve_site_tokens_override(sites, default_site_tokens)
 
-    click.echo(f"Starting ingestion from {len(site_urls)} sites...")
+    click.echo(f"Starting ingestion from {len(site_tokens)} sites...")
     if resume and since:
         click.echo(
             "⚠ Both --resume and --since provided; --since will take precedence for all sites."
         )
 
     total = ingestion_service.ingest_wordpress_sites(
-        site_urls,
+        site_tokens,
         max_pages=max_pages,
         since=since,
         resume=resume,
@@ -347,7 +348,7 @@ def match(
             click.echo("None of the provided URLs exist in the database; aborting.")
             return
 
-        missing_count = len(set(urls) - {str(tax.url) for tax in taxonomy_subset})
+        missing_count = len(set(urls) - {str(tax.destination_url) for tax in taxonomy_subset})
         if missing_count:
             click.echo(f"⚠ Skipping {missing_count} URL(s) not present in Supabase.")
 
@@ -461,14 +462,15 @@ def full_run(
     click.echo(f"    ✓ Loaded {loaded_count} taxonomy pages")
 
     # Step 2: Ingest content
-    site_list = sites.split(",") if sites else base_settings.get_wordpress_sites()
-    click.echo(f"[2/4] Ingesting content from {len(site_list)} site(s)...")
+    default_site_tokens = base_settings.get_wordpress_site_tokens()
+    site_tokens = _resolve_site_tokens_override(sites, default_site_tokens)
+    click.echo(f"[2/4] Ingesting content from {len(site_tokens)} site(s)...")
     if resume and since:
         click.echo(
             "    ⚠ Both --resume and --since provided; --since takes precedence for all sites."
         )
     ingested_count = ingestion_service.ingest_wordpress_sites(
-        site_list,
+        site_tokens,
         max_pages=max_pages,
         since=since,
         resume=resume,
@@ -1032,6 +1034,46 @@ def workflow_status(run_key: str | None, limit: int) -> None:
             f"{run.run_key}: status={run.status}, stage={run.current_stage}, "
             f"started={run.started_at}, completed={run.completed_at}"
         )
+
+
+def _resolve_site_tokens_override(
+    sites_option: str | None, default_pairs: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Resolve --sites overrides into (site, token) pairs."""
+
+    if not sites_option:
+        return default_pairs
+
+    resolved: list[tuple[str, str]] = []
+    token_map = dict(default_pairs)
+
+    for raw in sites_option.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        site: str
+        token: str
+        if "|" in entry:
+            site, token = entry.split("|", 1)
+            site = site.strip().rstrip("/")
+            token = token.strip()
+            if not site or not token:
+                raise click.BadParameter(
+                    f"Invalid site entry '{raw}'. Expected format 'https://site|token'."
+                )
+        else:
+            site = entry.rstrip("/")
+            token = token_map.get(site, "")
+            if not token:
+                raise click.BadParameter(
+                    f"No token found for '{site}'. Provide it as 'site|token' or configure it in WORDPRESS_VIP_SITE_TOKENS."
+                )
+        resolved.append((site, token))
+
+    if not resolved:
+        raise click.BadParameter("No valid site entries provided.")
+
+    return resolved
 
 
 if __name__ == "__main__":

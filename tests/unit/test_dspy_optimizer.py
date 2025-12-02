@@ -16,16 +16,16 @@ from src.optimization.dspy_optimizer import DSPyOptimizer, MatchingModule
 def sample_dspy_example() -> dspy.Example:
     """Create a sample DSPy example."""
     return dspy.Example(
-        taxonomy_category="Technology",
-        taxonomy_description="Technology-related content",
-        taxonomy_keywords="technology, innovation",
+        taxonomy_content_type="Technology",
+        taxonomy_summary="Technology-related content",
+        taxonomy_topics="technology, innovation",
         content_summaries="0. Title: Tech Post\n   URL: https://example.com/tech\n   Preview: Content...",
         best_match_index=0,
         reasoning="Good match",
     ).with_inputs(
-        "taxonomy_category",
-        "taxonomy_description",
-        "taxonomy_keywords",
+        "taxonomy_content_type",
+        "taxonomy_summary",
+        "taxonomy_topics",
         "content_summaries",
     )
 
@@ -50,9 +50,9 @@ class TestLoadTrainingDataset:
             writer = csv.DictWriter(
                 f,
                 fieldnames=[
-                    "taxonomy_category",
-                    "taxonomy_description",
-                    "taxonomy_keywords",
+                    "taxonomy_content_type",
+                    "taxonomy_summary",
+                    "taxonomy_topics",
                     "content_summaries",
                     "best_match_index",
                     "reasoning",
@@ -61,9 +61,9 @@ class TestLoadTrainingDataset:
             writer.writeheader()
             writer.writerow(
                 {
-                    "taxonomy_category": "Technology",
-                    "taxonomy_description": "Tech content",
-                    "taxonomy_keywords": "tech, innovation",
+                    "taxonomy_content_type": "Technology",
+                    "taxonomy_summary": "Tech content",
+                    "taxonomy_topics": "tech, innovation",
                     "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                     "best_match_index": "0",
                     "reasoning": "Good match",
@@ -73,7 +73,7 @@ class TestLoadTrainingDataset:
         examples = mock_dspy_optimizer.load_training_dataset(csv_file)
 
         assert len(examples) == 1
-        assert examples[0].taxonomy_category == "Technology"
+        assert examples[0].taxonomy_content_type == "Technology"
         assert examples[0].best_match_index == 0
         # Confidence is no longer emitted; ensure attribute is absent
         assert not hasattr(examples[0], "confidence")
@@ -83,9 +83,9 @@ class TestLoadTrainingDataset:
         json_file = tmp_path / "dataset.json"
         data = [
             {
-                "taxonomy_category": "Technology",
-                "taxonomy_description": "Tech content",
-                "taxonomy_keywords": "tech, innovation",
+                "taxonomy_content_type": "Technology",
+                "taxonomy_summary": "Tech content",
+                "taxonomy_topics": "tech, innovation",
                 "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                 "best_match_index": 0,
                 "reasoning": "Good match",
@@ -97,7 +97,7 @@ class TestLoadTrainingDataset:
         examples = mock_dspy_optimizer.load_training_dataset(json_file)
 
         assert len(examples) == 1
-        assert examples[0].taxonomy_category == "Technology"
+        assert examples[0].taxonomy_content_type == "Technology"
         assert examples[0].best_match_index == 0
 
     def test_load_dataset_file_not_found(self, mock_dspy_optimizer) -> None:
@@ -117,9 +117,9 @@ class TestLoadTrainingDataset:
         """Test loading CSV with missing required columns."""
         csv_file = tmp_path / "dataset.csv"
         with open(csv_file, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["taxonomy_category"])
+            writer = csv.DictWriter(f, fieldnames=["taxonomy_content_type"])
             writer.writeheader()
-            writer.writerow({"taxonomy_category": "Tech"})
+            writer.writerow({"taxonomy_content_type": "Tech"})
 
         with pytest.raises(ValueError, match="CSV must contain columns"):
             mock_dspy_optimizer.load_training_dataset(csv_file)
@@ -140,8 +140,8 @@ class TestLoadTrainingDataset:
             writer = csv.DictWriter(
                 f,
                 fieldnames=[
-                    "taxonomy_category",
-                    "taxonomy_description",
+                    "taxonomy_content_type",
+                    "taxonomy_summary",
                     "content_summaries",
                     "best_match_index",
                 ],
@@ -149,16 +149,16 @@ class TestLoadTrainingDataset:
             writer.writeheader()
             writer.writerow(
                 {
-                    "taxonomy_category": "Tech",
-                    "taxonomy_description": "Description",
+                    "taxonomy_content_type": "Tech",
+                    "taxonomy_summary": "Description",
                     "content_summaries": "Summaries",
                     "best_match_index": "invalid",  # Invalid integer
                 }
             )
             writer.writerow(
                 {
-                    "taxonomy_category": "Tech2",
-                    "taxonomy_description": "Description2",
+                    "taxonomy_content_type": "Tech2",
+                    "taxonomy_summary": "Description2",
                     "content_summaries": "Summaries2",
                     "best_match_index": "1",
                 }
@@ -168,7 +168,7 @@ class TestLoadTrainingDataset:
 
         # Should only have one valid example
         assert len(examples) == 1
-        assert examples[0].taxonomy_category == "Tech2"
+        assert examples[0].taxonomy_content_type == "Tech2"
 
     def test_load_dataset_empty_file(self, mock_dspy_optimizer, tmp_path: Path) -> None:
         """Test loading an empty dataset file."""
@@ -177,8 +177,8 @@ class TestLoadTrainingDataset:
             writer = csv.DictWriter(
                 f,
                 fieldnames=[
-                    "taxonomy_category",
-                    "taxonomy_description",
+                    "taxonomy_content_type",
+                    "taxonomy_summary",
                     "content_summaries",
                     "best_match_index",
                 ],
