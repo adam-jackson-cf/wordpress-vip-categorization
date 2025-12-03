@@ -98,3 +98,10 @@ def full_run() -> None:
 
 ### Data Safety & Security
 - All Supabase access flows through `SupabaseClient` with parameterized queries; never concatenate SQL, and never store secrets or TODO placeholders in source.
+
+- **Operational Flow** – If your network requires a corp certificate bundle, run each CLI via `scripts/corp_ca_exec.sh` (export env vars with `source .env` first) so OpenAI and Supabase calls succeed.
+    1. Load taxonomy: `scripts/corp_ca_exec.sh uv run python -m src.cli load-taxonomy --taxonomy-file <csv>`
+    2. Ingest WordPress content: `scripts/corp_ca_exec.sh uv run python -m src.cli ingest --sites <comma-sites> --max-pages N`
+    3. Run matching: `scripts/corp_ca_exec.sh uv run python -m src.cli match --threshold T` (run inside tmux for long jobs)
+    4. Export snapshot CSV: `scripts/corp_ca_exec.sh uv run python -m src.cli export --output results/<file>.csv`
+    5. DSPy/GEPA optimization: `uv run python -m src.cli optimize-dataset --dataset data/dspy_training_dataset.csv --optimizer gepa --budget medium`, then promote with `uv run python scripts/promote_optimized_model.py`
