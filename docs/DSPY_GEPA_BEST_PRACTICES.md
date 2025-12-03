@@ -115,7 +115,7 @@ example = dspy.Example(
     taxonomy_topics=keywords_str,
     content_summaries=content_summaries,
     best_match_index=best_match_index,
-    confidence=matching.similarity_score,
+    confidence=matching.semantic_similarity_score,
     reasoning="",
 ).with_inputs(
     "taxonomy_content_type",

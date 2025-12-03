@@ -386,9 +386,14 @@ class WordPressVIPConnector:
             True if connection successful, False otherwise.
         """
         try:
-            # Try to fetch site info
+            # Try to fetch site info with authentication token if provided
             url = urljoin(self.site_url, "/wp-json/")
-            response = self.session.get(url, timeout=self.timeout)
+            params = dict(self._auth_params)
+            response = self.session.get(
+                url,
+                params=params or None,
+                timeout=self.timeout,
+            )
             response.raise_for_status()
             logger.info(f"Successfully connected to {self.site_url}")
             return True

@@ -22,10 +22,10 @@ python -m src.cli full-run --output results/results.csv
 ```
 
 This will automatically:
-- ✅ Load your taxonomy (4 sample pages)
+- ✅ Load your taxonomy (sample subset)
 - ✅ Ingest WordPress content (~10-20 posts from WordPress.org)
-- ✅ Run semantic matching with OpenRouter embeddings
-- ✅ Export a single `results/results.csv` where unmatched rows simply have a blank `target_url`
+- ✅ Run semantic matching with OpenAI `text-embedding-3-small` + cosine similarity
+- ✅ Export a single `results/results.csv` where any content without a confident taxonomy match has a blank `target_url`
 
 **Expected runtime:** 2-3 minutes
 **Expected cost:** < $0.01 (using free/low-cost models)
@@ -34,10 +34,10 @@ This will automatically:
 
 Open `results/results.csv` in your spreadsheet application:
 
-- **source_url**: Your taxonomy page
-- **target_url**: Matched WordPress content (empty if no match)
-- **similarity_score**: Match confidence (0.0-1.0)
-- **category**: Category name
+- **source_url**: WordPress content URL
+- **target_url**: Matched taxonomy destination (empty if no match)
+- **semantic_similarity_score**: Match confidence from embeddings (0.0-1.0)
+- **category**: Taxonomy content type (if a match exists)
 
 **To find unmatched items:** Filter for empty `target_url` (or `match_stage == needs_human_review`).
 

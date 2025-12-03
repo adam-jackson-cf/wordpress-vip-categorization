@@ -72,7 +72,7 @@ class TestFullPipeline:
 
         def upsert_matching(matching):
             for i, m in enumerate(mock_db._matchings):
-                if m.taxonomy_id == matching.taxonomy_id:
+                if m.content_id == matching.content_id:
                     mock_db._matchings[i] = matching
                     return matching
             mock_db._matchings.append(matching)
@@ -85,13 +85,35 @@ class TestFullPipeline:
 
         def get_best_match_for_taxonomy(taxonomy_id, min_score=0.0):
             for m in mock_db._matchings:
-                if m.taxonomy_id == taxonomy_id and m.similarity_score >= min_score:
+                if (
+                    m.taxonomy_id == taxonomy_id
+                    and m.semantic_similarity_score >= min_score
+                ):
                     return m
+            return None
+
+        def get_best_match_for_content(content_id, min_score=0.0):
+            for m in mock_db._matchings:
+                if (
+                    m.content_id == content_id
+                    and m.semantic_similarity_score >= min_score
+                ):
+                    return m
+            return None
+
+        def get_taxonomy_by_id(taxonomy_id):
+            for taxonomy in mock_db._taxonomy:
+                if taxonomy.id == taxonomy_id:
+                    return taxonomy
             return None
 
         def match_content_by_embedding(_embedding, _threshold, limit):
             # Return top-N stored content rows with a deterministic similarity score
             return [(content, 0.9) for content in mock_db._content[:limit]]
+
+        def match_taxonomy_by_embedding(_embedding, _threshold, limit):
+            # Return top-N stored taxonomy rows with a deterministic similarity score
+            return [(taxonomy, 0.9) for taxonomy in mock_db._taxonomy[:limit]]
 
         def get_categorizations_by_content(content_id):
             return []
@@ -109,7 +131,10 @@ class TestFullPipeline:
         mock_db.upsert_matching = upsert_matching
         mock_db.bulk_upsert_matchings = bulk_upsert_matchings
         mock_db.get_best_match_for_taxonomy = get_best_match_for_taxonomy
+        mock_db.get_best_match_for_content = get_best_match_for_content
+        mock_db.get_taxonomy_by_id = get_taxonomy_by_id
         mock_db.match_content_by_embedding = match_content_by_embedding
+        mock_db.match_taxonomy_by_embedding = match_taxonomy_by_embedding
         mock_db.get_categorizations_by_content = get_categorizations_by_content
         mock_db.get_all_matchings = get_all_matchings
 
@@ -212,9 +237,9 @@ class TestFullPipeline:
         assert len(results) > 0
 
         # Verify matching results structure
-        for taxonomy_id, match_result in results.items():
+        for content_id, match_result in results.items():
             assert match_result is not None
-            assert match_result.taxonomy_id == taxonomy_id
+            assert match_result.content_id == content_id
 
     def test_full_e2e_pipeline(
         self,
@@ -254,18 +279,19 @@ class TestFullPipeline:
         # 3. Perform matching
         matching_service = MatchingService(mock_settings, mock_db_client)
         results = matching_service.match_all_taxonomy_batch(min_threshold=0.0, store_results=True)
-        assert len(results) == 2
+        # We have 1 content item, so we expect 1 result (keyed by content_id)
+        assert len(results) == 1
 
         # 4. Export results
         exporter = CSVExporter(mock_db_client)
         output_path = tmp_path / "final_export.csv"
         export_count = exporter.export_to_csv(output_path)
 
-        assert export_count == 2
+        assert export_count == 1
         assert output_path.exists()
 
         # 5. Verify export content
         with open(output_path) as f:
             content = f.read()
-            assert "News" in content
-            assert "Technology" in content
+            assert "source_url" in content
+            assert "target_url" in content

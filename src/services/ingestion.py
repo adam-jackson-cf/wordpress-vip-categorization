@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlparse
 
 from pydantic import HttpUrl
 
@@ -37,6 +38,7 @@ class IngestionService:
         self.embedding_service = embedding_service or EmbeddingService(settings)
         self._content_buffer: list[WordPressContent] = []
         self._taxonomy_buffer: list[TaxonomyPage] = []
+        self._seen_content_urls: set[str] = set()
         logger.info("Initialized ingestion service")
 
     @staticmethod
@@ -50,16 +52,22 @@ class IngestionService:
         audiences = ", ".join(
             filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
         )
+        parsed = urlparse(str(taxonomy.destination_url))
+        url_path = parsed.path
+        url_path = url_path.strip("/") or "/"
         parts = [
             f"Content Type: {taxonomy.content_type}",
             f"Summary: {taxonomy.semantic_summary}",
         ]
+        if taxonomy.uid:
+            parts.append(f"UID: {taxonomy.uid}")
         if taxonomy.english_page_name:
             parts.append(f"English Name: {taxonomy.english_page_name}")
         if taxonomy.es_page_name:
             parts.append(f"Spanish Name: {taxonomy.es_page_name}")
         if audiences:
             parts.append(f"Audiences: {audiences}")
+        parts.append(f"URL Path: {url_path}")
         if topics:
             parts.append(f"Key Topics: {topics}")
         return "\n".join(parts)
@@ -135,6 +143,15 @@ class IngestionService:
                                 "Embedding generation failed for %s: %s", content.url, exc
                             )
 
+                    content_url = str(enriched.url)
+                    if content_url in self._seen_content_urls:
+                        logger.warning(
+                            "Duplicate content URL detected (%s); skipping subsequent entry",
+                            content_url,
+                        )
+                        continue
+
+                    self._seen_content_urls.add(content_url)
                     self._content_buffer.append(enriched)
                     site_count += 1
 
@@ -179,18 +196,33 @@ class IngestionService:
             raise FileNotFoundError(f"Taxonomy file not found: {csv_path}")
 
         count = 0
+        seen_urls: set[str] = set()
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
 
             for row in reader:
                 try:
+                    destination_raw = (row.get("Destination_URL") or "").strip()
+                    if not destination_raw:
+                        logger.warning("Skipping taxonomy row without Destination_URL: %s", row)
+                        continue
+
+                    if destination_raw in seen_urls:
+                        logger.warning(
+                            "Duplicate taxonomy URL detected (%s); skipping subsequent entry",
+                            destination_raw,
+                        )
+                        continue
+
+                    seen_urls.add(destination_raw)
+
                     topics = []
                     if row.get("Key_Topics"):
                         topics = [kw.strip() for kw in row["Key_Topics"].split(",") if kw.strip()]
 
                     taxonomy = TaxonomyPage(
                         uid=row.get("UID") or None,
-                        destination_url=cast(HttpUrl, row["Destination_URL"]),
+                        destination_url=cast(HttpUrl, destination_raw),
                         english_page_name=row.get("English_Page Name") or None,
                         es_page_name=row.get("ES_Page_Name") or None,
                         content_type=row["Content_Type"],

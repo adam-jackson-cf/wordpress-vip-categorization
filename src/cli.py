@@ -14,7 +14,7 @@ from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
 from src.exporters.csv_exporter import CSVExporter
-from src.models import MatchStage
+from src.models import MatchStage, MatchingResult, WordPressContent
 from src.optimization.dspy_optimizer import MODELS_DIR, DSPyOptimizer
 from src.optimization.evaluator import Evaluator
 from src.services.categorization import CategorizationService
@@ -231,10 +231,82 @@ def categorize(batch: bool, wait: bool) -> None:
         click.echo(f"✓ Categorization complete (batch: {batch_id})")
     else:
         click.echo(f"✓ Batch submitted: {batch_id}")
-        click.echo(f"Check status with: python -m src.cli batch-status --id {batch_id}")
+        click.echo(f"Check status with: python -m src.cli batch status --id {batch_id}")
+
+@cli.group()
+def batch() -> None:
+    """Manage the OpenAI Batch fallback pipeline."""
+    pass
 
 
-@cli.command()
+@batch.command(name="submit")
+@click.option("--limit", type=int, help="Limit the number of backlog items to include")
+@click.option("--wait/--no-wait", default=False, help="Wait for completion and apply results")
+def batch_submit(limit: int | None, wait: bool) -> None:
+    """Submit backlog content (needs_llm_review) to the Batch API."""
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    matching_service = MatchingService(settings, db)
+    categorization_service = CategorizationService(settings, db)
+
+    backlog = db.get_matchings_by_stage([MatchStage.NEEDS_LLM_REVIEW])
+    if not backlog:
+        click.echo("No content rows currently awaiting LLM batch processing.")
+        return
+
+    if limit is not None:
+        backlog = backlog[:limit]
+
+    content_map = db.get_content_by_ids([row.content_id for row in backlog])
+    unmatched_content: list[WordPressContent] = []
+    semantic_lookup: dict[UUID, MatchingResult] = {}
+    skipped = 0
+    for row in backlog:
+        content = content_map.get(row.content_id)
+        if not content:
+            skipped += 1
+            continue
+        unmatched_content.append(content)
+        semantic_lookup[row.content_id] = row
+
+    if not unmatched_content:
+        click.echo("No backlog content available after filtering; nothing to submit.")
+        return
+
+    taxonomy_pages = db.get_all_taxonomy()
+    candidate_map = matching_service.build_candidate_map(
+        unmatched_content,
+        taxonomy_pages=taxonomy_pages,
+    )
+
+    click.echo(
+        f"Submitting {len(unmatched_content)} backlog items via OpenAI Batch (wait={'yes' if wait else 'no'})"
+    )
+    if skipped:
+        click.echo(f"⚠ Skipped {skipped} content rows missing from the database.")
+
+    stats = categorization_service.categorize_for_matching(
+        unmatched_content,
+        candidate_map=candidate_map,
+        fallback_taxonomy=taxonomy_pages,
+        semantic_results=semantic_lookup,
+        wait_for_completion=wait,
+    )
+
+    if wait:
+        click.echo(
+            f"✓ Batch completed – matched {stats['matched']} items, "
+            f"{stats['needs_review']} need human review"
+        )
+    else:
+        batch_ids = stats.get("batch_ids", [])
+        if batch_ids:
+            click.echo(f"✓ Submitted {len(batch_ids)} batch job(s): {', '.join(batch_ids)}")
+        else:
+            click.echo("✓ Submitted backlog but no batch IDs were returned.")
+
+
+@batch.command(name="status")
 @click.option("--id", "batch_id", required=True, help="Batch ID to check")
 def batch_status(batch_id: str) -> None:
     """Check status of a batch job."""
@@ -254,19 +326,41 @@ def batch_status(batch_id: str) -> None:
     )
 
 
+@batch.command(name="apply")
+@click.option("--id", "batch_id", required=True, help="Batch ID whose results should be persisted")
+def batch_apply(batch_id: str) -> None:
+    """Download and apply results for a completed batch."""
+
+    settings = get_settings()
+    db = SupabaseClient(settings)
+    categorization_service = CategorizationService(settings, db)
+
+    click.echo(f"Applying batch {batch_id}...")
+    stats = categorization_service.apply_batch_job(batch_id)
+    click.echo(
+        f"✓ Applied batch {batch_id}: matched {stats['matched']} items, "
+        f"{stats['needs_review']} need review"
+    )
+
+
 @cli.command()
 @click.option("--threshold", type=float, help="Minimum similarity threshold (default from config)")
 @click.option("--batch/--no-batch", default=True, help="Use batch embedding mode")
 @click.option("--skip-semantic", is_flag=True, help="Skip semantic matching stage")
 @click.option("--skip-llm", is_flag=True, help="Skip LLM categorization stage")
 @click.option(
+    "--limit",
+    type=int,
+    help="Limit to first N content items for testing",
+)
+@click.option(
     "--taxonomy-ids",
-    help="Comma-separated list of taxonomy UUIDs to (re)process",
+    help="Comma-separated list of taxonomy UUIDs to filter candidate matches",
 )
 @click.option(
     "--taxonomy-file",
     type=click.Path(exists=True, path_type=Path),
-    help="CSV containing taxonomy rows (uses 'url' column) to (re)process",
+    help="CSV containing taxonomy rows (uses 'url' column) to filter candidate matches",
 )
 @click.option(
     "--only-unmatched",
@@ -288,15 +382,18 @@ def match(
     batch: bool,
     skip_semantic: bool,
     skip_llm: bool,
+    limit: int | None,
     taxonomy_ids: str | None,
     taxonomy_file: Path | None,
     only_unmatched: bool,
     force_semantic: bool,
     force_llm: bool,
 ) -> None:
-    """Match taxonomy to content using cascading semantic + LLM workflow.
+    """Match content items to taxonomy using cascading semantic + LLM workflow.
 
-    Supports targeted reruns via --taxonomy-ids/--taxonomy-file or --only-unmatched.
+    This command processes content items and matches them to taxonomy pages.
+    Use --limit to test on a subset of content items.
+    Use --taxonomy-ids/--taxonomy-file to filter which taxonomy pages are candidates.
     Use stage flags to disable/force semantic or LLM passes as needed.
     """
     filters_selected = sum(bool(flag) for flag in [taxonomy_ids, taxonomy_file, only_unmatched])
@@ -318,6 +415,14 @@ def match(
 
     matching_service = MatchingService(settings, db)
     workflow_service = WorkflowService(settings, db, matching_service=matching_service)
+
+    # Handle content limiting for testing
+    content_subset: list | None = None
+    if limit is not None:
+        click.echo(f"Loading and limiting to first {limit} content items...")
+        all_content = db.get_all_content()
+        content_subset = all_content[:limit]
+        click.echo(f"Selected {len(content_subset)} content items")
 
     taxonomy_subset: list | None = None
     target_ids: list[UUID] | None = None
@@ -370,7 +475,11 @@ def match(
     if force_llm:
         deleted_llm = db.clear_matching_results(
             target_ids,
-            [MatchStage.LLM_CATEGORIZED, MatchStage.NEEDS_HUMAN_REVIEW],
+            [
+                MatchStage.LLM_CATEGORIZED,
+                MatchStage.NEEDS_LLM_REVIEW,
+                MatchStage.NEEDS_HUMAN_REVIEW,
+            ],
         )
         click.echo(f"Cleared {deleted_llm} LLM/review rows prior to fallback stage")
 
@@ -384,6 +493,7 @@ def match(
 
     stats = workflow_service.run_matching_workflow(
         taxonomy_pages=taxonomy_subset,
+        content_items=content_subset,
         batch_mode=batch,
     )
 
@@ -394,6 +504,8 @@ def match(
     click.echo(
         f"Total processed: {stats['semantic_matched'] + stats['llm_categorized'] + stats['needs_review']}"
     )
+    if batch_ids := stats.get("llm_batch_ids"):
+        click.echo(f"Batch job IDs: {', '.join(batch_ids)}")
 
 
 @cli.command(name="full-run")

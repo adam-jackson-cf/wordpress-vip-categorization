@@ -1,0 +1,22 @@
+================================================================================
+URL: https://es.sensehub.com/video-section-sample/
+================================================================================
+
+TITLE: Video Section Sample - SenseHub
+
+HEADINGS:
+  - Conoce nuestro sistema de monitorización animal
+
+CONTENT:
+--------------------------------------------------------------------------------
+Conoce nuestro sistema de monitorización animalThis is excerpt sample for video 1This is excerpt sample for video 2This is excerpt sample for video 3This is excerpt sample for video 4
+
+This is excerpt sample for video 1This is excerpt sample for video 2This is excerpt sample for video 3This is excerpt sample for video 4
+
+This is excerpt sample for video 1
+
+This is excerpt sample for video 2
+
+This is excerpt sample for video 3
+
+This is excerpt sample for video 4

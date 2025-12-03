@@ -24,10 +24,10 @@ class TestCSVExporter:
         sample_categorization_result,
     ) -> None:
         """Test export row preparation."""
-        # Mock database responses
-        mock_supabase_client.get_all_taxonomy.return_value = [sample_taxonomy_page]
-        mock_supabase_client.get_best_match_for_taxonomy.return_value = sample_matching_result
-        mock_supabase_client.get_content_by_id.return_value = sample_wordpress_content
+        # Mock database responses for content-first export
+        mock_supabase_client.get_all_content.return_value = [sample_wordpress_content]
+        mock_supabase_client.get_best_match_for_content.return_value = sample_matching_result
+        mock_supabase_client.get_taxonomy_by_id.return_value = sample_taxonomy_page
         mock_supabase_client.get_categorizations_by_content.return_value = [
             sample_categorization_result
         ]
@@ -38,19 +38,21 @@ class TestCSVExporter:
         assert len(rows) == 1
         row = rows[0]
         assert isinstance(row, ExportRow)
+        assert row.source_url == str(sample_wordpress_content.url)
+        assert row.target_url == str(sample_taxonomy_page.destination_url)
         assert row.category == "Technology"
         assert row.similarity_score == 0.85
 
     def test_export_to_csv(
         self,
         mock_supabase_client: Mock,
-        sample_taxonomy_page,
+        sample_wordpress_content,
         tmp_path: Path,
     ) -> None:
         """Test CSV export."""
         # Mock with no matches for simplicity
-        mock_supabase_client.get_all_taxonomy.return_value = [sample_taxonomy_page]
-        mock_supabase_client.get_best_match_for_taxonomy.return_value = None
+        mock_supabase_client.get_all_content.return_value = [sample_wordpress_content]
+        mock_supabase_client.get_best_match_for_content.return_value = None
 
         exporter = CSVExporter(mock_supabase_client)
 
@@ -65,17 +67,17 @@ class TestCSVExporter:
             lines = f.readlines()
             assert len(lines) == 2  # Header + 1 data row
             assert "source_url" in lines[0]
-            assert str(sample_taxonomy_page.destination_url) in lines[1]
+            assert str(sample_wordpress_content.url) in lines[1]
 
     def test_export_unmatched_only(
         self,
         mock_supabase_client: Mock,
-        sample_taxonomy_page,
+        sample_wordpress_content,
         tmp_path: Path,
     ) -> None:
-        """Test exporting only unmatched taxonomy."""
-        mock_supabase_client.get_all_taxonomy.return_value = [sample_taxonomy_page]
-        mock_supabase_client.get_best_match_for_taxonomy.return_value = None
+        """Test exporting only unmatched content items."""
+        mock_supabase_client.get_all_content.return_value = [sample_wordpress_content]
+        mock_supabase_client.get_best_match_for_content.return_value = None
 
         exporter = CSVExporter(mock_supabase_client)
 
@@ -88,7 +90,8 @@ class TestCSVExporter:
         with open(output_path) as f:
             lines = f.readlines()
             assert "source_url" in lines[0]
-            assert "category" in lines[0]
+            # Category is not included in unmatched export for content items
+            assert "category" not in lines[0]
 
     def test_export_with_min_similarity_filter(
         self,
@@ -99,9 +102,9 @@ class TestCSVExporter:
         tmp_path: Path,
     ) -> None:
         """Test export with similarity threshold filter."""
-        mock_supabase_client.get_all_taxonomy.return_value = [sample_taxonomy_page]
-        mock_supabase_client.get_best_match_for_taxonomy.return_value = sample_matching_result
-        mock_supabase_client.get_content_by_id.return_value = sample_wordpress_content
+        mock_supabase_client.get_all_content.return_value = [sample_wordpress_content]
+        mock_supabase_client.get_best_match_for_content.return_value = sample_matching_result
+        mock_supabase_client.get_taxonomy_by_id.return_value = sample_taxonomy_page
         mock_supabase_client.get_categorizations_by_content.return_value = []
 
         exporter = CSVExporter(mock_supabase_client)

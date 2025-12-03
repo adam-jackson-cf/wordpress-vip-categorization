@@ -1,11 +1,27 @@
 """Unit tests for categorization service."""
 
+import json
+from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import pytest
+
 from src.config import Settings
-from src.models import TaxonomyPage, WordPressContent
-from src.services.categorization import CategorizationService
+from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
+from src.optimization.dspy_optimizer import PromptContext
+from src.services.categorization import BatchRequestFile, CategorizationService
+
+
+@pytest.fixture(autouse=True)
+def _patch_dspy_optimizer(mocker):  # type: ignore[annotated-assignment]
+    mock_optimizer = mocker.Mock()
+    mock_optimizer.load_latest_model.return_value = None
+    mock_optimizer.get_prompt_context.return_value = PromptContext(
+        instructions=None,
+        demonstrations=[],
+    )
+    return mocker.patch("src.services.categorization.DSPyOptimizer", return_value=mock_optimizer)
 
 
 class TestCategorizationService:
@@ -197,48 +213,176 @@ class TestCategorizationService:
         assert batch_id == "batch-42"
         service.wait_for_batch_completion.assert_not_called()
 
-    def test_categorize_for_matching_records_match(
+    def test_prepare_llm_fallback_requests_includes_schema(
         self,
         mock_settings: Settings,
         mock_supabase_client: Mock,
-        sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_matching_result: MatchingResult,
     ) -> None:
-        """Ensure matched taxonomy rows are persisted with stage metadata."""
-
         service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(
-            return_value=(
-                sample_wordpress_content,
-                {
-                    "topic_alignment": 0.9,
-                    "intent_fit": 0.9,
-                    "entity_overlap": 0.6,
-                    "temporal_relevance": 0.5,
-                    "decision": "accept",
-                    "reasoning": "good match",
+
+        service.prompt_instructions = "DSPy optimized instruction"
+        service.prompt_demonstrations = ["Example 1: taxonomy_content_type=Tech"]
+
+        requests = service.prepare_llm_fallback_requests(
+            [sample_wordpress_content],
+            {sample_wordpress_content.id: [sample_taxonomy_page]},
+            {sample_wordpress_content.id: sample_matching_result},
+        )
+
+        assert len(requests) == 1
+        body = requests[0]["body"]
+        assert body["response_format"]["type"] == "json_schema"
+        assert "Candidate taxonomy pages" in body["messages"][1]["content"]
+        assert "DSPy optimized instruction" in body["messages"][0]["content"]
+        assert "Example 1" in body["messages"][1]["content"]
+
+    def test_write_llm_request_files_chunks(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        tmp_path: Path,
+    ) -> None:
+        mock_settings.llm_batch_chunk_size = 1
+        mock_settings.llm_batch_artifact_dir = tmp_path
+        service = CategorizationService(mock_settings, mock_supabase_client)
+
+        requests = [
+            {"custom_id": "a", "body": {}},
+            {"custom_id": "b", "body": {}},
+        ]
+
+        files = service._write_llm_request_files(requests)
+
+        assert len(files) == 2
+        for artifact in files:
+            assert artifact.path.exists()
+        manifest = files[0].run_dir / "manifest.json"
+        assert manifest.exists()
+
+    def test_apply_llm_batch_results_accepts(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_matching_result: MatchingResult,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        payload = {
+            "decision": "accept",
+            "taxonomy_id": str(sample_taxonomy_page.id),
+            "taxonomy_url": str(sample_taxonomy_page.destination_url),
+            "topic_alignment": 0.92,
+            "intent_fit": 0.9,
+            "entity_overlap": 0.7,
+            "reasoning": "clear match",
+        }
+        results = [
+            {
+                "custom_id": str(sample_wordpress_content.id),
+                "response": {
+                    "body": {
+                        "choices": [
+                            {"message": {"content": json.dumps(payload)}}
+                        ]
+                    }
                 },
-            )
+            }
+        ]
+
+        stats = service.apply_llm_batch_results(
+            results,
+            "batch-1",
+            taxonomy_lookup={sample_taxonomy_page.id: sample_taxonomy_page},
+            semantic_results={sample_wordpress_content.id: sample_matching_result},
+            content_lookup={sample_wordpress_content.id: sample_wordpress_content},
+        )
+
+        assert stats == {"matched": 1, "needs_review": 0, "total": 1}
+        mock_supabase_client.bulk_upsert_matchings.assert_called_once()
+        saved = mock_supabase_client.bulk_upsert_matchings.call_args[0][0][0]
+        assert saved.match_stage == MatchStage.LLM_CATEGORIZED
+        assert saved.taxonomy_id == sample_taxonomy_page.id
+
+    def test_apply_llm_batch_results_handles_invalid_response(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+        sample_matching_result: MatchingResult,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        results = [
+            {
+                "custom_id": str(sample_wordpress_content.id),
+                "response": {"body": {"choices": []}},
+            }
+        ]
+
+        stats = service.apply_llm_batch_results(
+            results,
+            "batch-bad",
+            taxonomy_lookup={},
+            semantic_results={sample_wordpress_content.id: sample_matching_result},
+        )
+
+        assert stats == {"matched": 0, "needs_review": 1, "total": 1}
+        saved = mock_supabase_client.bulk_upsert_matchings.call_args[0][0][0]
+        assert saved.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
+
+    def test_categorize_for_matching_waits_and_applies(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+        sample_taxonomy_page: TaxonomyPage,
+        tmp_path: Path,
+    ) -> None:
+        mock_settings.llm_batch_artifact_dir = tmp_path
+        service = CategorizationService(mock_settings, mock_supabase_client)
+        service.prepare_llm_fallback_requests = Mock(return_value=[{"custom_id": "1"}])
+        artifact_path = tmp_path / "requests.jsonl"
+        artifact_path.write_text("{}", encoding="utf-8")
+        service._write_llm_request_files = Mock(
+            return_value=[BatchRequestFile(path=artifact_path, run_dir=tmp_path, count=1)]
+        )
+        service.submit_batch = Mock(return_value="batch-123")
+        service.wait_for_batch_completion = Mock()
+        service.retrieve_batch_results = Mock(return_value=[{"custom_id": str(sample_wordpress_content.id)}])
+        service.apply_llm_batch_results = Mock(
+            return_value={"matched": 1, "needs_review": 0}
         )
 
         stats = service.categorize_for_matching(
-            [sample_taxonomy_page],
             [sample_wordpress_content],
+            candidate_map={sample_wordpress_content.id: [sample_taxonomy_page]},
+            fallback_taxonomy=[sample_taxonomy_page],
+            semantic_results={
+                sample_wordpress_content.id: MatchingResult(
+                    taxonomy_id=None,
+                    content_id=sample_wordpress_content.id,
+                    semantic_taxonomy_id=sample_taxonomy_page.id,
+                    semantic_similarity_score=0.6,
+                    match_stage=MatchStage.NEEDS_LLM_REVIEW,
+                )
+            },
         )
 
-        assert stats == {"matched": 1, "below_threshold": 0, "total": 1}
-        mock_supabase_client.upsert_matching.assert_called_once()
+        assert stats["matched"] == 1
+        assert stats["batch_ids"] == ["batch-123"]
+        service.apply_llm_batch_results.assert_called_once()
 
     def test_accept_by_rubric_skips_entity_without_keywords(
         self,
-        mocker,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
     ) -> None:
         """Entity threshold should only apply when taxonomy keywords exist."""
 
-        mocker.patch("src.services.categorization.DSPyOptimizer")
         service = CategorizationService(mock_settings, mock_supabase_client)
         sample_taxonomy_page.key_topics = []
         rubric = {
@@ -253,14 +397,12 @@ class TestCategorizationService:
 
     def test_accept_by_rubric_enforces_entity_with_keywords(
         self,
-        mocker,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
     ) -> None:
         """When keywords are present, low entity overlap should fail."""
 
-        mocker.patch("src.services.categorization.DSPyOptimizer")
         service = CategorizationService(mock_settings, mock_supabase_client)
         sample_taxonomy_page.key_topics = ["ai"]
         rubric = {
@@ -275,7 +417,6 @@ class TestCategorizationService:
 
     def test_accept_by_rubric_logs_warning_when_clamping(
         self,
-        mocker,
         caplog,
         mock_settings: Settings,
         mock_supabase_client: Mock,
@@ -284,7 +425,6 @@ class TestCategorizationService:
         """Clamping rubric scores outside [0, 1] should log a warning."""
         import logging
 
-        mocker.patch("src.services.categorization.DSPyOptimizer")
         service = CategorizationService(mock_settings, mock_supabase_client)
         rubric = {
             "decision": "accept",
@@ -304,96 +444,6 @@ class TestCategorizationService:
         assert "Clamped topic_alignment from 1.50 to 1.00" in caplog.text
         assert "Clamped entity_overlap from -0.10 to 0.00" in caplog.text
         assert "Clamped intent_fit" not in caplog.text
-
-    def test_categorize_for_matching_marks_review(
-        self,
-        mock_settings: Settings,
-        mock_supabase_client: Mock,
-        sample_taxonomy_page: TaxonomyPage,
-        sample_wordpress_content: WordPressContent,
-    ) -> None:
-        """Items failing rubric gate should become needs_human_review."""
-
-        service = CategorizationService(mock_settings, mock_supabase_client)
-        service._find_best_match_llm = Mock(return_value=(None, {}))
-
-        stats = service.categorize_for_matching(
-            [sample_taxonomy_page],
-            [sample_wordpress_content],
-        )
-
-        assert stats == {"matched": 0, "below_threshold": 1, "total": 1}
-        mock_supabase_client.upsert_matching.assert_called_once()
-
-    @patch("src.services.categorization.Path.exists")
-    @patch("src.services.categorization.DSPyOptimizer")
-    def test_find_best_match_llm_parses_response(
-        self,
-        mock_dspy_optimizer_class: Mock,
-        mock_path_exists: Mock,
-        mock_settings: Settings,
-        mock_supabase_client: Mock,
-        sample_taxonomy_page: TaxonomyPage,
-        sample_wordpress_content: WordPressContent,
-    ) -> None:
-        """Test that _find_best_match_llm correctly parses DSPy response into rubric."""
-        mock_dspy_optimizer = Mock()
-        # Selector returns index only (rubric ignored by new flow)
-        mock_dspy_optimizer.predict_match.return_value = (0, {})
-        # Judge returns the rubric used for gating
-        judge_rubric = {
-            "topic_alignment": 0.91,
-            "intent_fit": 0.88,
-            "entity_overlap": 0.7,
-            "temporal_relevance": 0.4,
-            "decision": "accept",
-            "reasoning": "valid",
-        }
-        mock_dspy_optimizer.judge_candidate.return_value = judge_rubric
-        mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
-        mock_path_exists.return_value = False
-
-        service = CategorizationService(mock_settings, mock_supabase_client)
-
-        best_match, rubric = service._find_best_match_llm(
-            sample_taxonomy_page, [sample_wordpress_content]
-        )
-
-        assert best_match == sample_wordpress_content
-        assert rubric == judge_rubric
-        mock_dspy_optimizer.predict_match.assert_called_once_with(
-            sample_taxonomy_page, [sample_wordpress_content]
-        )
-        mock_dspy_optimizer.judge_candidate.assert_called_once()
-
-    @patch("src.services.categorization.Path.exists")
-    @patch("src.services.categorization.DSPyOptimizer")
-    def test_find_best_match_llm_handles_no_match(
-        self,
-        mock_dspy_optimizer_class: Mock,
-        mock_path_exists: Mock,
-        mock_settings: Settings,
-        mock_supabase_client: Mock,
-        sample_taxonomy_page: TaxonomyPage,
-        sample_wordpress_content: WordPressContent,
-    ) -> None:
-        """Test that _find_best_match_llm handles no match case."""
-        mock_dspy_optimizer = Mock()
-        mock_dspy_optimizer.predict_match.return_value = (-1, {})
-        mock_dspy_optimizer_class.return_value = mock_dspy_optimizer
-        mock_path_exists.return_value = False
-
-        service = CategorizationService(mock_settings, mock_supabase_client)
-
-        best_match, rubric = service._find_best_match_llm(
-            sample_taxonomy_page, [sample_wordpress_content]
-        )
-
-        assert best_match is None
-        assert rubric == {}
-        mock_dspy_optimizer.predict_match.assert_called_once_with(
-            sample_taxonomy_page, [sample_wordpress_content]
-        )
 
     def test_coerce_datetime_parses_timestamp(self, mock_settings, mock_supabase_client) -> None:
         service = CategorizationService(mock_settings, mock_supabase_client)

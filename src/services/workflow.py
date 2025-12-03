@@ -7,7 +7,14 @@ from uuid import UUID
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
-from src.models import TaxonomyPage, WordPressContent, WorkflowRun, WorkflowRunStatus
+from src.models import (
+    MatchStage,
+    MatchingResult,
+    TaxonomyPage,
+    WordPressContent,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
 from src.services.categorization import CategorizationService
 from src.services.matching import MatchingService
 
@@ -91,17 +98,17 @@ class WorkflowService:
             }
 
         # Load data if not provided
-        if taxonomy_pages is None:
-            logger.info("Loading taxonomy pages from database...")
-            taxonomy_pages = self.db.get_all_taxonomy()
-
         if content_items is None:
             logger.info("Loading content items from database...")
             content_items = self.db.get_all_content()
 
+        if taxonomy_pages is None:
+            logger.info("Loading taxonomy pages from database...")
+            taxonomy_pages = self.db.get_all_taxonomy()
+
         logger.info(
-            f"Starting workflow with {len(taxonomy_pages)} taxonomy pages "
-            f"and {len(content_items)} content items"
+            f"Starting workflow with {len(content_items)} content items "
+            f"and {len(taxonomy_pages)} taxonomy pages"
         )
 
         stats = {
@@ -120,32 +127,44 @@ class WorkflowService:
             )
 
         # Stage 1: Semantic Matching
-        unmatched_taxonomy: list[TaxonomyPage] = []
+        unmatched_content: list[WordPressContent] = []
+
+        match_results: dict[UUID, MatchingResult] = {}
 
         if self.settings.enable_semantic_matching:
             logger.info(
-                f"Stage 1: Running semantic matching (threshold >= {self.settings.similarity_threshold})"
+                f"Stage 1: Running semantic matching for {len(content_items)} content items "
+                f"(threshold >= {self.settings.similarity_threshold})"
             )
 
-            # Run semantic matching for all taxonomy pages
+            # Run semantic matching for all content items
             if batch_mode:
-                self.matching_service.match_all_taxonomy_batch(
-                    taxonomy_pages, content_items, min_threshold=self.settings.similarity_threshold
+                match_results = self.matching_service.match_all_taxonomy_batch(
+                    taxonomy_pages,
+                    content_items,
+                    min_threshold=self.settings.similarity_threshold,
                 )
             else:
-                self.matching_service.match_all_taxonomy(
-                    taxonomy_pages, content_items, min_threshold=self.settings.similarity_threshold
+                match_results = self.matching_service.match_all_taxonomy(
+                    taxonomy_pages,
+                    content_items,
+                    min_threshold=self.settings.similarity_threshold,
                 )
 
-            # Collect unmatched items for next stage
-            unmatched_taxonomy = self.matching_service.get_unmatched_taxonomy(
-                self.settings.similarity_threshold
-            )
+            matched_content_ids = {
+                content_id
+                for content_id, result in match_results.items()
+                if result.match_stage == MatchStage.SEMANTIC_MATCHED
+            }
+            processed_ids = set(match_results.keys())
+            unmatched_content = [
+                c for c in content_items if c.id in processed_ids and c.id not in matched_content_ids
+            ]
 
-            stats["semantic_matched"] = len(taxonomy_pages) - len(unmatched_taxonomy)
+            stats["semantic_matched"] = len(matched_content_ids)
             logger.info(
                 f"Semantic matching complete: {stats['semantic_matched']} matched, "
-                f"{len(unmatched_taxonomy)} unmatched"
+                f"{len(unmatched_content)} unmatched"
             )
             if run_id:
                 self.db.update_workflow_run(
@@ -155,43 +174,33 @@ class WorkflowService:
                 )
         else:
             logger.info("Stage 1: Semantic matching disabled, skipping...")
-            unmatched_taxonomy = taxonomy_pages
+            unmatched_content = content_items
 
         # Stage 2: LLM Categorization Fallback
-        candidate_map: dict[UUID, list[WordPressContent]] = {}
-
-        if self.settings.enable_llm_categorization and unmatched_taxonomy:
+        if self.settings.enable_llm_categorization and unmatched_content:
             logger.info(
-                f"Stage 2: Running LLM categorization for {len(unmatched_taxonomy)} unmatched items "
-                f"with rubric gating"
+                f"Stage 2: Running LLM categorization for {len(unmatched_content)} content items "
+                f"(semantic < {self.settings.similarity_threshold})"
             )
 
-            for taxonomy in unmatched_taxonomy:
-                candidates = self.matching_service.match_taxonomy_to_content(
-                    taxonomy,
-                    limit=self.settings.llm_candidate_limit,
-                    min_threshold=self.settings.llm_candidate_min_score,
-                )
-                filtered = [
-                    content
-                    for content, score in candidates
-                    if score >= self.settings.llm_candidate_min_score
-                ]
-                if not filtered:
-                    filtered = [content for content, _ in candidates][
-                        : self.settings.llm_candidate_limit
-                    ]
-            candidate_map[taxonomy.id] = filtered
+            candidate_map = self.matching_service.build_candidate_map(
+                unmatched_content,
+                taxonomy_pages=taxonomy_pages,
+            )
 
-            # Run LLM categorization for unmatched items
             llm_results = self.categorization_service.categorize_for_matching(
-                taxonomy_pages=unmatched_taxonomy,
-                content_items=content_items,
+                content_items=unmatched_content,
                 candidate_map=candidate_map,
+                fallback_taxonomy=taxonomy_pages,
+                semantic_results=match_results,
             )
 
             stats["llm_categorized"] = llm_results.get("matched", 0)
-            stats["needs_review"] = llm_results.get("below_threshold", 0)
+            stats["needs_review"] = llm_results.get(
+                "below_threshold", llm_results.get("needs_review", 0)
+            )
+            if batch_ids := llm_results.get("batch_ids"):
+                stats["llm_batch_ids"] = batch_ids
 
             logger.info(
                 f"LLM categorization complete: {stats['llm_categorized']} matched, "
@@ -205,7 +214,7 @@ class WorkflowService:
                 )
         elif not self.settings.enable_llm_categorization:
             logger.info("Stage 2: LLM categorization disabled, skipping...")
-            stats["needs_review"] = len(unmatched_taxonomy)
+            stats["needs_review"] = len(unmatched_content)
         else:
             logger.info("Stage 2: No unmatched items to process")
 

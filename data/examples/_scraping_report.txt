@@ -1,0 +1,162 @@
+WordPress Page Scraping Report
+================================================================================
+
+Total URLs processed: 50
+Successful: 35
+Failed: 15
+
+SUCCESSFUL DOWNLOADS:
+--------------------------------------------------------------------------------
+es.numelvi.com_home.txt: 14,364 bytes
+  Source: https://es.numelvi.com/
+
+es.numelvi.com_2025_03_13_hello_world.txt: 941 bytes
+  Source: https://es.numelvi.com/2025/03/13/hello-world/
+
+es.mypet.com_comportamiento_entender_mi_mascota_que_hacer_para_que_mi_perro_duerma_toda_la_noche.txt: 20,734 bytes
+  Source: https://es.mypet.com/comportamiento/entender-mi-mascota/que-hacer-para-que-mi-perro-duerma-toda-la-noche/
+
+es.mypet.com_diversion_ejercicio_actividades_el_primer_paseo_de_tu_cachorro.txt: 21,801 bytes
+  Source: https://es.mypet.com/diversion/ejercicio-actividades/el-primer-paseo-de-tu-cachorro/
+
+es.mypet.com_estilo_vida_razas_razas_de_perros_pequenos.txt: 44,883 bytes
+  Source: https://es.mypet.com/estilo-vida/razas/razas-de-perros-pequenos/
+
+es.mypet.com_salud_bienestar_esterilizacion_cuando_castrar_gata.txt: 21,724 bytes
+  Source: https://es.mypet.com/salud-bienestar/esterilizacion/cuando-castrar-gata/
+
+es.mypet.com_estilo_vida_vivir_mascotas_residencias_para_perros.txt: 24,077 bytes
+  Source: https://es.mypet.com/estilo-vida/vivir-mascotas/residencias-para-perros/
+
+es.mypet.com_salud_bienestar_enfermedades_ayuda_mi_gato_tiene_bichos.txt: 22,291 bytes
+  Source: https://es.mypet.com/salud-bienestar/enfermedades/ayuda-mi-gato-tiene-bichos/
+
+es.mypet.com_salud_bienestar_pulgas_garrapatas_pulgas_en_gatos.txt: 29,827 bytes
+  Source: https://es.mypet.com/salud-bienestar/pulgas-garrapatas/pulgas-en-gatos/
+
+es.sensehub.com_video_section_sample.txt: 875 bytes
+  Source: https://es.sensehub.com/video-section-sample/
+
+expertosenreposicion.com_vacunacion_intradermica_frente_a_ileitis_porcina.txt: 2,868 bytes
+  Source: https://www.expertosenreposicion.com/vacunacion-intradermica-frente-a-ileitis-porcina/
+
+lawsonia.net_pigcast_tips_on_gut_health_with_dr_moeser.txt: 5,364 bytes
+  Source: https://www.lawsonia.net/pigcast-tips-on-gut-health-with-dr-moeser/
+
+lawsonia.net_pigcast_tips_on_biosecurity_with_dr_miguel_angel_higuera.txt: 5,406 bytes
+  Source: https://www.lawsonia.net/pigcast-tips-on-biosecurity-with-dr-miguel-angel-higuera/
+
+lawsonia.net_lawsonia_new.txt: 7,565 bytes
+  Source: https://www.lawsonia.net/lawsonia_new/
+
+lawsonia.net_pigcast_tips_on_biosecurity_with_dr_jake_waddilove.txt: 5,538 bytes
+  Source: https://www.lawsonia.net/pigcast-tips-on-biosecurity-with-dr-jake-waddilove/
+
+msd-animal-health.es_2018_09_26_conferencia_protocolo_vacuna.txt: 20,744 bytes
+  Source: https://www.msd-animal-health.es/2018/09/26/conferencia-protocolo-vacuna/
+
+msd-animal-health.es_2017_05_16_msd_curso_global_gap_farm_assurer.txt: 2,565 bytes
+  Source: https://www.msd-animal-health.es/2017/05/16/msd-curso-global-gap-farm-assurer/
+
+msd-animal-health.es_2020_09_28_msd_animal_health_en_el_dia_de_la_lucha_frente_a_la_rabia_2020.txt: 26,495 bytes
+  Source: https://www.msd-animal-health.es/2020/09/28/msd-animal-health-en-el-dia-de-la-lucha-frente-a-la-rabia-2020/
+
+msd-animal-health.es_2022_11_02_msd_animal_health_presenta_en_el_southern_european_veterinary_conference_las_nuevas_indic.txt: 8,175 bytes
+  Source: https://www.msd-animal-health.es/2022/11/02/msd-animal-health-presenta-en-el-southern-european-veterinary-conference-las-nuevas-indicaciones-de-bravecto/
+
+msd-animal-health.es_productos_equino.txt: 2,237 bytes
+  Source: https://www.msd-animal-health.es/productos-equino/
+
+msd-animal-health.es_2022_03_24_enfoque_one_health_la_via_para_prevenir_futuros_brotes_de_enfermedades_y_construir_un_mun.txt: 15,741 bytes
+  Source: https://www.msd-animal-health.es/2022/03/24/enfoque-one-health-la-via-para-prevenir-futuros-brotes-de-enfermedades-y-construir-un-mundo-mas-saludable/
+
+msd-animal-health.es_2025_06_24_finaliza_la_iii_edicion_del_campus_porcino_el_programa_de_referencia_para_los_jovenes_vet.txt: 11,312 bytes
+  Source: https://www.msd-animal-health.es/2025/06/24/finaliza-la-iii-edicion-del-campus-porcino-el-programa-de-referencia-para-los-jovenes-veterinarios-del-sector/
+
+msd-animal-health.es_2023_06_23_msd_animal_health_traslada_las_oficinas_de_la_planta_de_salamanca_a_un_edificio_sostenibl.txt: 13,183 bytes
+  Source: https://www.msd-animal-health.es/2023/06/23/msd-animal-health-traslada-las-oficinas-de-la-planta-de-salamanca-a-un-edificio-sostenible-eficiente-y-comprometido-con-el-medio-ambiente/
+
+msd-animal-health.es_2017_06_23_repropig_mesa_de_trabajo.txt: 3,508 bytes
+  Source: https://www.msd-animal-health.es/2017/06/23/repropig-mesa-de-trabajo/
+
+msd-animal-health.es_2021_12_27_msd_animal_health_nueva_version_de_idal_3g.txt: 3,573 bytes
+  Source: https://www.msd-animal-health.es/2021/12/27/msd-animal-health-nueva-version-de-idal-3g/
+
+msd-animal-health.es_home_page.txt: 4,824 bytes
+  Source: https://www.msd-animal-health.es/home-page/
+
+nobivac.es_about_us.txt: 3,504 bytes
+  Source: https://www.nobivac.es/about-us/
+
+nobivac.es_tell_a_friend_contact.txt: 4,058 bytes
+  Source: https://www.nobivac.es/tell-a-friend-contact/
+
+repropig-spain.com_politica_de_cookies.txt: 9,201 bytes
+  Source: https://www.repropig-spain.com/politica-de-cookies/
+
+repropig-spain.com_todos_los_articulos.txt: 1,513 bytes
+  Source: https://www.repropig-spain.com/todos-los-articulos/
+
+scalibor.es_leishmaniosis_canina.txt: 9,688 bytes
+  Source: https://www.scalibor.es/leishmaniosis-canina/
+
+vacunalavaca.com_trabajo_de_reduccion_de_emisiones_en_granjas_de_vacuno_de_carne.txt: 30,255 bytes
+  Source: http://www.vacunalavaca.com/trabajo-de-reduccion-de-emisiones-en-granjas-de-vacuno-de-carne/
+
+vacunalavaca.com_home.txt: 17,589 bytes
+  Source: http://www.vacunalavaca.com/
+
+vacunalavaca.com_nos_adentramos_en_la_finca_el_groo.txt: 10,189 bytes
+  Source: http://www.vacunalavaca.com/nos-adentramos-en-la-finca-el-groo/
+
+vacunalavaca.com_msd_animal_health.txt: 14,049 bytes
+  Source: http://www.vacunalavaca.com/msd-animal-health/
+
+
+FAILED DOWNLOADS:
+--------------------------------------------------------------------------------
+URL: https://www.bravovets.es/?page_id=263
+Reason: Request error: 404 Client Error: Not Found for url: https://es.bravovets.com/?page_id=263
+
+URL: https://es.mypet.com/?page_id=38
+Reason: Request error: 404 Client Error: Not Found for url: https://es.mypet.com/?page_id=38
+
+URL: https://es.sensehub.com/?p=8937
+Reason: Request error: 404 Client Error: Not Found for url: https://es.sensehub.com/?p=8937
+
+URL: https://es.sensehub.com/?p=8605
+Reason: Request error: 404 Client Error: Not Found for url: https://es.sensehub.com/?p=8605
+
+URL: https://www.expertosenreposicion.com/programa-121/plan-vacunal/
+Reason: No meaningful content extracted
+
+URL: https://www.msd-animal-health.es/?page_id=14953
+Reason: Request error: 404 Client Error: Not Found for url: https://www.msd-animal-health.es/?page_id=14953
+
+URL: https://www.msd-animal-health.es/?page_id=9052
+Reason: Request error: 404 Client Error: Not Found for url: https://www.msd-animal-health.es/?page_id=9052
+
+URL: https://www.msd-animal-health.es/?page_id=8145
+Reason: Request error: 404 Client Error: Not Found for url: https://www.msd-animal-health.es/?page_id=8145
+
+URL: https://www.msd-animal-health.es/?page_id=7066
+Reason: Request error: 404 Client Error: Not Found for url: https://www.msd-animal-health.es/?page_id=7066
+
+URL: https://www.msdconnectingprrs.es/?page_id=1430
+Reason: Request error: 404 Client Error: Not Found for url: https://www.msdconnectingprrs.es/?page_id=1430
+
+URL: https://www.repropig-spain.com/podcast/
+Reason: No meaningful content extracted
+
+URL: https://www.repropig-spain.com/?page_id=2025
+Reason: Request error: 404 Client Error: Not Found for url: https://www.repropig-spain.com/?page_id=2025
+
+URL: https://www.scalibor.es/?page_id=5892
+Reason: Request error: 404 Client Error: Not Found for url: https://www.scalibor.es/?page_id=5892
+
+URL: http://www.vacunalavaca.com/?p=3931
+Reason: Request error: 404 Client Error: Not Found for url: https://www.vacunalavaca.com/?p=3931
+
+URL: http://www.vacunalavaca.com/?page_id=2815
+Reason: No meaningful content extracted
+

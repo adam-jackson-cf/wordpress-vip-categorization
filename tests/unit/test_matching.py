@@ -46,7 +46,8 @@ class TestMatchingService:
 
         assert "Title:" in text
         assert sample_wordpress_content.title in text
-        assert "Content:" in text
+        assert "Content Preview:" in text
+        assert "Excerpt:" in text
 
     def test_compute_similarity(self, mock_settings: Settings, mock_supabase_client: Mock) -> None:
         """Test similarity computation."""
@@ -88,18 +89,162 @@ class TestMatchingService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Test matching taxonomy to content."""
+        """Test matching content to taxonomy."""
         service = MatchingService(mock_settings, mock_supabase_client)
-        mock_supabase_client.match_content_by_embedding.return_value = [
-            (sample_wordpress_content, 0.9)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (sample_taxonomy_page, 0.9)
         ]
 
-        matches = service.match_taxonomy_to_content(sample_taxonomy_page)
+        matches = service.match_taxonomy_to_content(sample_wordpress_content)
 
         assert len(matches) == 1
-        content, score = matches[0]
-        assert content.id == sample_wordpress_content.id
+        taxonomy, score = matches[0]
+        assert taxonomy.id == sample_taxonomy_page.id
         assert 0.0 <= score <= 1.0
+
+    def test_match_taxonomy_to_content_filters_subset(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        mock_openai_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Ensure only allowed taxonomy rows are returned when subset provided."""
+
+        second_taxonomy = TaxonomyPage(
+            id=uuid4(),
+            uid="TAX-ALT",
+            destination_url="https://taxonomy.com/alt",
+            english_page_name="Alt",
+            es_page_name="Alt",
+            content_type="Alt",
+            primary_audiance="All",
+            secondary_audiance="All",
+            semantic_summary="Alt",
+            key_topics=[],
+        )
+
+        service = MatchingService(mock_settings, mock_supabase_client)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (second_taxonomy, 0.95),
+            (sample_taxonomy_page, 0.9),
+        ]
+
+        matches = service.match_taxonomy_to_content(
+            sample_wordpress_content,
+            taxonomy_pool={sample_taxonomy_page.id: sample_taxonomy_page},
+        )
+
+        assert len(matches) == 1
+        assert matches[0][0].id == sample_taxonomy_page.id
+
+    def test_match_taxonomy_to_content_falls_back_when_subset_filters_all(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        mock_openai_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """When Supabase returns no allowed rows, local search should run."""
+
+        disallowed = TaxonomyPage(
+            id=uuid4(),
+            uid="TAX-DENY",
+            destination_url="https://taxonomy.com/disallowed",
+            english_page_name="Nope",
+            es_page_name="Nope",
+            content_type="Nope",
+            primary_audiance="All",
+            secondary_audiance="All",
+            semantic_summary="Nope",
+            key_topics=[],
+        )
+
+        service = MatchingService(mock_settings, mock_supabase_client)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [(disallowed, 0.99)]
+        service._local_similarity_search_taxonomy = Mock(  # type: ignore[attr-defined]
+            return_value=[(sample_taxonomy_page, 0.8)]
+        )
+
+        matches = service.match_taxonomy_to_content(
+            sample_wordpress_content,
+            taxonomy_pool={sample_taxonomy_page.id: sample_taxonomy_page},
+        )
+
+        service._local_similarity_search_taxonomy.assert_called_once()
+        assert matches[0][0].id == sample_taxonomy_page.id
+
+    def test_match_all_taxonomy_subset_skips_unrelated_content(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        mock_openai_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Scoped runs should not demote content tied to other taxonomy rows."""
+
+        other_taxonomy = TaxonomyPage(
+            id=uuid4(),
+            uid="TAX-OTHER",
+            destination_url="https://taxonomy.com/other",
+            english_page_name="Other",
+            es_page_name="Otro",
+            content_type="Other",
+            primary_audiance="All",
+            secondary_audiance="All",
+            semantic_summary="Other",
+            key_topics=["misc"],
+        )
+        other_content = WordPressContent(
+            id=uuid4(),
+            url="https://example.com/other",
+            title="Other Content",
+            content="Body",
+            site_url="https://example.com",
+        )
+
+        captured: list[list[MatchingResult]] = []
+
+        def _capture(data, chunk_size=None):  # type: ignore[no-untyped-def]
+            captured.append(list(data))
+            return []
+
+        mock_supabase_client.bulk_upsert_matchings.side_effect = _capture
+
+        service = MatchingService(mock_settings, mock_supabase_client)
+        service.find_best_match = Mock(  # type: ignore[attr-defined]
+            side_effect=[(sample_taxonomy_page, 0.92), None]
+        )
+
+        mock_supabase_client.get_all_matchings.return_value = [
+            MatchingResult(
+                taxonomy_id=sample_taxonomy_page.id,
+                content_id=sample_wordpress_content.id,
+                semantic_taxonomy_id=sample_taxonomy_page.id,
+                semantic_similarity_score=0.9,
+                match_stage=MatchStage.SEMANTIC_MATCHED,
+            ),
+            MatchingResult(
+                taxonomy_id=other_taxonomy.id,
+                content_id=other_content.id,
+                semantic_taxonomy_id=other_taxonomy.id,
+                semantic_similarity_score=0.88,
+                match_stage=MatchStage.SEMANTIC_MATCHED,
+            ),
+        ]
+
+        results = service.match_all_taxonomy(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content, other_content],
+        )
+
+        assert sample_wordpress_content.id in results
+        assert other_content.id not in results
+        mock_supabase_client.bulk_upsert_matchings.assert_called_once()
+        assert captured and captured[0][0].content_id == sample_wordpress_content.id
 
     def test_find_best_match_above_threshold(
         self,
@@ -111,15 +256,15 @@ class TestMatchingService:
     ) -> None:
         """Test finding best match above threshold."""
         service = MatchingService(mock_settings, mock_supabase_client)
-        mock_supabase_client.match_content_by_embedding.return_value = [
-            (sample_wordpress_content, 0.8)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (sample_taxonomy_page, 0.8)
         ]
 
-        match = service.find_best_match(sample_taxonomy_page, min_threshold=0.0)
+        match = service.find_best_match(sample_wordpress_content, min_threshold=0.0)
 
         assert match is not None
-        content, score = match
-        assert content.id == sample_wordpress_content.id
+        taxonomy, score = match
+        assert taxonomy.id == sample_taxonomy_page.id
 
     def test_find_best_match_below_threshold(
         self,
@@ -131,15 +276,15 @@ class TestMatchingService:
     ) -> None:
         """Ensure best candidate is returned even when below semantic threshold."""
         service = MatchingService(mock_settings, mock_supabase_client)
-        mock_supabase_client.match_content_by_embedding.return_value = [
-            (sample_wordpress_content, 0.5)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (sample_taxonomy_page, 0.5)
         ]
 
-        match = service.find_best_match(sample_taxonomy_page, min_threshold=0.99)
+        match = service.find_best_match(sample_wordpress_content, min_threshold=0.99)
 
         assert match is not None
-        content, score = match
-        assert content.id == sample_wordpress_content.id
+        taxonomy, score = match
+        assert taxonomy.id == sample_taxonomy_page.id
         assert score == 0.5
 
     def test_get_unmatched_taxonomy_filters_by_threshold(
@@ -164,9 +309,20 @@ class TestMatchingService:
             key_topics=[],
         )
 
-        mock_supabase_client.get_unmatched_taxonomy.return_value = [second_taxonomy]
-
         service = MatchingService(mock_settings, mock_supabase_client)
+
+        matched_row = MatchingResult(
+            taxonomy_id=sample_taxonomy_page.id,
+            semantic_taxonomy_id=sample_taxonomy_page.id,
+            content_id=sample_wordpress_content.id,
+            semantic_similarity_score=0.92,
+            match_stage=MatchStage.SEMANTIC_MATCHED,
+        )
+        mock_supabase_client.get_all_taxonomy.return_value = [
+            sample_taxonomy_page,
+            second_taxonomy,
+        ]
+        mock_supabase_client.get_all_matchings.return_value = [matched_row]
         unmatched = service.get_unmatched_taxonomy(min_threshold=0.85)
 
         assert unmatched == [second_taxonomy]
@@ -181,7 +337,7 @@ class TestMatchingService:
         """match_all_taxonomy should persist results using find_best_match."""
 
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.find_best_match = Mock(return_value=(sample_wordpress_content, 0.92))
+        service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.92))
 
         results = service.match_all_taxonomy(
             taxonomy_pages=[sample_taxonomy_page],
@@ -189,11 +345,18 @@ class TestMatchingService:
             min_threshold=0.8,
         )
 
-        assert sample_taxonomy_page.id in results
-        match_result = results[sample_taxonomy_page.id]
-        assert match_result.candidate_content_id == sample_wordpress_content.id
-        assert match_result.candidate_similarity_score == match_result.similarity_score
+        assert sample_wordpress_content.id in results
+        match_result = results[sample_wordpress_content.id]
+        assert match_result.taxonomy_id == sample_taxonomy_page.id
+        assert match_result.content_id == sample_wordpress_content.id
+        assert match_result.semantic_taxonomy_id == sample_taxonomy_page.id
+        assert match_result.semantic_similarity_score == 0.92
         mock_supabase_client.bulk_upsert_matchings.assert_called()
+        service.find_best_match.assert_called_once_with(
+            sample_wordpress_content,
+            0.8,
+            {sample_taxonomy_page.id: sample_taxonomy_page},
+        )
 
     def test_match_all_taxonomy_records_needs_review(
         self,
@@ -205,7 +368,7 @@ class TestMatchingService:
         """When no best match exists, a needs-review result should be stored."""
 
         service = MatchingService(mock_settings, mock_supabase_client)
-        service.find_best_match = Mock(return_value=(sample_wordpress_content, 0.5))
+        service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.5))
 
         results = service.match_all_taxonomy(
             taxonomy_pages=[sample_taxonomy_page],
@@ -213,11 +376,18 @@ class TestMatchingService:
             min_threshold=0.95,
         )
 
-        match_result = results[sample_taxonomy_page.id]
-        assert match_result.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
-        assert match_result.candidate_content_id == sample_wordpress_content.id
-        assert match_result.similarity_score == 0.5
-        mock_supabase_client.bulk_upsert_matchings.assert_called()
+        match_result = results[sample_wordpress_content.id]
+        assert match_result.match_stage == MatchStage.NEEDS_LLM_REVIEW
+        assert match_result.taxonomy_id is None
+        assert match_result.content_id == sample_wordpress_content.id
+        assert match_result.semantic_taxonomy_id == sample_taxonomy_page.id
+        assert match_result.semantic_similarity_score == 0.5
+        mock_supabase_client.bulk_upsert_matchings.assert_called_once()
+        service.find_best_match.assert_called_once_with(
+            sample_wordpress_content,
+            0.95,
+            {sample_taxonomy_page.id: sample_taxonomy_page},
+        )
 
     def test_match_all_taxonomy_batch_uses_precomputed_embeddings(
         self,
@@ -230,10 +400,11 @@ class TestMatchingService:
 
         service = MatchingService(mock_settings, mock_supabase_client)
         delegated = {
-            sample_taxonomy_page.id: MatchingResult(
+            sample_wordpress_content.id: MatchingResult(
                 taxonomy_id=sample_taxonomy_page.id,
                 content_id=sample_wordpress_content.id,
-                similarity_score=0.9,
+                semantic_taxonomy_id=sample_taxonomy_page.id,
+                semantic_similarity_score=0.9,
                 match_stage=MatchStage.SEMANTIC_MATCHED,
             )
         }
@@ -245,5 +416,31 @@ class TestMatchingService:
             min_threshold=0.5,
         )
 
-        service.match_all_taxonomy.assert_called_once()
+        service.match_all_taxonomy.assert_called_once_with(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+            min_threshold=0.5,
+            store_results=True,
+        )
         assert results == delegated
+
+    def test_match_all_taxonomy_batch_does_not_reload_content(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        """Providing a content subset should skip fetching all content rows."""
+
+        mock_supabase_client.get_all_content.reset_mock()
+        service = MatchingService(mock_settings, mock_supabase_client)
+        service.find_best_match = Mock(return_value=None)
+
+        service.match_all_taxonomy_batch(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+            min_threshold=0.9,
+        )
+
+        mock_supabase_client.get_all_content.assert_not_called()

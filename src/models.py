@@ -13,6 +13,7 @@ class MatchStage(str, Enum):
     """Stages in the matching workflow."""
 
     SEMANTIC_MATCHED = "semantic_matched"
+    NEEDS_LLM_REVIEW = "needs_llm_review"
     LLM_CATEGORIZED = "llm_categorized"
     NEEDS_HUMAN_REVIEW = "needs_human_review"
 
@@ -100,7 +101,7 @@ class CategorizationResult(BaseModel):
 
 
 class MatchingResult(BaseModel):
-    """Result of semantic matching."""
+    """Result of content-to-taxonomy matching."""
 
     model_config = ConfigDict(
         ser_json_timedelta="iso8601",
@@ -108,24 +109,18 @@ class MatchingResult(BaseModel):
     )
 
     id: UUID = Field(default_factory=uuid4)
-    taxonomy_id: UUID
-    content_id: UUID | None = None
-    similarity_score: float = Field(ge=0.0, le=1.0)
-    candidate_content_id: UUID | None = Field(
-        default=None,
-        description=(
-            "Best semantic candidate regardless of acceptance; duplicates content_id when "
-            "the semantic stage succeeded so analysts can compare semantic vs. LLM picks."
-        ),
+    content_id: UUID
+    taxonomy_id: UUID | None = Field(
+        default=None, description="Final accepted taxonomy destination for this content"
     )
-    candidate_similarity_score: float | None = Field(
+    semantic_taxonomy_id: UUID | None = Field(
         default=None,
+        description="Best semantic candidate taxonomy regardless of acceptance",
+    )
+    semantic_similarity_score: float = Field(
         ge=0.0,
         le=1.0,
-        description=(
-            "Similarity score for candidate_content_id to preserve semantic evidence "
-            "even when the LLM ultimately rejects the match."
-        ),
+        description="Cosine similarity score for the semantic candidate",
     )
     llm_topic_score: float | None = Field(
         default=None,

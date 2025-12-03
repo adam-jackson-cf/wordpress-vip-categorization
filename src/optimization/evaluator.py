@@ -66,8 +66,9 @@ class Evaluator:
                 "avg_similarity": 0.0,
             }
 
-        matched_results = [r for r in results if r.content_id is not None]
-        similarities = [r.similarity_score for r in matched_results]
+        accepted_stages = {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}
+        matched_results = [r for r in results if r.match_stage in accepted_stages]
+        similarities = [r.semantic_similarity_score for r in matched_results]
 
         metrics = {
             "count": len(results),
@@ -148,7 +149,9 @@ class Evaluator:
         low_quality = [
             m
             for m in all_matches
-            if m.content_id is not None and m.similarity_score < min_similarity
+            if m.content_id is not None
+            and m.match_stage == MatchStage.SEMANTIC_MATCHED
+            and m.semantic_similarity_score < min_similarity
         ]
 
         logger.info(f"Found {len(low_quality)} low-quality matches below {min_similarity}")
@@ -161,7 +164,14 @@ class Evaluator:
             List of unmatched taxonomy results.
         """
         all_matches = self.db.get_all_matchings()
-        unmatched = [m for m in all_matches if m.content_id is None]
+        unmatched = [
+            m
+            for m in all_matches
+            if (
+                m.taxonomy_id is None
+                and m.match_stage in {MatchStage.NEEDS_LLM_REVIEW, MatchStage.NEEDS_HUMAN_REVIEW}
+            )
+        ]
 
         logger.info(f"Found {len(unmatched)} unmatched taxonomy pages")
         return unmatched

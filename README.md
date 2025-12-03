@@ -1,12 +1,12 @@
 # WordPress VIP Content Categorization
 
-AI-powered workflow that ingests content from WordPress VIP, stores it in Supabase, and runs a cascading semantic → LLM workflow to map taxonomy URLs to the best matching WordPress content.
+AI-powered workflow that ingests content from WordPress VIP, stores it in Supabase, and runs a cascading semantic → LLM workflow to map every WordPress content item to the best matching taxonomy destination.
 
 ## System Workflow
 
-1. **Semantic matching (default ≥0.85)** – Embed taxonomy + content, compute cosine similarity, and write matches immediately.
-2. **LLM categorization fallback (rubric-gated)** – Ask the configured chat model to choose the best remaining candidate per taxonomy page, then apply a deterministic rubric gate (topic/intent/entity thresholds) for precision-first acceptance.
-3. **Human review** – Export unmapped taxonomy rows (blank targets) for analysts.
+1. **Semantic matching (default ≥0.70)** – Embed content + taxonomy (OpenAI `text-embedding-3-small` by default), compute cosine similarity, and persist the top taxonomy candidate per content row.
+2. **LLM batch fallback (rubric-gated)** – For any content whose semantic score falls below the floor, enqueue the items via the OpenAI Batch API (chat completions) so the rubric-judged fallback runs asynchronously. The pipeline automatically waits for completion during `match` runs, but you can also submit/poll/apply batches manually. The Batch prompt is sourced from the latest DSPy/GEPA-optimized matcher (instructions + demonstrations), so rerunning the optimizer and promoting the artifact immediately updates production prompts.
+3. **Human review** – Export content rows that still lack an accepted taxonomy so analysts can triage the backlog.
 
 Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
 
@@ -14,7 +14,9 @@ Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` o
 
 - `python -m src.cli full-run --output results/results.csv` – Taxonomy load → ingestion → cascading matching → CSV export.
 - `python -m src.cli ingest --resume` – Incremental ingestion (override with `--since YYYY-MM-DD`).
-- `python -m src.cli match --only-unmatched --skip-semantic --force-llm` – Re-drive backlog beneath the semantic threshold.
+- `python -m src.cli match --only-unmatched --skip-semantic --force-llm` – Re-drive backlog beneath the semantic threshold (builds + applies fresh batch jobs).
+- `python -m src.cli batch submit --limit 50 --no-wait` – Submit queued `needs_llm_review` rows to OpenAI Batch without blocking.
+- `python -m src.cli batch status --id batch_xxx` / `python -m src.cli batch apply --id batch_xxx` – Inspect or apply historical batch jobs if you skipped waiting during `match`.
 - `python -m src.cli workflow start|resume|status` – Managed runs with persisted checkpoints.
 - `python -m src.cli init-db` – Apply `src/data/schema.sql` to Supabase (RPC when available, otherwise prints SQL).
 - `python scripts/test_setup.py` – Verifies env vars, Supabase access, WordPress connector, and embeddings.
@@ -33,7 +35,7 @@ Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, virtualenv management, 
 - Required: `SUPABASE_URL`, `SUPABASE_KEY`, `WORDPRESS_VIP_SITE_TOKENS` (comma-separated `site|token` list).
 - Optional: `ENABLE_CORP_CA` + `CORP_CA_BUNDLE_PATH` – set `ENABLE_CORP_CA=1` to have the build/test workflow wrap every command via `scripts/corp_ca_exec.sh`, which exports the bundle into `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, etc. You can also run ad-hoc commands (e.g. `scripts/corp_ca_exec.sh python -m src.cli full-run ...`) to ensure the CA chain is applied.
 - Semantic embedding provider: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`.
-- LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`.
+- LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`, `LLM_BATCH_COMPLETION_WINDOW`, `LLM_BATCH_CHUNK_SIZE`, `LLM_BATCH_ARTIFACT_DIR`.
 - Workflow tuning: `SIMILARITY_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
 - LLM rubric gate: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, `LLM_CONSENSUS_VOTES`, `LLM_MATCH_TEMPERATURE` (0–1).
 - Data inputs: `TAXONOMY_FILE_PATH` (default `./data/Spain_New.csv`).
@@ -96,4 +98,4 @@ Feel free to raise `--num-examples` for even more coverage; the generator automa
 
 ## Need Help?
 
-Troubleshooting tips for Supabase auth, OpenRouter/OpenAI quotas, low match quality, and general FAQs live in [docs/SETUP.md](docs/SETUP.md).
+Troubleshooting tips for Supabase auth, OpenAI quotas, low match quality, and general FAQs live in [docs/SETUP.md](docs/SETUP.md).

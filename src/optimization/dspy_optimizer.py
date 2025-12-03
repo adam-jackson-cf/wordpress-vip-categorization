@@ -4,6 +4,7 @@ import csv
 import json
 import logging
 import shutil
+from dataclasses import dataclass
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,14 @@ ACTIVE_MODEL_PATH = MODELS_DIR / "matcher_latest.json"
 CONFIGS_DIR = PROMPT_OPT_DIR / "configs"
 REPORTS_DIR = PROMPT_OPT_DIR / "reports"
 GEPA_LOG_DIR = PROMPT_OPT_DIR / "gepa_logs"
+
+
+@dataclass
+class PromptContext:
+    """Minimal prompt metadata extracted from the active DSPy module."""
+
+    instructions: str | None
+    demonstrations: list[str]
 
 
 class TaxonomyMatcher(dspy.Signature):
@@ -417,6 +426,34 @@ class DSPyOptimizer:
             info["demonstrations"] = []
 
         return info
+
+    def get_prompt_context(self) -> PromptContext:
+        """Return sanitized instructions and demonstrations for downstream prompts."""
+
+        info = self._extract_prompt_info(self.matcher)
+        instructions_val = info.get("instructions") or info.get("signature_description")
+        instructions = instructions_val.strip() if isinstance(instructions_val, str) else None
+
+        # The extraction helper uses placeholder strings when no optimized prompt exists.
+        if instructions and instructions.lower().startswith("default dspy chainofthought"):
+            instructions = None
+
+        demonstrations: list[str] = []
+        raw_demos = info.get("demonstrations")
+        if isinstance(raw_demos, list):
+            for idx, demo in enumerate(raw_demos, start=1):
+                if not isinstance(demo, dict):
+                    continue
+                parts = [f"Example {idx}:"]
+                for key, value in demo.items():
+                    if value in (None, ""):
+                        continue
+                    parts.append(f"{key}: {value}")
+                rendered = "\n".join(parts).strip()
+                if rendered:
+                    demonstrations.append(rendered)
+
+        return PromptContext(instructions=instructions, demonstrations=demonstrations)
 
     def optimize(
         self,

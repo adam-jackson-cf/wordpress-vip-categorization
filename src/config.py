@@ -62,6 +62,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_BATCH_TIMEOUT", "OPENAI_BATCH_TIMEOUT"),
         description="Batch API timeout in seconds (24 hours default).",
     )
+    llm_batch_completion_window: str = Field(
+        default="24h",
+        validation_alias=AliasChoices("LLM_BATCH_COMPLETION_WINDOW"),
+        description="OpenAI Batch completion window (e.g., '24h').",
+    )
+    llm_batch_chunk_size: int = Field(
+        default=5000,
+        validation_alias=AliasChoices("LLM_BATCH_CHUNK_SIZE"),
+        description="Maximum JSONL requests per batch file before chunking.",
+    )
+    llm_batch_artifact_dir: Path = Field(
+        default=Path("data/batch"),
+        validation_alias=AliasChoices("LLM_BATCH_ARTIFACT_DIR"),
+        description="Directory for batch JSONL files and manifests.",
+    )
 
     # WordPress VIP Configuration
     wordpress_vip_site_tokens: str = Field(
@@ -115,6 +130,14 @@ class Settings(BaseSettings):
     )
     llm_match_temperature: float = Field(
         default=0.3, description="Temperature for LLM matching/rubric evaluation"
+    )
+    enable_translation: bool = Field(
+        default=False,
+        description=(
+            "Whether to translate taxonomy/content summaries into multiple languages "
+            "when building embeddings. Disabled by default to rely on cross-lingual "
+            "embedding robustness."
+        ),
     )
     enable_semantic_matching: bool = Field(
         default=True, description="Enable semantic matching stage"
@@ -174,6 +197,27 @@ class Settings(BaseSettings):
             normalized = normalized.split("/rest")[0]
         return normalized
 
+    @staticmethod
+    def _normalize_openai_base_url(value: str) -> str:
+        """Ensure OpenAI-compatible base URLs always include a single /v1 suffix."""
+
+        if not value:
+            raise ValueError("OpenAI base URL cannot be empty")
+
+        normalized = value.strip().rstrip("/")
+        if not normalized:
+            raise ValueError("OpenAI base URL cannot be empty")
+
+        if not normalized.endswith("/v1"):
+            normalized = f"{normalized}/v1"
+
+        return normalized
+
+    @field_validator("semantic_base_url", "llm_base_url", mode="before")
+    @classmethod
+    def normalize_openai_base_urls(cls, value: str) -> str:
+        return cls._normalize_openai_base_url(value)
+
     def get_wordpress_site_tokens(self) -> list[tuple[str, str]]:
         """Return list of (site_url, token) tuples."""
         pairs = []
@@ -207,6 +251,13 @@ class Settings(BaseSettings):
         if not 0 <= v <= 1:
             raise ValueError("LLM candidate minimum score must be between 0 and 1")
         return v
+
+    @field_validator("llm_batch_chunk_size")
+    @classmethod
+    def validate_batch_chunk_size(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("LLM batch chunk size must be greater than zero")
+        return value
 
     @field_validator("llm_rubric_topic_min", "llm_rubric_intent_min", "llm_rubric_entity_min")
     @classmethod

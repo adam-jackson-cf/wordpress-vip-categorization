@@ -15,8 +15,22 @@ else
 fi
 
 : "${WORDPRESS_VIP_SITE_TOKENS:?WORDPRESS_VIP_SITE_TOKENS not set in .env}"
+: "${SEMANTIC_API_KEY:?SEMANTIC_API_KEY not set in .env}"
+: "${SEMANTIC_BASE_URL:?SEMANTIC_BASE_URL not set in .env}"
 : "${LLM_API_KEY:?LLM_API_KEY not set in .env}"
 : "${LLM_BASE_URL:?LLM_BASE_URL not set in .env}"
+
+normalize_openai_base() {
+  local raw="$1"
+  raw="${raw%/}"
+  if [[ "$raw" != */v1 ]]; then
+    raw="${raw}/v1"
+  fi
+  printf '%s' "$raw"
+}
+
+SEMANTIC_NORMALIZED_BASE=$(normalize_openai_base "$SEMANTIC_BASE_URL")
+LLM_NORMALIZED_BASE=$(normalize_openai_base "$LLM_BASE_URL")
 
 if [[ "${ENABLE_CORP_CA:-0}" == "1" ]]; then
   : "${CORP_CA_BUNDLE_PATH:?CORP_CA_BUNDLE_PATH must be set when ENABLE_CORP_CA=1}"
@@ -47,8 +61,24 @@ for entry in "${WP_ENTRIES[@]}"; do
 done
 
 echo
+echo "== Semantic embedding API check =="
+semantic_endpoint="${SEMANTIC_NORMALIZED_BASE}/embeddings"
+semantic_status=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer ${SEMANTIC_API_KEY}" \
+  -H "Content-Type: application/json" \
+  --max-time 20 \
+  -d '{"model":"text-embedding-3-small","input":"preflight health check"}' \
+  "$semantic_endpoint" || echo "000")
+
+if [[ "$semantic_status" == "200" ]]; then
+  echo "Semantic embedding endpoint reachable (HTTP 200)"
+else
+  echo "Semantic embedding check failed (HTTP $semantic_status)"
+fi
+
+echo
 echo "== OpenAI connectivity check =="
-openai_endpoint="${LLM_BASE_URL%/}/v1/models"
+openai_endpoint="${LLM_NORMALIZED_BASE}/models"
 status=$(curl -sS -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer ${LLM_API_KEY}" \
   -H "Content-Type: application/json" \
@@ -62,7 +92,7 @@ else
 fi
 
 echo
-if [[ "$wp_failures" -eq 0 && "$status" == "200" ]]; then
+if [[ "$wp_failures" -eq 0 && "$semantic_status" == "200" && "$status" == "200" ]]; then
   echo "✅ Preflight checks passed"
 else
   echo "❌ Preflight checks reported issues"

@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from click.testing import CliRunner
 
 from src.cli import cli
-from src.models import MatchStage
+from src.models import MatchStage, MatchingResult, TaxonomyPage, WordPressContent
 
 runner = CliRunner()
 
@@ -103,12 +103,102 @@ def test_match_only_unmatched_triggers_llm_retry(
     mock_matching.get_unmatched_taxonomy.assert_called_once_with(0.85)
     mock_db.clear_matching_results.assert_called_once_with(
         [sample_taxonomy_page.id],
-        [MatchStage.LLM_CATEGORIZED, MatchStage.NEEDS_HUMAN_REVIEW],
+        [
+            MatchStage.LLM_CATEGORIZED,
+            MatchStage.NEEDS_LLM_REVIEW,
+            MatchStage.NEEDS_HUMAN_REVIEW,
+        ],
     )
     mock_workflow.run_matching_workflow.assert_called_once()
     kwargs = mock_workflow.run_matching_workflow.call_args.kwargs
     assert kwargs["taxonomy_pages"] == [sample_taxonomy_page]
     assert kwargs["batch_mode"] is True
+
+
+def test_batch_status_command(mocker) -> None:
+    mock_settings = mocker.Mock()
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+    mock_db = Mock()
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+
+    mock_status = mocker.Mock(
+        batch_id="batch-1",
+        status="completed",
+        created_at="2025-12-01T00:00:00Z",
+        completed_at="2025-12-01T01:00:00Z",
+        request_counts={"completed": 5, "total": 5},
+    )
+    mock_service = mocker.Mock()
+    mock_service.get_batch_status.return_value = mock_status
+    mocker.patch("src.cli.CategorizationService", return_value=mock_service)
+
+    result = runner.invoke(cli, ["batch", "status", "--id", "batch-1"])
+
+    assert result.exit_code == 0
+    mock_service.get_batch_status.assert_called_once_with("batch-1")
+    assert "batch-1" in result.output
+
+
+def test_batch_submit_invokes_categorization(
+    mocker,
+    sample_taxonomy_page: TaxonomyPage,
+    sample_wordpress_content: WordPressContent,
+) -> None:
+    mock_settings = mocker.Mock()
+    mock_settings.llm_candidate_limit = 5
+    mock_settings.llm_candidate_min_score = 0.6
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+
+    backlog_match = MatchingResult(
+        taxonomy_id=None,
+        content_id=sample_wordpress_content.id,
+        semantic_taxonomy_id=sample_taxonomy_page.id,
+        semantic_similarity_score=0.5,
+        match_stage=MatchStage.NEEDS_LLM_REVIEW,
+    )
+
+    mock_db = Mock()
+    mock_db.get_matchings_by_stage.return_value = [backlog_match]
+    mock_db.get_content_by_ids.return_value = {sample_wordpress_content.id: sample_wordpress_content}
+    mock_db.get_all_taxonomy.return_value = [sample_taxonomy_page]
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+
+    mock_matching = mocker.Mock()
+    mock_matching.build_candidate_map.return_value = {
+        sample_wordpress_content.id: [sample_taxonomy_page]
+    }
+    mocker.patch("src.cli.MatchingService", return_value=mock_matching)
+
+    mock_categorization = mocker.Mock()
+    mock_categorization.categorize_for_matching.return_value = {
+        "batch_ids": ["batch-xyz"],
+        "matched": 0,
+        "needs_review": 0,
+    }
+    mocker.patch("src.cli.CategorizationService", return_value=mock_categorization)
+
+    result = runner.invoke(cli, ["batch", "submit", "--no-wait"])
+
+    assert result.exit_code == 0
+    mock_matching.build_candidate_map.assert_called_once()
+    mock_categorization.categorize_for_matching.assert_called_once()
+    _, kwargs = mock_categorization.categorize_for_matching.call_args
+    assert kwargs["wait_for_completion"] is False
+
+
+def test_batch_apply_command(mocker) -> None:
+    mock_settings = mocker.Mock()
+    mocker.patch("src.cli.get_settings", return_value=mock_settings)
+    mock_db = Mock()
+    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
+    mock_categorization = mocker.Mock()
+    mock_categorization.apply_batch_job.return_value = {"matched": 2, "needs_review": 1}
+    mocker.patch("src.cli.CategorizationService", return_value=mock_categorization)
+
+    result = runner.invoke(cli, ["batch", "apply", "--id", "batch-ok"])
+
+    assert result.exit_code == 0
+    mock_categorization.apply_batch_job.assert_called_once_with("batch-ok")
 
 
 def test_optimize_dataset_success(mocker, tmp_path) -> None:

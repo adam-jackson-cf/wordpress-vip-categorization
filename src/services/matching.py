@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime
+from urllib.parse import urlparse
 from uuid import UUID
 
 import numpy as np
@@ -10,6 +11,7 @@ from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.embeddings import EmbeddingService
+from src.services.language import TranslationService, detect_language_code
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class MatchingService:
         settings: Settings,
         db_client: SupabaseClient,
         embedding_service: EmbeddingService | None = None,
+        translation_service: TranslationService | None = None,
     ) -> None:
         """Initialize matching service.
 
@@ -36,12 +39,62 @@ class MatchingService:
         self.settings = settings
         self.db = db_client
         self.embedding_service = embedding_service or EmbeddingService(settings)
+        if translation_service is not None:
+            self.translation_service = translation_service
+        elif settings.enable_translation:
+            self.translation_service = TranslationService(settings)
+        else:
+            self.translation_service = None
         self.embedding_model = settings.semantic_embedding_model
         logger.info(
             "Initialized matching service with model %s via %s",
             self.embedding_model,
             settings.semantic_base_url,
         )
+
+    @staticmethod
+    def _tokenize_url_path(url_value: str) -> str:
+        parsed = urlparse(url_value)
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if not segments:
+            return "/"
+        humanized = [segment.replace("-", " ").replace("_", " ") for segment in segments]
+        return " > ".join(humanized)
+
+    def _bilingual_text(self, text: str, primary: str, secondary: str) -> tuple[str, str]:
+        snapshot = (text or "").strip()
+        if not snapshot:
+            return "", ""
+
+        detected = detect_language_code(snapshot)
+        translation_enabled = self.settings.enable_translation and self.translation_service is not None
+
+        primary_text = snapshot
+        secondary_text = snapshot
+
+        if translation_enabled:
+            if not detected.startswith(primary):
+                primary_text = self.translation_service.translate(  # type: ignore[union-attr]
+                    snapshot,
+                    target_language=primary,
+                    source_language=detected if detected != "unknown" else None,
+                )
+            if not detected.startswith(secondary):
+                secondary_text = self.translation_service.translate(  # type: ignore[union-attr]
+                    snapshot,
+                    target_language=secondary,
+                    source_language=detected if detected != "unknown" else None,
+                )
+
+        return primary_text, secondary_text
+
+    def _describe_audiences(self, taxonomy: TaxonomyPage) -> str:
+        audiences: list[str] = []
+        if taxonomy.primary_audiance:
+            audiences.append(f"Primary: {taxonomy.primary_audiance}")
+        if taxonomy.secondary_audiance:
+            audiences.append(f"Secondary: {taxonomy.secondary_audiance}")
+        return ", ".join(audiences)
 
     def get_embedding(self, text: str) -> list[float]:
         """Get embedding vector for text using the shared embedding service."""
@@ -60,22 +113,41 @@ class MatchingService:
         audiences = ", ".join(
             filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
         )
+        translation_enabled = self.settings.enable_translation and self.translation_service is not None
+
+        key_topics_sentence = ", ".join(taxonomy.key_topics)
+        summary_lines: list[str] = []
+        topic_lines: list[str] = []
+
+        if translation_enabled:
+            summary_en, summary_es = self._bilingual_text(taxonomy.semantic_summary, "en", "es")
+            if summary_en:
+                summary_lines.append(f"Summary (EN): {summary_en}")
+            if summary_es:
+                summary_lines.append(f"Resumen (ES): {summary_es}")
+            if key_topics_sentence:
+                topics_en, topics_es = self._bilingual_text(key_topics_sentence, "en", "es")
+                if topics_en:
+                    topic_lines.append(f"Key Topics (EN): {topics_en}")
+                if topics_es:
+                    topic_lines.append(f"Temas Clave (ES): {topics_es}")
+        else:
+            summary_lines.append(f"Summary: {taxonomy.semantic_summary}")
+            if key_topics_sentence:
+                topic_lines.append(f"Key Topics: {key_topics_sentence}")
+
         parts = [
+            f"UID: {taxonomy.uid}" if taxonomy.uid else None,
+            f"Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
             f"Content Type: {taxonomy.content_type}",
-            f"Summary: {taxonomy.semantic_summary}",
+            f"Audiences: {audiences}" if audiences else None,
+            f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
+            f"Spanish Name: {taxonomy.es_page_name}" if taxonomy.es_page_name else None,
+            *summary_lines,
+            *topic_lines,
         ]
 
-        if taxonomy.english_page_name:
-            parts.append(f"English Name: {taxonomy.english_page_name}")
-        if taxonomy.es_page_name:
-            parts.append(f"Spanish Name: {taxonomy.es_page_name}")
-        if audiences:
-            parts.append(f"Audiences: {audiences}")
-        if taxonomy.key_topics:
-            keywords_str = ", ".join(taxonomy.key_topics)
-            parts.append(f"Key Topics: {keywords_str}")
-
-        return "\n".join(parts)
+        return "\n".join(part for part in parts if part)
 
     def create_content_text(self, content: WordPressContent) -> str:
         """Create text representation of content for embedding.
@@ -86,9 +158,45 @@ class MatchingService:
         Returns:
             Combined text for embedding.
         """
-        # Use title and first 1000 chars of content
-        content_preview = content.content[:1000]
-        return f"Title: {content.title}\n\nContent: {content_preview}"
+        metadata = content.metadata or {}
+        slug = metadata.get("slug")
+        categories = [str(value) for value in (metadata.get("categories") or [])]
+        tags = [str(value) for value in (metadata.get("tags") or [])]
+        excerpt = (metadata.get("excerpt") or "").strip()
+        primary_excerpt = excerpt or content.content[:400]
+        translation_enabled = self.settings.enable_translation and self.translation_service is not None
+        excerpt_lines: list[str] = []
+        if primary_excerpt:
+            if translation_enabled:
+                excerpt_es, excerpt_en = self._bilingual_text(primary_excerpt, "es", "en")
+                if excerpt_es:
+                    excerpt_lines.append(f"Excerpt (ES): {excerpt_es}")
+                if excerpt_en:
+                    excerpt_lines.append(f"Excerpt (EN): {excerpt_en}")
+            else:
+                excerpt_lines.append(f"Excerpt: {primary_excerpt}")
+
+        preview = content.content[:2000]
+        language_code = detect_language_code(preview or content.title)
+
+        parts = [
+            f"Title: {content.title}",
+            f"Slug: {slug}" if slug else None,
+            f"Site: {content.site_url}",
+            f"URL Path: {self._tokenize_url_path(str(content.url))}",
+            f"Detected Language: {language_code}",
+            *excerpt_lines,
+            f"Categories: {', '.join(categories)}" if categories else None,
+            f"Tags: {', '.join(tags)}" if tags else None,
+            (
+                f"Published: {content.published_date.date().isoformat()}"
+                if content.published_date
+                else None
+            ),
+            f"Content Preview: {preview}",
+        ]
+
+        return "\n".join(part for part in parts if part)
 
     def compute_similarity(self, embedding1: list[float], embedding2: list[float]) -> float:
         """Compute cosine similarity between two embeddings.
@@ -148,7 +256,117 @@ class MatchingService:
         matches.sort(key=lambda item: item[1], reverse=True)
         return matches[:limit]
 
+    def _local_similarity_search_taxonomy(
+        self,
+        content: WordPressContent,
+        content_embedding: list[float],
+        limit: int,
+        taxonomy_pool: dict[UUID, TaxonomyPage] | None = None,
+    ) -> list[tuple[TaxonomyPage, float]]:
+        if taxonomy_pool is not None:
+            taxonomy_pages = list(taxonomy_pool.values())
+        else:
+            taxonomy_pages = self.db.get_all_taxonomy()
+        matches: list[tuple[TaxonomyPage, float]] = []
+        for taxonomy in taxonomy_pages:
+            taxonomy_embedding = self._ensure_taxonomy_embedding(taxonomy)
+            similarity = self.compute_similarity(content_embedding, taxonomy_embedding)
+            matches.append((taxonomy, similarity))
+        matches.sort(key=lambda item: item[1], reverse=True)
+        return matches[:limit]
+
     def match_taxonomy_to_content(
+        self,
+        content: WordPressContent,
+        limit: int | None = None,
+        min_threshold: float | None = None,
+        taxonomy_pool: dict[UUID, TaxonomyPage] | None = None,
+    ) -> list[tuple[TaxonomyPage, float]]:
+        """Match a content item to taxonomy pages.
+
+        Args:
+            content: Content item to match.
+            limit: Maximum number of matches to return.
+            min_threshold: Minimum similarity threshold.
+
+        Returns:
+            List of (taxonomy, similarity_score) tuples, sorted by score descending.
+        """
+        limit = limit or self.settings.semantic_candidate_limit
+        if min_threshold is None:
+            min_threshold = self.settings.similarity_threshold
+
+        content_embedding = self._ensure_content_embedding(content)
+
+        allowed_ids = set(taxonomy_pool.keys()) if taxonomy_pool else None
+
+        try:
+            matches = self.db.match_taxonomy_by_embedding(
+                content_embedding,
+                0.0,
+                limit,
+            )
+        except Exception as exc:  # pragma: no cover - network failure
+            logger.warning(
+                "Vector RPC failed for content %s, falling back to local search: %s",
+                content.id,
+                exc,
+            )
+            matches = self._local_similarity_search_taxonomy(
+                content,
+                content_embedding,
+                limit,
+                taxonomy_pool,
+            )
+
+        if allowed_ids is not None:
+            filtered = [(tax, score) for tax, score in matches if tax.id in allowed_ids]
+            if filtered:
+                matches = filtered
+            else:
+                matches = self._local_similarity_search_taxonomy(
+                    content,
+                    content_embedding,
+                    limit,
+                    taxonomy_pool,
+                )
+
+        logger.debug(
+            f"Matched content {content.url} to {len(matches)} taxonomy pages. "
+            f"Best match score: {matches[0][1]:.3f}"
+            if matches
+            else "No matches found"
+        )
+
+        return matches
+
+    def build_candidate_map(
+        self,
+        content_items: list[WordPressContent],
+        taxonomy_pages: list[TaxonomyPage] | None = None,
+    ) -> dict[UUID, list[TaxonomyPage]]:
+        """Construct a candidate taxonomy list for each content item."""
+
+        taxonomy_lookup = {tax.id: tax for tax in taxonomy_pages} if taxonomy_pages else None
+        candidate_map: dict[UUID, list[TaxonomyPage]] = {}
+
+        for content in content_items:
+            matches = self.match_taxonomy_to_content(
+                content,
+                limit=self.settings.llm_candidate_limit,
+                min_threshold=self.settings.llm_candidate_min_score,
+                taxonomy_pool=taxonomy_lookup,
+            )
+            filtered = [taxonomy for taxonomy, score in matches if score >= self.settings.llm_candidate_min_score]
+            if not filtered:
+                filtered = [taxonomy for taxonomy, _ in matches][: self.settings.llm_candidate_limit]
+            if not filtered and taxonomy_pages:
+                filtered = taxonomy_pages[: self.settings.llm_candidate_limit]
+            candidate_map[content.id] = filtered
+
+        return candidate_map
+
+    def match_content_to_taxonomy(
         self,
         taxonomy: TaxonomyPage,
         limit: int | None = None,
@@ -158,7 +376,8 @@ class MatchingService:
 
         Args:
             taxonomy: Taxonomy page to match.
-            content_items: List of content items to match against.
+            limit: Maximum number of matches to return.
+            min_threshold: Minimum similarity threshold.
 
         Returns:
             List of (content, similarity_score) tuples, sorted by score descending.
@@ -194,26 +413,28 @@ class MatchingService:
 
     def find_best_match(
         self,
-        taxonomy: TaxonomyPage,
+        content: WordPressContent,
         min_threshold: float | None = None,
-    ) -> tuple[WordPressContent, float] | None:
-        """Find best matching content for a taxonomy page.
+        taxonomy_pool: dict[UUID, TaxonomyPage] | None = None,
+    ) -> tuple[TaxonomyPage, float] | None:
+        """Find best matching taxonomy for a content item.
 
         Args:
-            taxonomy: Taxonomy page.
+            content: Content item.
             min_threshold: Minimum similarity threshold (uses settings default if None).
 
         Returns:
-            (content, score) tuple if match found above threshold, None otherwise.
+            (taxonomy, score) tuple if match found above threshold, None otherwise.
         """
         threshold = (
             min_threshold if min_threshold is not None else self.settings.similarity_threshold
         )
 
         matches = self.match_taxonomy_to_content(
-            taxonomy,
+            content,
             limit=self.settings.semantic_candidate_limit,
             min_threshold=min_threshold,
+            taxonomy_pool=taxonomy_pool,
         )
 
         if matches:
@@ -221,7 +442,7 @@ class MatchingService:
             if top[1] < threshold:
                 logger.debug(
                     "Top semantic candidate for %s below threshold %.2f (score=%.3f)",
-                    taxonomy.destination_url,
+                    content.url,
                     threshold,
                     top[1],
                 )
@@ -241,9 +462,24 @@ class MatchingService:
         if min_threshold is None:
             min_threshold = self.settings.similarity_threshold
 
-        unmatched = self.db.get_unmatched_taxonomy(min_threshold)
+        taxonomy_pages = self.db.get_all_taxonomy()
+        matched_rows = self.db.get_all_matchings()
+        accepted_stages = {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}
+
+        matched_taxonomy_ids = {
+            row.taxonomy_id
+            for row in matched_rows
+            if row.taxonomy_id is not None
+            and row.match_stage in accepted_stages
+            and (
+                row.match_stage != MatchStage.SEMANTIC_MATCHED
+                or row.semantic_similarity_score >= min_threshold
+            )
+        }
+
+        unmatched = [tax for tax in taxonomy_pages if tax.id not in matched_taxonomy_ids]
         logger.info(
-            "Found %s taxonomy pages below semantic threshold %.2f",
+            "Found %s taxonomy page(s) without accepted matches (threshold %.2f)",
             len(unmatched),
             min_threshold,
         )
@@ -256,30 +492,44 @@ class MatchingService:
         min_threshold: float | None = None,
         store_results: bool = True,
     ) -> dict[UUID, MatchingResult]:
-        """Match all taxonomy pages to content.
+        """Match all content items to taxonomy pages.
 
         Args:
-            taxonomy_pages: Optional list of taxonomy pages. If None, loads from database.
+            taxonomy_pages: Optional list of taxonomy pages (for filtering candidates).
             content_items: Optional list of content items. If None, loads from database.
             min_threshold: Minimum similarity threshold.
             store_results: Whether to store results in database.
 
         Returns:
-            Dictionary mapping taxonomy_id to best matching result (or None).
+            Dictionary mapping content_id to best matching result (or None).
         """
         if min_threshold is None:
             min_threshold = self.settings.similarity_threshold
 
-        # Get all taxonomy pages if not provided
-        if taxonomy_pages is None:
-            taxonomy_pages = self.db.get_all_taxonomy()
+        taxonomy_lookup: dict[UUID, TaxonomyPage] | None = None
+        target_taxonomy_ids: set[UUID] | None = None
+        existing_matches_lookup: dict[UUID, MatchingResult] = {}
+        if taxonomy_pages is not None:
+            taxonomy_lookup = {tax.id: tax for tax in taxonomy_pages}
+            target_taxonomy_ids = set(taxonomy_lookup.keys())
+            logger.info(
+                "Restricting taxonomy search to %s row(s)",
+                len(taxonomy_lookup),
+            )
+            try:
+                existing_matches = self.db.get_all_matchings()
+                existing_matches_lookup = {row.content_id: row for row in existing_matches}
+            except Exception as exc:  # pragma: no cover - monitoring only
+                logger.warning("Failed to load existing matchings for subset filtering: %s", exc)
+
+        # Get all content items if not provided
+        content_items = content_items or self.db.get_all_content()
         logger.info(
-            "Matching %s taxonomy pages via stored embeddings",
-            len(taxonomy_pages),
+            "Matching %s content items via stored embeddings",
+            len(content_items),
         )
 
         results: dict[UUID, MatchingResult] = {}
-
         pending: list[MatchingResult] = []
 
         def flush_pending() -> None:
@@ -291,70 +541,104 @@ class MatchingService:
             )
             pending.clear()
 
-        for taxonomy in taxonomy_pages:
-            best_match = self.find_best_match(taxonomy, min_threshold)
-            candidate_content: WordPressContent | None = None
+        for content in content_items:
+            # Ensure content embedding exists
+            self._ensure_content_embedding(content)
+
+            # Find best matching taxonomy for this content
+            best_match = self.find_best_match(content, min_threshold, taxonomy_lookup)
+            candidate_taxonomy: TaxonomyPage | None = None
             candidate_score = 0.0
             if best_match:
-                candidate_content, candidate_score = best_match
+                candidate_taxonomy, candidate_score = best_match
 
-            if candidate_content and candidate_score >= min_threshold:
+            if target_taxonomy_ids is not None:
+                existing_record = existing_matches_lookup.get(content.id)
+                candidate_id = candidate_taxonomy.id if candidate_taxonomy else None
+                if not self._content_relates_to_targets(candidate_id, existing_record, target_taxonomy_ids):
+                    logger.debug(
+                        "Skipping content %s; no overlap with targeted taxonomy subset",
+                        content.url,
+                    )
+                    continue
+
+            semantic_taxonomy_id = candidate_taxonomy.id if candidate_taxonomy else None
+
+            if candidate_taxonomy and candidate_score >= min_threshold:
                 matching_result = MatchingResult(
-                    taxonomy_id=taxonomy.id,
-                    content_id=candidate_content.id,
-                    similarity_score=candidate_score,
-                    candidate_content_id=candidate_content.id,
-                    candidate_similarity_score=candidate_score,
+                    taxonomy_id=candidate_taxonomy.id,
+                    content_id=content.id,
+                    semantic_taxonomy_id=semantic_taxonomy_id,
+                    semantic_similarity_score=candidate_score,
                     match_stage=MatchStage.SEMANTIC_MATCHED,
                     updated_at=datetime.utcnow(),
                 )
-
-                if store_results:
-                    pending.append(matching_result)
-                    if len(pending) >= self.settings.matching_batch_size:
-                        flush_pending()
-
-                results[taxonomy.id] = matching_result
                 logger.info(
-                    f"Matched taxonomy {taxonomy.destination_url} to {candidate_content.url} "
-                    f"(score: {candidate_score:.3f})"
+                    "Semantic match ✔ %s → %s (score %.3f)",
+                    content.url,
+                    candidate_taxonomy.destination_url,
+                    candidate_score,
                 )
             else:
+                if candidate_taxonomy:
+                    logger.debug(
+                        "Content %s best semantic candidate %s below threshold %.2f (score %.3f)",
+                        content.url,
+                        candidate_taxonomy.destination_url,
+                        min_threshold,
+                        candidate_score,
+                    )
+                else:
+                    logger.warning("No semantic candidates found for content %s", content.url)
+
                 matching_result = MatchingResult(
-                    taxonomy_id=taxonomy.id,
-                    content_id=None,
-                    similarity_score=candidate_score,
-                    candidate_content_id=candidate_content.id if candidate_content else None,
-                    candidate_similarity_score=(candidate_score if candidate_content else None),
-                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+                    taxonomy_id=None,
+                    content_id=content.id,
+                    semantic_taxonomy_id=semantic_taxonomy_id,
+                    semantic_similarity_score=candidate_score if candidate_taxonomy else 0.0,
+                    match_stage=MatchStage.NEEDS_LLM_REVIEW,
                     failed_at_stage="semantic_matching",
                     updated_at=datetime.utcnow(),
                 )
 
-                if store_results:
-                    pending.append(matching_result)
-                    if len(pending) >= self.settings.matching_batch_size:
-                        flush_pending()
+            if store_results:
+                pending.append(matching_result)
+                if len(pending) >= self.settings.matching_batch_size:
+                    flush_pending()
 
-                results[taxonomy.id] = matching_result
-                logger.warning(
-                    "No semantic match above threshold %.2f for taxonomy %s (best=%.3f)",
-                    min_threshold,
-                    taxonomy.destination_url,
-                    candidate_score,
-                )
+            results[content.id] = matching_result
 
         flush_pending()
 
-        matched_count = len(
-            [result for result in results.values() if result.content_id is not None]
+        matched_count = sum(
+            1 for result in results.values() if result.match_stage == MatchStage.SEMANTIC_MATCHED
         )
         logger.info(
-            f"Completed matching: {matched_count} "
-            f"out of {len(taxonomy_pages)} taxonomy pages matched"
+            "Completed semantic matching: %s/%s content items at ≥ %.2f",
+            matched_count,
+            len(content_items),
+            min_threshold,
         )
 
         return results
+
+    @staticmethod
+    def _content_relates_to_targets(
+        candidate_taxonomy_id: UUID | None,
+        existing_match: MatchingResult | None,
+        target_ids: set[UUID],
+    ) -> bool:
+        if candidate_taxonomy_id and candidate_taxonomy_id in target_ids:
+            return True
+        if existing_match:
+            if existing_match.taxonomy_id and existing_match.taxonomy_id in target_ids:
+                return True
+            if (
+                existing_match.semantic_taxonomy_id
+                and existing_match.semantic_taxonomy_id in target_ids
+            ):
+                return True
+        return False
 
     def batch_get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Get embeddings for multiple texts in batch using the shared service."""
@@ -371,16 +655,13 @@ class MatchingService:
         """Backwards-compatible wrapper around match_all_taxonomy.
 
         Vector search now makes the primary flow efficient, so this method simply
-        delegates to ``match_all_taxonomy`` to avoid duplicate logic.
+        delegates to ``match_all_taxonomy`` to avoid duplicate logic while still
+        honoring caller-provided subsets.
         """
-
-        if content_items:
-            logger.info(
-                "match_all_taxonomy_batch ignoring manual content pool; using stored embeddings"
-            )
 
         return self.match_all_taxonomy(
             taxonomy_pages=taxonomy_pages,
+            content_items=content_items,
             min_threshold=min_threshold,
             store_results=store_results,
         )

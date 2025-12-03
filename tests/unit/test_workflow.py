@@ -1,12 +1,13 @@
 """Unit tests for WorkflowService."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.config import Settings
-from src.models import TaxonomyPage, WordPressContent
+from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.workflow import WorkflowService
 
 
@@ -27,6 +28,12 @@ def mock_settings() -> Settings:
     settings.llm_base_url = "https://llm.example.com/v1"
     settings.llm_model = "gpt-4o-mini"
     settings.llm_batch_timeout = 86400
+    settings.llm_match_temperature = 0.3
+    settings.dspy_optimization_metric = "accuracy"
+    settings.llm_batch_artifact_dir = Path("data/batch")
+    settings.llm_batch_chunk_size = 1000
+    settings.llm_batch_completion_window = "24h"
+    settings.enable_translation = False
     return settings
 
 
@@ -100,9 +107,8 @@ def sample_content_items() -> list[WordPressContent]:
     ]
 
 
-@patch("src.services.categorization.DSPyOptimizer")
 def test_workflow_service_initialization(
-    mock_dspy_optimizer_class: MagicMock, mock_settings: Settings, mock_db: MagicMock
+    mock_settings: Settings, mock_db: MagicMock
 ) -> None:
     """Test workflow service initialization."""
     service = WorkflowService(mock_settings, mock_db)
@@ -130,9 +136,26 @@ def test_workflow_both_stages_enabled(
         categorization_service=mock_categorization_service,
     )
 
-    # Mock matching service returns one unmatched taxonomy
-    mock_matching_service.get_unmatched_taxonomy.return_value = [sample_taxonomy_pages[1]]
-    mock_matching_service.match_taxonomy_to_content.return_value = [(sample_content_items[1], 0.95)]
+    match_results = {
+        sample_content_items[0].id: MatchingResult(
+            taxonomy_id=sample_taxonomy_pages[0].id,
+            content_id=sample_content_items[0].id,
+            semantic_taxonomy_id=sample_taxonomy_pages[0].id,
+            semantic_similarity_score=0.9,
+            match_stage=MatchStage.SEMANTIC_MATCHED,
+        ),
+        sample_content_items[1].id: MatchingResult(
+            taxonomy_id=None,
+            content_id=sample_content_items[1].id,
+            semantic_taxonomy_id=sample_taxonomy_pages[1].id,
+            semantic_similarity_score=0.65,
+            match_stage=MatchStage.NEEDS_LLM_REVIEW,
+        ),
+    }
+    mock_matching_service.match_all_taxonomy_batch.return_value = match_results
+    mock_matching_service.build_candidate_map.return_value = {
+        sample_content_items[1].id: [sample_taxonomy_pages[1]]
+    }
 
     # Mock LLM categorization returns success
     mock_categorization_service.categorize_for_matching.return_value = {
@@ -152,7 +175,11 @@ def test_workflow_both_stages_enabled(
     assert mock_matching_service.match_all_taxonomy_batch.called
     mock_categorization_service.categorize_for_matching.assert_called_once()
     _, kwargs = mock_categorization_service.categorize_for_matching.call_args
-    assert sample_taxonomy_pages[1].id in kwargs["candidate_map"]
+    assert kwargs["content_items"] == [sample_content_items[1]]
+    assert kwargs["candidate_map"] == {
+        sample_content_items[1].id: [sample_taxonomy_pages[1]]
+    }
+    assert kwargs["semantic_results"] == match_results
     assert stats["semantic_matched"] == 1
     assert stats["llm_categorized"] == 1
     assert stats["needs_review"] == 0
@@ -177,8 +204,22 @@ def test_workflow_semantic_only(
         categorization_service=mock_categorization_service,
     )
 
-    # Mock matching service returns one unmatched taxonomy
-    mock_matching_service.get_unmatched_taxonomy.return_value = [sample_taxonomy_pages[1]]
+    mock_matching_service.match_all_taxonomy_batch.return_value = {
+        sample_content_items[0].id: MatchingResult(
+            taxonomy_id=sample_taxonomy_pages[0].id,
+            content_id=sample_content_items[0].id,
+            semantic_taxonomy_id=sample_taxonomy_pages[0].id,
+            semantic_similarity_score=0.9,
+            match_stage=MatchStage.SEMANTIC_MATCHED,
+        ),
+        sample_content_items[1].id: MatchingResult(
+            taxonomy_id=None,
+            content_id=sample_content_items[1].id,
+            semantic_taxonomy_id=sample_taxonomy_pages[1].id,
+            semantic_similarity_score=0.6,
+            match_stage=MatchStage.NEEDS_LLM_REVIEW,
+        ),
+    }
 
     # Execute
     stats = service.run_matching_workflow(
@@ -214,13 +255,15 @@ def test_workflow_llm_only(
         categorization_service=mock_categorization_service,
     )
 
-    # Mock LLM categorization
+    # LLM categorization handles both content items
     mock_categorization_service.categorize_for_matching.return_value = {
         "matched": 2,
         "below_threshold": 0,
         "total": 2,
     }
-    mock_matching_service.match_taxonomy_to_content.return_value = [(sample_content_items[0], 0.8)]
+    mock_matching_service.build_candidate_map.return_value = {
+        content.id: [sample_taxonomy_pages[0]] for content in sample_content_items
+    }
 
     # Execute
     stats = service.run_matching_workflow(
@@ -234,7 +277,7 @@ def test_workflow_llm_only(
     assert not mock_matching_service.match_all_taxonomy_batch.called
     mock_categorization_service.categorize_for_matching.assert_called_once()
     _, kwargs = mock_categorization_service.categorize_for_matching.call_args
-    assert kwargs["candidate_map"]
+    assert kwargs["content_items"] == sample_content_items
     assert stats["semantic_matched"] == 0
     assert stats["llm_categorized"] == 2
     assert stats["needs_review"] == 0
@@ -292,8 +335,16 @@ def test_workflow_non_batch_mode(
         categorization_service=mock_categorization_service,
     )
 
-    # Mock matching service
-    mock_matching_service.get_unmatched_taxonomy.return_value = []
+    mock_matching_service.match_all_taxonomy.return_value = {
+        content.id: MatchingResult(
+            taxonomy_id=sample_taxonomy_pages[idx].id,
+            content_id=content.id,
+            semantic_taxonomy_id=sample_taxonomy_pages[idx].id,
+            semantic_similarity_score=0.9,
+            match_stage=MatchStage.SEMANTIC_MATCHED,
+        )
+        for idx, content in enumerate(sample_content_items)
+    }
 
     # Execute
     stats = service.run_matching_workflow(
@@ -305,7 +356,7 @@ def test_workflow_non_batch_mode(
     # Verify non-batch mode was used
     assert mock_matching_service.match_all_taxonomy.called
     assert not mock_matching_service.match_all_taxonomy_batch.called
-    assert stats["semantic_matched"] == len(sample_taxonomy_pages)
+    assert stats["semantic_matched"] == len(sample_content_items)
     assert stats["llm_categorized"] == 0
     assert stats["needs_review"] == 0
 
@@ -323,13 +374,21 @@ def test_run_managed_workflow_creates_run(
     run_record = Mock(id=uuid4())
     mock_db.get_workflow_run_by_key.return_value = None
     mock_db.create_workflow_run.return_value = run_record
-    mock_matching_service.get_unmatched_taxonomy.return_value = []
     mock_matching_service.match_all_taxonomy_batch.return_value = {
-        page.id: Mock(content_id=uuid4()) for page in sample_taxonomy_pages
+        content.id: MatchingResult(
+            taxonomy_id=uuid4(),
+            content_id=content.id,
+            semantic_taxonomy_id=uuid4(),
+            semantic_similarity_score=0.9,
+            match_stage=MatchStage.SEMANTIC_MATCHED,
+        )
+        for content in sample_content_items
     }
-    mock_matching_service.match_taxonomy_to_content.return_value = []
-    mock_db.get_all_taxonomy.return_value = sample_taxonomy_pages
-    mock_db.get_all_content.return_value = sample_content_items
+    mock_categorization_service.categorize_for_matching.return_value = {
+        "matched": 0,
+        "below_threshold": 0,
+        "total": 0,
+    }
 
     service = WorkflowService(
         mock_settings,
@@ -340,7 +399,8 @@ def test_run_managed_workflow_creates_run(
 
     stats = service.run_managed_workflow(run_key="run-123", batch_mode=True)
 
-    assert stats["semantic_matched"] == len(sample_taxonomy_pages)
+    # semantic_matched counts content items that were matched
+    assert stats["semantic_matched"] == len(sample_content_items)
     mock_db.create_workflow_run.assert_called_once()
     mock_db.update_workflow_run.assert_called()
     mock_db.update_workflow_run.assert_called()

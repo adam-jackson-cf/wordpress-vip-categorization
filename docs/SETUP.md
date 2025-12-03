@@ -3,7 +3,7 @@
 ## 📋 Prerequisites
 
 1. **Supabase Account** - Sign up at [supabase.com](https://supabase.com)
-2. **OpenRouter Account** - Sign up at [openrouter.ai](https://openrouter.ai)
+2. **OpenAI Platform Access** - Create an org + API key at [platform.openai.com](https://platform.openai.com/) (the workflow uses `text-embedding-3-small` + `gpt-4o-mini`).
 3. **Python 3.10+**
 
 ## 🚀 Quick Setup
@@ -65,18 +65,24 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-service-role-key-here
 
 # Semantic Matching (Embeddings)
-SEMANTIC_API_KEY=sk-semantic-key
-SEMANTIC_BASE_URL=https://openrouter.ai/api/v1
-SEMANTIC_EMBEDDING_MODEL=qwen/qwen3-embedding-0.6b
+SEMANTIC_API_KEY=sk-openai-key
+SEMANTIC_BASE_URL=https://api.openai.com        # the app appends /v1 automatically
+SEMANTIC_EMBEDDING_MODEL=text-embedding-3-small
 SEMANTIC_CANDIDATE_LIMIT=25
 
-# LLM Categorization (Chat)
-LLM_API_KEY=sk-llm-key
-LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_MODEL=google/gemini-2.0-flash-exp:free
-LLM_BATCH_TIMEOUT=86400
+# LLM Categorization (OpenAI Batch)
+LLM_API_KEY=sk-openai-key
+LLM_BASE_URL=https://api.openai.com             # the app appends /v1 automatically
+LLM_MODEL=gpt-4o-mini
+LLM_BATCH_TIMEOUT=86400                         # workflow waits this long before timing out
+LLM_BATCH_COMPLETION_WINDOW=24h                # window requested during batch submission
+LLM_BATCH_CHUNK_SIZE=5000                      # requests per JSONL file before chunking
+LLM_BATCH_ARTIFACT_DIR=data/batch              # where JSONL + manifest files land
 LLM_CANDIDATE_LIMIT=10
 LLM_CANDIDATE_MIN_SCORE=0.6
+
+# DSPy prompt optimization (used by the batch fallback instructions)
+DSPY_OPTIMIZATION_METRIC=accuracy
 
 # Optional corporate CA bundle
 ENABLE_CORP_CA=0
@@ -162,7 +168,7 @@ python -m src.cli ingest --since 2025-11-01    # hard cutoff
 
 ### Step 3: Perform Semantic Matching
 
-Match taxonomy pages to ingested content:
+Match ingested content items to their best taxonomy destinations:
 ```bash
 python -m src.cli match
 ```
@@ -177,12 +183,31 @@ Targeted reruns:
 # Retry just the backlog
 python -m src.cli match --only-unmatched --skip-semantic --force-llm
 
-# Focus on specific taxonomy rows
+# Focus on specific taxonomy rows (only those candidates will be considered)
 python -m src.cli match --taxonomy-ids <uuid1,uuid2> --force-semantic
 
-# Feed a CSV with a `url` column
+# Feed a CSV with a `url` column (used to whitelist destination URLs)
 python -m src.cli match --taxonomy-file data/review_subset.csv
 ```
+
+### Managing OpenAI Batch jobs directly
+
+`match` waits for completion by default, but you can decouple the fallback stage for long-running datasets:
+
+```bash
+# Build candidate prompts for every needs_llm_review row and submit them asynchronously
+python -m src.cli batch submit --limit 100 --no-wait
+
+# Inspect progress for a given batch id
+python -m src.cli batch status --id batch_abc123
+
+# Once OpenAI marks the batch completed, apply the results to Supabase
+python -m src.cli batch apply --id batch_abc123
+```
+
+All JSONL manifests live under `data/batch/<timestamp>/`. If you pass `--wait` to `batch submit` the CLI blocks until OpenAI finishes and immediately persists the parsed rubric decisions.
+
+> **Note**: The Batch prompt is generated from the latest DSPy/GEPA-optimized matcher (instructions and demonstrations). Run `python -m src.cli optimize-dataset ...` followed by `scripts/promote_optimized_model.py` to refresh the production prompt without touching runtime code.
 
 #### Managed workflow runs & resuming
 
@@ -209,40 +234,27 @@ python -m src.cli export --output results/results.csv
 ```
 
 The CSV will contain:
-- `source_url` - Taxonomy page URL
-- `target_url` - Matched WordPress content URL (empty if no match)
-- `category` - Category name
-- `similarity_score` - Match confidence (0-1)
-- `confidence` - Categorization confidence (if categorized)
+- `source_url` - WordPress content URL (the page being redirected)
+- `target_url` - Taxonomy destination that content should redirect to (blank if still unresolved)
+- `category` - Taxonomy content type/name
+- `semantic_similarity_score` - Semantic match confidence (0-1)
+- `match_stage` / `failed_at_stage` - Whether the row was accepted semantically, escalated to the LLM, or still requires human review
 
-Filter for empty `target_url` / `match_stage == needs_human_review` to find unmatched taxonomy pages.
+Filter for `target_url == ''` or `match_stage == needs_human_review` to find unmatched content needing analyst attention.
 
 ## 💰 Cost Management
 
-### OpenRouter Free Tier
+The workflow calls two OpenAI models:
 
-**Free Models Used:**
-- **Chat**: `google/gemini-2.0-flash-exp:free`
-- **Embeddings**: `qwen/qwen3-embedding-0.6b` (low cost)
+- **Embeddings** – `text-embedding-3-small` (~$0.00002 / 1K tokens)
+- **LLM batch fallback** – OpenAI Batch pricing for `gpt-4o-mini` (50% off list: ~$0.0003 / 1K input tokens, ~$0.0012 / 1K output tokens)
 
-**Rate Limits:**
-- Free models: 20 requests/minute
-- Daily limit: 50 calls
+Typical single-site smoke runs (≤10 content items) cost well under $0.05. Full runs scale linearly with the amount of content that needs either embeddings or LLM review.
 
-**Cost Estimates:**
-- Embeddings: ~$0.00002 per 1K tokens
-- For 100 pages with 1000 tokens each: ~$0.02
-
-### ⚠️ Important Note: Batch API Not Supported
-
-OpenRouter does not support OpenAI's Batch API. The categorization feature that uses batch processing will not work with OpenRouter.
-
-**Alternatives:**
-1. Skip categorization and use matching only
-2. Use direct API calls (modify `src/services/categorization.py`)
-3. Use OpenAI API for batch categorization separately
-
-For this setup, **we recommend focusing on semantic matching**, which works perfectly with OpenRouter.
+**Cost-saving tips:**
+1. Keep `--limit` low while iterating; only run the full dataset once semantic coverage looks healthy.
+2. Set `ENABLE_LLM_CATEGORIZATION=0` when you only need semantic diagnostics.
+3. Use `scripts/evaluate_semantic_thresholds.py` before launching LLM reruns—raising the semantic floor reduces downstream LLM spend.
 
 ## 🔍 Monitoring
 
@@ -279,12 +291,12 @@ python -m src.cli evaluate
    CREATE POLICY "Enable all for anon" ON matching_results FOR ALL USING (true);
    ```
 
-### OpenRouter Rate Limits
+### OpenAI Rate Limits
 
-If you hit rate limits:
-1. Add delays between requests
-2. Process in smaller batches
-3. Consider adding credits to your OpenRouter account for higher limits
+If you hit HTTP 429 or rate throttling:
+1. Add short sleeps (`time.sleep(1-2)`) between retries during ingestion/matching.
+2. Lower `--limit`, `SEMANTIC_CANDIDATE_LIMIT`, or `LLM_CANDIDATE_LIMIT` while iterating to keep request bursts small.
+3. Consider enabling auto top-ups or purchasing additional OpenAI credit if you expect long-running full matches.
 
 ### WordPress API Issues
 
@@ -308,7 +320,7 @@ wordpress-vip-categorization/
 │   ├── services/
 │   │   ├── ingestion.py          # Content ingestion
 │   │   ├── matching.py           # Semantic matching ✅
-│   │   └── categorization.py     # Categorization (⚠️ needs OpenAI Batch API)
+│   │   └── categorization.py     # OpenAI Batch-powered fallback + rubric gating
 │   └── exporters/
 │       └── csv_exporter.py       # Results export
 ├── data/
@@ -325,19 +337,17 @@ wordpress-vip-categorization/
 
 - ✅ WordPress VIP API connector
 - ✅ Supabase persistence
-- ✅ OpenRouter embeddings (1024-dimensional)
-- ✅ Semantic matching (0.94 similarity achieved in tests)
-- ✅ CSV export
-- ⚠️ Batch categorization (requires OpenAI API)
+- ✅ OpenAI embeddings (`text-embedding-3-small`)
+- ✅ Semantic matching (content → taxonomy, cosine similarity)
+- ✅ CSV export + analytics helpers
+- ✅ OpenAI Batch-powered LLM fallback (rubric gated `gpt-4o-mini`)
 
 ## 🎯 Recommended Workflow
 
-For optimal results with OpenRouter:
+1. **Load your taxonomy** with up-to-date destinations and summaries.
+2. **Ingest WordPress content** (start small with `--max-pages`/`--limit`).
+3. **Run semantic matching** at the agreed threshold (≥0.70 for Spain migrations) and inspect `semantic_similarity_score`.
+4. **Export and review** rows stuck in `needs_llm_review` / `needs_human_review`; use `results/semantic_miss_samples.csv` for diagnostics.
+5. **Iterate** – adjust taxonomy metadata, content filters, or embeddings text, then rerun the workflow before launching the full tmux-managed match.
 
-1. **Load your taxonomy** with relevant keywords
-2. **Ingest WordPress content** (start small, 10-20 pages)
-3. **Run semantic matching** with threshold 0.70-0.80
-4. **Export and review results** in spreadsheet
-5. **Iterate**: Adjust keywords and threshold based on results
-
-The semantic matching alone provides excellent results for URL redirects!
+Following this loop keeps semantic coverage high (target ≥85%) and minimizes expensive LLM fallbacks.

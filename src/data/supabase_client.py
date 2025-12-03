@@ -65,21 +65,6 @@ class SupabaseClient:
 
         return self._retryer(func)
 
-    def _demote_current_records(self, taxonomy_ids: list[UUID]) -> None:
-        """Mark existing matching rows as non-current before inserting replacements."""
-
-        if not taxonomy_ids:
-            return
-
-        id_strings = [str(tid) for tid in taxonomy_ids]
-        self._with_retry(
-            lambda: self.client.table("matching_results")
-            .update({"is_current": False})
-            .in_("taxonomy_id", id_strings)
-            .eq("is_current", True)
-            .execute()
-        )
-
     async def init_schema(self) -> None:
         """Initialize database schema if not exists."""
         # Note: Supabase Python client doesn't support DDL directly
@@ -193,6 +178,22 @@ class SupabaseClient:
         result = self._with_retry(query.execute)
         return [WordPressContent.model_validate(item) for item in result.data]
 
+    def get_content_by_ids(self, content_ids: list[UUID]) -> dict[UUID, WordPressContent]:
+        """Fetch multiple WordPress content rows in a single query."""
+
+        if not content_ids:
+            return {}
+
+        id_strings = [str(content_id) for content_id in content_ids]
+        result = self._with_retry(
+            lambda: self.client.table("wordpress_content")
+            .select("*")
+            .in_("id", id_strings)
+            .execute()
+        )
+        rows = [WordPressContent.model_validate(item) for item in result.data]
+        return {row.id: row for row in rows}
+
     def get_content_by_site(self, site_url: str) -> list[WordPressContent]:
         """Get all content from a specific site.
 
@@ -263,6 +264,31 @@ class SupabaseClient:
             similarity = float(row.get("similarity", 0.0))
             content = WordPressContent.model_validate(row)
             candidates.append((content, similarity))
+        return candidates
+
+    def match_taxonomy_by_embedding(
+        self,
+        embedding: Sequence[float],
+        match_threshold: float,
+        limit: int,
+    ) -> list[tuple[TaxonomyPage, float]]:
+        """Call pgvector helper to fetch the closest taxonomy rows."""
+
+        payload = {
+            "query_embedding": list(embedding),
+            "match_threshold": match_threshold,
+            "match_count": limit,
+        }
+
+        result = self._with_retry(
+            lambda: self.client.rpc("match_taxonomy_pages", payload).execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data or [])
+        candidates: list[tuple[TaxonomyPage, float]] = []
+        for row in rows:
+            similarity = float(row.get("similarity", 0.0))
+            taxonomy = TaxonomyPage.model_validate(row)
+            candidates.append((taxonomy, similarity))
         return candidates
 
     def get_latest_published_date(self, site_url: str) -> datetime | None:
@@ -404,19 +430,6 @@ class SupabaseClient:
             return TaxonomyPage.model_validate(result.data[0])
         return None
 
-    def get_unmatched_taxonomy(self, threshold: float) -> list[TaxonomyPage]:
-        """Return taxonomy rows without a canonical match or below similarity threshold."""
-
-        result = self._with_retry(
-            lambda: self.client.rpc(
-                "get_unmatched_taxonomy",
-                {"min_similarity": threshold},
-            ).execute()
-        )
-
-        rows = cast(list[dict[str, Any]], result.data or [])
-        return [TaxonomyPage.model_validate(item) for item in rows]
-
     # Categorization results operations
     def insert_categorization(self, result: CategorizationResult) -> CategorizationResult:
         """Insert categorization result.
@@ -501,10 +514,8 @@ class SupabaseClient:
         Returns:
             Inserted matching result.
         """
-        self._demote_current_records([result.taxonomy_id])
-        data = result.model_dump(mode="json")
-        data["updated_at"] = datetime.utcnow().isoformat()
-        data["is_current"] = True
+        self._demote_content_records([result.content_id] if result.content_id else None)
+        data = self._prepare_matching_payload(result)
         db_result = self._with_retry(
             lambda: self.client.table("matching_results").insert(data).execute()
         )
@@ -522,13 +533,13 @@ class SupabaseClient:
         Returns:
             Upserted matching result.
         """
-        self._demote_current_records([result.taxonomy_id])
-        data = result.model_dump(mode="json")
-        data["updated_at"] = datetime.utcnow().isoformat()
-        data["is_current"] = True
+        if result.content_id:
+            self._demote_content_records([result.content_id])
+
+        data = self._prepare_matching_payload(result)
         db_result = self._with_retry(
             lambda: self.client.table("matching_results")
-            .upsert(data, on_conflict="taxonomy_id")
+            .upsert(data, on_conflict="content_id")
             .execute()
         )
         return MatchingResult.model_validate(db_result.data[0])
@@ -542,28 +553,31 @@ class SupabaseClient:
         persisted: list[MatchingResult] = []
         for i in range(0, len(matchings), chunk_size):
             chunk = matchings[i : i + chunk_size]
-            self._demote_current_records([item.taxonomy_id for item in chunk])
+            self._demote_content_records([item.content_id for item in chunk if item.content_id])
             payload = [
-                {
-                    **item.model_dump(mode="json"),
-                    "updated_at": datetime.utcnow().isoformat(),
-                    "is_current": True,
-                }
+                self._prepare_matching_payload(item)
                 for item in chunk
             ]
 
-            def _exec_upsert(data: list[dict[str, Any]] = payload) -> Any:
+            def _exec_insert(data: list[dict[str, Any]] = payload) -> Any:
                 return (
                     self.client.table("matching_results")
-                    .upsert(data, on_conflict="taxonomy_id")
+                    .upsert(data, on_conflict="content_id")
                     .execute()
                 )
 
-            result = self._with_retry(_exec_upsert)
+            result = self._with_retry(_exec_insert)
             persisted.extend(MatchingResult.model_validate(item) for item in result.data)
 
         logger.info("Bulk upserted %s matching rows", len(persisted))
         return persisted
+
+    @staticmethod
+    def _prepare_matching_payload(result: MatchingResult) -> dict[str, Any]:
+        data = result.model_dump(mode="json")
+        data["updated_at"] = datetime.utcnow().isoformat()
+        data["is_current"] = True
+        return data
 
     # Workflow run operations
     def create_workflow_run(self, run: WorkflowRun) -> WorkflowRun:
@@ -618,7 +632,7 @@ class SupabaseClient:
             lambda: self.client.table("matching_results")
             .select("*")
             .eq("taxonomy_id", str(taxonomy_id))
-            .order("similarity_score", desc=True)
+            .order("semantic_similarity_score", desc=True)
             .execute()
         )
         return [MatchingResult.model_validate(item) for item in result.data]
@@ -633,7 +647,7 @@ class SupabaseClient:
             lambda: self.client.table("matching_results")
             .select("*")
             .eq("is_current", True)
-            .order("similarity_score", desc=True)
+            .order("updated_at", desc=True)
             .execute()
         )
         return [MatchingResult.model_validate(item) for item in result.data]
@@ -655,14 +669,85 @@ class SupabaseClient:
             .select("*")
             .eq("taxonomy_id", str(taxonomy_id))
             .eq("is_current", True)
-            .gte("similarity_score", min_score)
-            .order("similarity_score", desc=True)
+            .gte("semantic_similarity_score", min_score)
+            .order("semantic_similarity_score", desc=True)
             .limit(1)
             .execute()
         )
         if result.data:
             return MatchingResult.model_validate(result.data[0])
         return None
+
+    def get_best_match_for_content(
+        self, content_id: UUID, min_score: float = 0.0
+    ) -> MatchingResult | None:
+        """Get best matching result for a content item.
+
+        Args:
+            content_id: Content UUID.
+            min_score: Minimum similarity score threshold.
+
+        Returns:
+            Best matching result if found and above threshold, None otherwise.
+        """
+        result = self._with_retry(
+            lambda: self.client.table("matching_results")
+            .select("*")
+            .eq("content_id", str(content_id))
+            .eq("is_current", True)
+            .gte("semantic_similarity_score", min_score)
+            .order("semantic_similarity_score", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            return MatchingResult.model_validate(result.data[0])
+        return None
+
+    def get_matchings_by_stage(self, stages: Sequence[MatchStage]) -> list[MatchingResult]:
+        """Fetch current matching rows filtered by match stages."""
+
+        if not stages:
+            return []
+
+        stage_values = [stage.value for stage in stages]
+        result = self._with_retry(
+            lambda: self.client.table("matching_results")
+            .select("*")
+            .eq("is_current", True)
+            .in_("match_stage", stage_values)
+            .execute()
+        )
+        return [MatchingResult.model_validate(item) for item in result.data]
+
+    def get_matchings_by_content_ids(self, content_ids: list[UUID]) -> dict[UUID, MatchingResult]:
+        """Fetch current matching rows for specific content IDs."""
+
+        if not content_ids:
+            return {}
+
+        id_strings = [str(content_id) for content_id in content_ids]
+        result = self._with_retry(
+            lambda: self.client.table("matching_results")
+            .select("*")
+            .in_("content_id", id_strings)
+            .eq("is_current", True)
+            .execute()
+        )
+        rows = [MatchingResult.model_validate(item) for item in result.data]
+        return {row.content_id: row for row in rows}
+
+    def _demote_content_records(self, content_ids: list[UUID] | None) -> None:
+        if not content_ids:
+            return
+        id_strings = [str(cid) for cid in content_ids]
+        self._with_retry(
+            lambda: self.client.table("matching_results")
+            .update({"is_current": False})
+            .in_("content_id", id_strings)
+            .eq("is_current", True)
+            .execute()
+        )
 
     def clear_matching_results(
         self,
@@ -678,6 +763,11 @@ class SupabaseClient:
 
         if stages:
             query = query.in_("match_stage", [stage.value for stage in stages])
+
+        # Supabase/PostgREST rejects deletes without a WHERE clause; if no filters were
+        # provided, use a benign predicate that matches all rows to allow full clears.
+        if not taxonomy_ids and not stages:
+            query = query.neq("id", "00000000-0000-0000-0000-000000000000")
 
         result = self._with_retry(query.execute)
         deleted = len(result.data or [])

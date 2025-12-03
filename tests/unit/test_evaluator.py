@@ -32,12 +32,18 @@ def _make_matching(
     match_stage: MatchStage,
     content_id=None,
     similarity: float,
+    taxonomy_id=None,
     rubric: dict | None = None,
 ):
+    if content_id is None:
+        content_id = uuid4()
+    if taxonomy_id is None and match_stage in {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}:
+        taxonomy_id = uuid4()
     return MatchingResult(
-        taxonomy_id=uuid4(),
+        taxonomy_id=taxonomy_id,
         content_id=content_id,
-        similarity_score=similarity,
+        semantic_taxonomy_id=taxonomy_id,
+        semantic_similarity_score=similarity,
         match_stage=match_stage,
         rubric=rubric,
     )
@@ -83,9 +89,13 @@ def test_evaluator_full_flow():
         ),
         _make_matching(
             match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
+            similarity=0.10,
+            rubric=review_rubric,
+        ),
+        _make_matching(
+            match_stage=MatchStage.SEMANTIC_MATCHED,
             content_id=content_review,
             similarity=0.55,
-            rubric=review_rubric,
         ),
     ]
     categorizations = {
@@ -98,8 +108,8 @@ def test_evaluator_full_flow():
 
     matching_metrics = evaluator.evaluate_matching(matchings)
     assert matching_metrics["matched_count"] == 2
-    assert matching_metrics["unmatched_count"] == 1
-    assert matching_metrics["match_rate"] == 2 / 3
+    assert matching_metrics["unmatched_count"] == 2
+    assert matching_metrics["match_rate"] == 0.5
 
     categorization_metrics = evaluator.evaluate_categorization(categorizations[content_good])
     assert categorization_metrics["count"] == 1
@@ -116,8 +126,8 @@ def test_evaluator_full_flow():
     assert low_quality[0].content_id == content_review
 
     unmatched = evaluator.get_unmatched_taxonomy()
-    assert len(unmatched) == 1
-    assert unmatched[0].content_id is None
+    assert len(unmatched) == 2
+    assert all(row.taxonomy_id is None for row in unmatched)
 
 
 def test_evaluate_all_with_empty_matches():

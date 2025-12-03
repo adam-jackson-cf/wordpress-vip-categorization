@@ -1,10 +1,11 @@
-"""Content categorization service using OpenAI Batch API and DSPy-optimized matching."""
+"""Content categorization service powered by the OpenAI Batch API."""
 
 import json
 import logging
 import random
 import shutil
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from src.models import (
     TaxonomyPage,
     WordPressContent,
 )
-from src.optimization.dspy_optimizer import DSPyOptimizer
+from src.optimization.dspy_optimizer import DSPyOptimizer, PromptContext
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,28 @@ OPENAI_RETRY_EXCEPTIONS = (
     openai.InternalServerError,
     openai.APIStatusError,
 )
+
+
+@dataclass(frozen=True)
+class BatchRequestFile:
+    """Metadata describing a rendered JSONL file ready for Batch submission."""
+
+    path: Path
+    run_dir: Path
+    count: int
+
+
+LLM_SYSTEM_PROMPT = (
+    "You are a bilingual (Spanish/English) taxonomy reviewer for MSD Animal Health. "
+    "Given WordPress source content plus a short list of candidate taxonomy pages, "
+    "pick the single best taxonomy destination only if it clearly satisfies the rubric. "
+    "Return strict JSON using the provided schema. Decisions must be one of: accept (confident match), "
+    "review (not enough evidence or ambiguous), or reject (none of the candidates are relevant)."
+)
+
+
+def _clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
+    return max(minimum, min(maximum, value))
 
 
 class CategorizationService:
@@ -54,23 +77,15 @@ class CategorizationService:
         self.settings = settings
         self.db = db_client
         self.client = openai.OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-
-        # Initialize DSPy optimizer for matching
         self.dspy_optimizer = DSPyOptimizer(settings, db_client)
+        self.prompt_instructions: str | None = None
+        self.prompt_demonstrations: list[str] = []
+        self._initialize_prompt_context()
 
-        # Try to load latest optimized model if it exists
-        try:
-            loaded = self.dspy_optimizer.load_latest_model()
-            if loaded is not None:
-                logger.info("Loaded latest optimized DSPy matching model")
-            else:
-                logger.info("No optimized model found, using unoptimized DSPy module")
-        except Exception as e:
-            logger.warning(f"Failed to load optimized model, using unoptimized: {e}")
-
-        logger.info(f"Initialized categorization service with base URL: {settings.llm_base_url}")
-        self.batch_artifact_root = Path("data/batch")
+        logger.info("Initialized categorization service with base URL: %s", settings.llm_base_url)
+        self.batch_artifact_root = settings.llm_batch_artifact_dir
         self.batch_artifact_root.mkdir(parents=True, exist_ok=True)
+        self.batch_chunk_size = settings.llm_batch_chunk_size
 
     @staticmethod
     def _coerce_datetime(value: Any) -> datetime:
@@ -105,6 +120,27 @@ class CategorizationService:
             return int(value)
         except (TypeError, ValueError):
             return 0
+
+    def _initialize_prompt_context(self) -> None:
+        """Load the latest DSPy matcher and cache its prompt metadata."""
+
+        try:
+            loaded = self.dspy_optimizer.load_latest_model()
+            if loaded is not None:
+                logger.info("Loaded optimized DSPy matcher for batch prompts")
+            else:
+                logger.info("No optimized DSPy matcher found; using default instructions")
+        except Exception as exc:  # pragma: no cover - diagnostic only
+            logger.warning("Failed to load optimized DSPy matcher: %s", exc)
+
+        try:
+            context: PromptContext = self.dspy_optimizer.get_prompt_context()
+            self.prompt_instructions = context.instructions.strip() if context.instructions else None
+            self.prompt_demonstrations = [demo.strip() for demo in context.demonstrations if demo.strip()]
+        except Exception as exc:  # pragma: no cover - diagnostic only
+            logger.warning("Failed to extract DSPy prompt context: %s", exc)
+            self.prompt_instructions = None
+            self.prompt_demonstrations = []
 
     def create_categorization_prompt(self, content: WordPressContent, categories: list[str]) -> str:
         """Create prompt for content categorization.
@@ -188,6 +224,263 @@ Respond with a JSON object in this exact format:
         logger.info(f"Created batch file: {file_path}")
         return str(file_path)
 
+    def _format_content_section(self, content: WordPressContent) -> str:
+        metadata = content.metadata or {}
+        categories = ", ".join(str(value) for value in metadata.get("categories", []) or [])
+        tags = ", ".join(str(value) for value in metadata.get("tags", []) or [])
+        excerpt = (metadata.get("excerpt") or content.content[:800] or "").strip()
+        published = content.published_date.isoformat() if content.published_date else "unknown"
+        return "\n".join(
+            part
+            for part in [
+                f"Title: {content.title}",
+                f"URL: {content.url}",
+                f"Site: {content.site_url}",
+                f"Published: {published}",
+                f"Categories: {categories or 'n/a'}",
+                f"Tags: {tags or 'n/a'}",
+                f"Excerpt: {excerpt[:800]}",
+                f"Full Preview: {content.content[:1500]}",
+            ]
+            if part
+        )
+
+    @staticmethod
+    def _format_candidate_section(candidates: list[TaxonomyPage]) -> str:
+        if not candidates:
+            return "No semantic candidates were found; default to review."
+
+        sections: list[str] = []
+        for idx, taxonomy in enumerate(candidates, start=1):
+            topics = ", ".join(taxonomy.key_topics)
+            audiences = ", ".join(
+                filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
+            )
+            sections.append(
+                "\n".join(
+                    part
+                    for part in [
+                        f"{idx}. taxonomy_id: {taxonomy.id}",
+                        f"Destination: {taxonomy.destination_url}",
+                        f"Content Type: {taxonomy.content_type}",
+                        f"Audiences: {audiences or 'n/a'}",
+                        f"Semantic Summary: {taxonomy.semantic_summary[:600]}",
+                        f"Key Topics: {topics or 'n/a'}",
+                    ]
+                    if part
+                )
+            )
+        return "\n\n".join(sections)
+
+    def _format_semantic_hint(self, result: MatchingResult | None) -> str:
+        if result is None:
+            return (
+                "Semantic stage produced no confident candidate. "
+                "Review all taxonomy options below."
+            )
+
+        taxonomy_id = result.semantic_taxonomy_id or UUID(int=0)
+        score = result.semantic_similarity_score
+        threshold = self.settings.similarity_threshold
+        return (
+            "Semantic stage best candidate:\n"
+            f"- taxonomy_id: {taxonomy_id}\n"
+            f"- similarity_score: {score:.3f}\n"
+            f"- threshold: {threshold:.3f}\n"
+            "This content stayed below the threshold and needs LLM judgment."
+        )
+
+    def _llm_response_schema(self) -> dict[str, Any]:
+        return {
+            "name": "taxonomy_match_result",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "decision": {
+                        "type": "string",
+                        "enum": ["accept", "review", "reject"],
+                        "description": "accept if confident match, review if unsure, reject if irrelevant",
+                    },
+                    "taxonomy_id": {
+                        "type": ["string", "null"],
+                        "description": "UUID of the chosen taxonomy from the candidate list",
+                    },
+                    "taxonomy_url": {
+                        "type": ["string", "null"],
+                        "description": "Destination URL of the chosen taxonomy",
+                    },
+                    "topic_alignment": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Rubric score 0-1 for topical fit",
+                    },
+                    "intent_fit": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Rubric score 0-1 for intent alignment",
+                    },
+                    "entity_overlap": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Rubric score 0-1 for entity/keyword overlap",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Brief justification for the decision",
+                    },
+                    "confidence": {
+                        "type": ["number", "null"],
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Optional overall confidence score",
+                    },
+                },
+                "required": [
+                    "decision",
+                    "taxonomy_id",
+                    "taxonomy_url",
+                    "topic_alignment",
+                    "intent_fit",
+                    "entity_overlap",
+                    "reasoning",
+                ],
+            },
+        }
+
+    @staticmethod
+    def _safe_float(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _extract_message_json(result: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            response = result["response"]["body"]
+            choices = response.get("choices") or []
+            if not choices:
+                return None
+            message = choices[0].get("message", {})
+            content = message.get("content")
+            if isinstance(content, list):
+                text = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            else:
+                text = str(content or "")
+            if not text.strip():
+                return None
+            return json.loads(text)
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+            return None
+
+    def _compose_system_prompt(self) -> str:
+        sections = []
+        if self.prompt_instructions:
+            sections.append(self.prompt_instructions.strip())
+        sections.append(LLM_SYSTEM_PROMPT)
+        return "\n\n".join(section for section in sections if section).strip()
+
+    def _render_demonstrations(self) -> str:
+        if not self.prompt_demonstrations:
+            return ""
+        return "\n\n".join(self.prompt_demonstrations)
+
+    def prepare_llm_fallback_requests(
+        self,
+        content_items: list[WordPressContent],
+        candidate_map: dict[UUID, list[TaxonomyPage]],
+        semantic_results: dict[UUID, MatchingResult] | None = None,
+    ) -> list[dict[str, Any]]:
+        semantic_results = semantic_results or {}
+        schema = self._llm_response_schema()
+        requests: list[dict[str, Any]] = []
+
+        system_prompt = self._compose_system_prompt()
+        demos_block = self._render_demonstrations()
+
+        for content in content_items:
+            candidates = candidate_map.get(content.id, [])
+            prompt_sections: list[str] = []
+            if demos_block:
+                prompt_sections.extend([
+                    "Reference these rubric examples:",
+                    demos_block,
+                    "",
+                ])
+            prompt_sections.extend(
+                [
+                    "Content to categorize:",
+                    self._format_content_section(content),
+                    "\nSemantic evidence:",
+                    self._format_semantic_hint(semantic_results.get(content.id)),
+                    "\nCandidate taxonomy pages (choose at most one):",
+                    self._format_candidate_section(candidates),
+                    "\nRubric:",
+                    (
+                        "Score topic_alignment, intent_fit, and entity_overlap between 0 and 1. "
+                        "Only output decision='accept' when all rubric minimums are satisfied. "
+                        "If no candidate qualifies, set decision='review' and taxonomy_id=null."
+                    ),
+                ]
+            )
+
+            request = {
+                "custom_id": str(content.id),
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": self.settings.llm_model,
+                    "temperature": 0.0,
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": schema,
+                    },
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": "\n".join(prompt_sections)},
+                    ],
+                },
+            }
+            requests.append(request)
+
+        logger.info("Prepared %s LLM fallback batch requests", len(requests))
+        return requests
+
+    def _write_llm_request_files(self, requests: list[dict[str, Any]]) -> list[BatchRequestFile]:
+        if not requests:
+            return []
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        run_dir = self.batch_artifact_root / f"llm_match_{timestamp}_{uuid4().hex[:6]}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        artifacts: list[BatchRequestFile] = []
+        chunk_size = max(1, self.batch_chunk_size)
+        for index in range(0, len(requests), chunk_size):
+            chunk = requests[index : index + chunk_size]
+            file_path = run_dir / f"match_llm_requests_{index // chunk_size + 1:03d}.jsonl"
+            with file_path.open("w", encoding="utf-8") as handle:
+                for request in chunk:
+                    handle.write(json.dumps(request, ensure_ascii=False) + "\n")
+            artifacts.append(BatchRequestFile(path=file_path, run_dir=run_dir, count=len(chunk)))
+
+        manifest = {
+            "generated_at": datetime.utcnow().isoformat(),
+            "total_requests": len(requests),
+            "files": [
+                {"file": artifact.path.name, "count": artifact.count}
+                for artifact in artifacts
+            ],
+        }
+        (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        logger.info("Wrote %s batch file(s) to %s", len(artifacts), run_dir)
+        return artifacts
+
     @retry(
         retry=retry_if_exception_type(OPENAI_RETRY_EXCEPTIONS),
         stop=stop_after_attempt(5),
@@ -212,7 +505,7 @@ Respond with a JSON object in this exact format:
         batch = self.client.batches.create(
             input_file_id=file_response.id,
             endpoint="/v1/chat/completions",
-            completion_window="24h",
+            completion_window=self.settings.llm_batch_completion_window,
             metadata={"description": description} if description else {},
         )
 
@@ -446,182 +739,218 @@ Respond with a JSON object in this exact format:
 
     def categorize_for_matching(
         self,
-        taxonomy_pages: list[TaxonomyPage],
         content_items: list[WordPressContent],
-        candidate_map: dict[UUID, list[WordPressContent]] | None = None,
+        candidate_map: dict[UUID, list[TaxonomyPage]] | None = None,
+        fallback_taxonomy: list[TaxonomyPage] | None = None,
+        semantic_results: dict[UUID, MatchingResult] | None = None,
+        wait_for_completion: bool = True,
     ) -> dict[str, Any]:
-        """Use LLM to match taxonomy pages to content with rubric-based deterministic gating.
+        """Run the LLM fallback exclusively through the OpenAI Batch API."""
 
-        This method provides a fallback for items that didn't match via semantic similarity.
-        It uses the LLM to evaluate each taxonomy page against content and determine
-        the best match based on semantic understanding rather than embedding similarity.
+        if not content_items:
+            return {"matched": 0, "below_threshold": 0, "total": 0, "batch_ids": []}
 
-        Args:
-            taxonomy_pages: Taxonomy pages to match (typically unmatched from semantic stage).
-            content_items: Available content items to match against (fallback pool).
-            candidate_map: Optional per-taxonomy shortlist of semantic candidates.
+        candidate_map = candidate_map or {}
+        semantic_results = semantic_results or {}
+        if fallback_taxonomy is None:
+            fallback_taxonomy = self.db.get_all_taxonomy()
 
-        Returns:
-            Dictionary with statistics:
-                - matched: Number of taxonomy pages matched above threshold
-                - below_threshold: Number below threshold (need human review)
-                - total: Total taxonomy pages processed
-        """
-        logger.info(
-            f"Starting LLM categorization for {len(taxonomy_pages)} taxonomy pages "
-            f"against {len(content_items)} content items with rubric gating"
-        )
+        requests = self.prepare_llm_fallback_requests(content_items, candidate_map, semantic_results)
+        artifacts = self._write_llm_request_files(requests)
+        if not artifacts:
+            return {"matched": 0, "below_threshold": 0, "total": len(content_items), "batch_ids": []}
 
-        matched_count = 0
-        below_threshold_count = 0
+        taxonomy_lookup: dict[UUID, TaxonomyPage] = {
+            taxonomy.id: taxonomy for taxonomy in fallback_taxonomy
+        }
+        for entries in candidate_map.values():
+            for taxonomy in entries:
+                taxonomy_lookup.setdefault(taxonomy.id, taxonomy)
 
-        for taxonomy in taxonomy_pages:
-            # Create prompt for LLM to find best match
-            pool = []
-            if candidate_map:
-                pool = candidate_map.get(taxonomy.id, [])
+        content_lookup = {content.id: content for content in content_items}
 
-            if not pool:
-                pool = content_items
+        stats = {"matched": 0, "below_threshold": 0, "total": len(content_items), "batch_ids": []}
 
-            if not pool:
-                logger.warning(
-                    "No candidate content available for taxonomy %s; marking for review",
-                    taxonomy.id,
-                )
-                matching_result = MatchingResult(
-                    taxonomy_id=taxonomy.id,
-                    content_id=None,
-                    similarity_score=0.0,
-                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
-                    failed_at_stage="llm_categorization",
-                )
-                below_threshold_count += 1
-                self.db.upsert_matching(matching_result)
+        for chunk_index, artifact in enumerate(artifacts, start=1):
+            description = (
+                f"LLM fallback chunk {chunk_index}/{len(artifacts)} "
+                f"({artifact.count} content items)"
+            )
+            batch_id = self.submit_batch(str(artifact.path), description=description)
+            stats["batch_ids"].append(batch_id)
+            logger.info(
+                "Submitted batch %s for %s unmatched items (file=%s)",
+                batch_id,
+                artifact.count,
+                artifact.path,
+            )
+
+            if not wait_for_completion:
                 continue
 
-            best_match, rubric = self._find_best_match_llm(taxonomy, pool)
-            existing_record = self.db.get_best_match_for_taxonomy(taxonomy.id)
-            semantic_score = (
-                existing_record.candidate_similarity_score
-                if existing_record and existing_record.candidate_similarity_score is not None
-                else (existing_record.similarity_score if existing_record else 0.0)
+            self.wait_for_batch_completion(batch_id)
+            raw_results = self.retrieve_batch_results(batch_id)
+            chunk_stats = self.apply_llm_batch_results(
+                raw_results,
+                batch_id,
+                taxonomy_lookup=taxonomy_lookup,
+                semantic_results=semantic_results,
+                content_lookup=content_lookup,
             )
-            previous_candidate_id = (
-                existing_record.candidate_content_id
-                if existing_record and existing_record.candidate_content_id
-                else (existing_record.content_id if existing_record else None)
-            )
-            candidate_content_id = best_match.id if best_match else previous_candidate_id
-            candidate_score = semantic_score if candidate_content_id is not None else None
-            llm_topic_score = float(rubric.get("topic_alignment", 0.0)) if rubric else None
+            stats["matched"] += chunk_stats.get("matched", 0)
+            stats["below_threshold"] += chunk_stats.get("needs_review", 0)
 
-            if best_match and self._accept_by_rubric(taxonomy, rubric):
-                # Match found above threshold
-                matching_result = MatchingResult(
-                    taxonomy_id=taxonomy.id,
-                    content_id=best_match.id,
-                    similarity_score=semantic_score,
-                    candidate_content_id=candidate_content_id,
-                    candidate_similarity_score=candidate_score,
-                    llm_topic_score=llm_topic_score,
-                    match_stage=MatchStage.LLM_CATEGORIZED,
-                    rubric=rubric,
-                )
-                matched_count += 1
+        if wait_for_completion:
+            logger.info(
+                "LLM batch categorization complete: %s matched, %s need review",
+                stats["matched"],
+                stats["below_threshold"],
+            )
+        else:
+            logger.info(
+                "Submitted %s batch job(s); call batch apply/status commands to finalize results",
+                len(stats["batch_ids"]),
+            )
+
+        stats["needs_review"] = stats["below_threshold"]
+        return stats
+
+    def apply_llm_batch_results(
+        self,
+        results: list[dict[str, Any]],
+        batch_id: str,
+        taxonomy_lookup: dict[UUID, TaxonomyPage] | None = None,
+        semantic_results: dict[UUID, MatchingResult] | None = None,
+        content_lookup: dict[UUID, WordPressContent] | None = None,
+    ) -> dict[str, int]:
+        taxonomy_lookup = taxonomy_lookup or {}
+        semantic_results = semantic_results or {}
+        content_lookup = content_lookup or {}
+
+        updates: list[MatchingResult] = []
+        matched = 0
+        needs_review = 0
+
+        for result in results:
+            custom_id = result.get("custom_id")
+            try:
+                content_id = UUID(str(custom_id))
+            except (TypeError, ValueError):
+                logger.error("Batch %s included invalid custom_id: %s", batch_id, custom_id)
+                needs_review += 1
+                continue
+
+            parsed = self._extract_message_json(result)
+            decision = "review"
+            taxonomy_uuid: UUID | None = None
+            rubric_payload: dict[str, Any] | None = None
+            topic_score: float | None = None
+            intent_score: float | None = None
+            entity_score: float | None = None
+
+            if parsed is not None:
+                rubric_payload = {**parsed, "batch_id": batch_id}
+                decision = str(parsed.get("decision", "")).strip().lower()
+                taxonomy_value = parsed.get("taxonomy_id")
+                if taxonomy_value:
+                    try:
+                        taxonomy_uuid = UUID(str(taxonomy_value))
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "Batch %s returned invalid taxonomy_id '%s' for content %s",
+                            batch_id,
+                            taxonomy_value,
+                            content_id,
+                        )
+                        taxonomy_uuid = None
+                topic_score = self._safe_float(parsed.get("topic_alignment"))
+                intent_score = self._safe_float(parsed.get("intent_fit"))
+                entity_score = self._safe_float(parsed.get("entity_overlap"))
+            else:
+                rubric_payload = {
+                    "batch_id": batch_id,
+                    "error": "invalid_response",
+                }
+
+            taxonomy = taxonomy_lookup.get(taxonomy_uuid) if taxonomy_uuid else None
+            accepted = False
+            if decision == "accept" and taxonomy is not None and rubric_payload is not None:
+                accepted = self._accept_by_rubric(taxonomy, rubric_payload)
+
+            stage = MatchStage.LLM_CATEGORIZED if accepted else MatchStage.NEEDS_HUMAN_REVIEW
+            taxonomy_result_id = taxonomy_uuid if accepted else None
+
+            semantic_match = semantic_results.get(content_id)
+            semantic_taxonomy_id = semantic_match.semantic_taxonomy_id if semantic_match else None
+            semantic_score = semantic_match.semantic_similarity_score if semantic_match else 0.0
+            if semantic_taxonomy_id is None and taxonomy_uuid is not None:
+                semantic_taxonomy_id = taxonomy_uuid
+
+            llm_topic_score = _clamp(topic_score) if topic_score is not None else None
+
+            result_row = MatchingResult(
+                content_id=content_id,
+                taxonomy_id=taxonomy_result_id,
+                semantic_taxonomy_id=semantic_taxonomy_id,
+                semantic_similarity_score=semantic_score,
+                llm_topic_score=llm_topic_score,
+                match_stage=stage,
+                failed_at_stage="llm_batch" if stage == MatchStage.NEEDS_HUMAN_REVIEW else None,
+                rubric=rubric_payload,
+            )
+            updates.append(result_row)
+
+            content_ref = content_lookup.get(content_id)
+            content_label = content_ref.url if content_ref else str(content_id)
+            if stage == MatchStage.LLM_CATEGORIZED and taxonomy is not None:
+                matched += 1
                 logger.info(
-                    f"LLM matched taxonomy {taxonomy.destination_url} to {best_match.url} "
-                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
-                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
-                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
-                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
-                    f"decision={rubric.get('decision','')})"
+                    "LLM batch accepted %s → %s (topic=%.2f, intent=%.2f, entity=%.2f)",
+                    content_label,
+                    taxonomy.destination_url,
+                    llm_topic_score or 0.0,
+                    _clamp(intent_score or 0.0),
+                    _clamp(entity_score or 0.0),
                 )
             else:
-                # Below threshold or no match - needs human review
-                matching_result = MatchingResult(
-                    taxonomy_id=taxonomy.id,
-                    content_id=None,
-                    similarity_score=semantic_score,
-                    candidate_content_id=candidate_content_id,
-                    candidate_similarity_score=candidate_score,
-                    llm_topic_score=llm_topic_score,
-                    match_stage=MatchStage.NEEDS_HUMAN_REVIEW,
-                    failed_at_stage="llm_categorization",
-                    rubric=rubric if rubric else None,
-                )
-                below_threshold_count += 1
-                logger.warning(
-                    f"LLM match for taxonomy {taxonomy.destination_url} below rubric thresholds "
-                    f"(rubric: topic={rubric.get('topic_alignment', 0.0):.2f}, "
-                    f"intent={rubric.get('intent_fit', 0.0):.2f}, "
-                    f"entities={rubric.get('entity_overlap', 0.0):.2f}, "
-                    f"temporal={rubric.get('temporal_relevance', 0.0):.2f}, "
-                    f"decision={rubric.get('decision','')})"
+                needs_review += 1
+                logger.debug(
+                    "LLM batch deferred %s for human review (decision=%s)",
+                    content_label,
+                    decision,
                 )
 
-            # Store result
-            self.db.upsert_matching(matching_result)
+        if updates:
+            self.db.bulk_upsert_matchings(updates, chunk_size=self.settings.matching_batch_size)
 
-        logger.info(
-            f"LLM categorization complete: {matched_count} matched, "
-            f"{below_threshold_count} need review"
+        return {"matched": matched, "needs_review": needs_review, "total": len(results)}
+
+    def apply_batch_job(self, batch_id: str) -> dict[str, int]:
+        """Download, parse, and persist results for an existing batch job."""
+
+        raw_results = self.retrieve_batch_results(batch_id)
+        if not raw_results:
+            logger.warning("Batch %s returned no results", batch_id)
+            return {"matched": 0, "needs_review": 0, "total": 0}
+
+        content_ids: list[UUID] = []
+        for record in raw_results:
+            try:
+                content_ids.append(UUID(str(record.get("custom_id"))))
+            except (TypeError, ValueError):
+                continue
+
+        semantic_lookup = self.db.get_matchings_by_content_ids(content_ids)
+        taxonomy_lookup = {taxonomy.id: taxonomy for taxonomy in self.db.get_all_taxonomy()}
+        content_lookup = self.db.get_content_by_ids(content_ids)
+
+        return self.apply_llm_batch_results(
+            raw_results,
+            batch_id,
+            taxonomy_lookup=taxonomy_lookup,
+            semantic_results=semantic_lookup,
+            content_lookup=content_lookup,
         )
-
-        return {
-            "matched": matched_count,
-            "below_threshold": below_threshold_count,
-            "total": len(taxonomy_pages),
-        }
-
-    def _find_best_match_llm(
-        self, taxonomy: TaxonomyPage, content_items: list[WordPressContent]
-    ) -> tuple[WordPressContent | None, dict[str, float | str]]:
-        """Use selector (DSPy) to choose best index, then judge to compute rubric for that candidate.
-
-        Args:
-            taxonomy: Taxonomy page to match.
-            content_items: Available content items.
-
-        Returns:
-            Tuple of (best_match, rubric_dict) or (None, {}) if no good match.
-        """
-        try:
-            votes = max(1, getattr(self.settings, "llm_consensus_votes", 1))
-            if votes == 1:
-                best_match_index, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
-                if 0 <= best_match_index < len(content_items):
-                    best = content_items[best_match_index]
-                    rubric = self.dspy_optimizer.judge_candidate(taxonomy, best)
-                    return best, rubric
-                return None, {}
-
-            # Consensus voting across multiple rubric evaluations
-            index_counts: dict[int, int] = {}
-            for _ in range(votes):
-                idx, _ = self.dspy_optimizer.predict_match(taxonomy, content_items)
-                if idx < 0 or idx >= len(content_items):
-                    continue
-                index_counts[idx] = index_counts.get(idx, 0) + 1
-                # Defer rubric scoring to judge on the winning index later
-
-            if not index_counts:
-                return None, {}
-
-            # Pick index with most votes
-            best_index = max(index_counts.items(), key=lambda kv: kv[1])[0]
-            best_candidate = content_items[best_index]
-            rubric = self.dspy_optimizer.judge_candidate(taxonomy, best_candidate)
-            return best_candidate, rubric
-
-        except Exception as e:
-            logger.error(
-                "Error in DSPy matching for taxonomy %s: %s",
-                taxonomy.destination_url,
-                e,
-                exc_info=True,
-            )
-            return None, {}
 
     def _accept_by_rubric(self, taxonomy: TaxonomyPage, rubric: dict[str, float | str]) -> bool:
         """Deterministically accept or reject an LLM-selected match based on rubric scores."""

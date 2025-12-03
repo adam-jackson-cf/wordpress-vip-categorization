@@ -171,7 +171,7 @@ def test_get_matchings_by_taxonomy(
                 "id": str(uuid4()),
                 "taxonomy_id": str(sample_taxonomy_page.id),
                 "content_id": str(sample_wordpress_content.id),
-                "similarity_score": 0.9,
+                "semantic_similarity_score": 0.9,
                 "match_stage": MatchStage.SEMANTIC_MATCHED.value,
             }
         ]
@@ -261,3 +261,110 @@ def test_get_best_match_for_taxonomy_returns_none(
 
     result = supabase_client.get_best_match_for_taxonomy(sample_taxonomy_page.id, min_score=0.5)
     assert result is None
+
+
+def test_get_best_match_for_content_returns_match(
+    supabase_client,
+    mocker,
+    sample_wordpress_content,
+    sample_taxonomy_page,
+) -> None:
+    """Test get_best_match_for_content returns matching result."""
+    table = mocker.Mock()
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.gte.return_value = table
+    table.order.return_value = table
+    table.limit.return_value = table
+    table.execute.return_value = SimpleNamespace(
+        data=[
+            {
+                "id": str(uuid4()),
+                "taxonomy_id": str(sample_taxonomy_page.id),
+                "content_id": str(sample_wordpress_content.id),
+                "semantic_similarity_score": 0.9,
+                "match_stage": MatchStage.SEMANTIC_MATCHED.value,
+            }
+        ]
+    )
+    supabase_client.client.table.return_value = table
+
+    result = supabase_client.get_best_match_for_content(sample_wordpress_content.id, min_score=0.5)
+    assert result is not None
+    assert result.content_id == sample_wordpress_content.id
+    assert result.taxonomy_id == sample_taxonomy_page.id
+
+
+def test_get_best_match_for_content_returns_none(
+    supabase_client,
+    mocker,
+    sample_wordpress_content,
+) -> None:
+    """Test get_best_match_for_content returns None when no match."""
+    table = mocker.Mock()
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.gte.return_value = table
+    table.order.return_value = table
+    table.limit.return_value = table
+    table.execute.return_value = SimpleNamespace(data=[])
+    supabase_client.client.table.return_value = table
+
+    result = supabase_client.get_best_match_for_content(sample_wordpress_content.id, min_score=0.5)
+    assert result is None
+
+
+def test_match_taxonomy_by_embedding_calls_rpc(
+    supabase_client,
+    mocker,
+    sample_taxonomy_page,
+) -> None:
+    """Test match_taxonomy_by_embedding calls the correct RPC function."""
+    rpc_mock = mocker.Mock()
+    rpc_mock.execute.return_value = SimpleNamespace(
+        data=[
+            {
+                **sample_taxonomy_page.model_dump(mode="json"),
+                "similarity": 0.85,
+            }
+        ]
+    )
+    supabase_client.client.rpc.return_value = rpc_mock
+
+    embedding = [0.1] * 1536
+    results = supabase_client.match_taxonomy_by_embedding(
+        embedding=embedding, match_threshold=0.7, limit=10
+    )
+
+    # Verify RPC call
+    supabase_client.client.rpc.assert_called_once_with(
+        "match_taxonomy_pages",
+        {
+            "query_embedding": embedding,
+            "match_threshold": 0.7,
+            "match_count": 10,
+        },
+    )
+
+    # Verify return format
+    assert len(results) == 1
+    taxonomy, score = results[0]
+    assert taxonomy.id == sample_taxonomy_page.id
+    assert score == 0.85
+
+
+def test_match_taxonomy_by_embedding_returns_empty_list(
+    supabase_client,
+    mocker,
+) -> None:
+    """Test match_taxonomy_by_embedding returns empty list when no matches."""
+    rpc_mock = mocker.Mock()
+    rpc_mock.execute.return_value = SimpleNamespace(data=[])
+    supabase_client.client.rpc.return_value = rpc_mock
+
+    embedding = [0.1] * 1536
+    results = supabase_client.match_taxonomy_by_embedding(
+        embedding=embedding, match_threshold=0.7, limit=10
+    )
+
+    assert results == []

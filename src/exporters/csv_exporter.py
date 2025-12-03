@@ -26,43 +26,44 @@ class CSVExporter:
         """Prepare rows for export.
 
         Returns:
-            List of export rows combining taxonomy, content, and matching data.
+            List of export rows combining content, taxonomy, and matching data.
         """
         rows = []
 
-        # Get all taxonomy pages
-        taxonomy_pages = self.db.get_all_taxonomy()
+        # Get all content items (now the primary list)
+        content_items = self.db.get_all_content()
 
-        for taxonomy in taxonomy_pages:
-            # Get best match for this taxonomy
-            match = self.db.get_best_match_for_taxonomy(taxonomy.id, min_score=0.0)
+        for content in content_items:
+            # Get best match for this content item
+            match = self.db.get_best_match_for_content(content.id, min_score=0.0)
 
             # Default values
             target_url = ""
             similarity_score = 0.0
-            category = taxonomy.content_type
+            category = ""
             match_stage: str | None = None
             failed_at_stage: str | None = None
 
-            if match and match.content_id:
-                # Get matched content
-                content = self.db.get_content_by_id(match.content_id)
-                if content:
-                    target_url = str(content.url)
+            if match and match.taxonomy_id:
+                # Get matched taxonomy
+                taxonomy = self.db.get_taxonomy_by_id(match.taxonomy_id)
+                if taxonomy:
+                    target_url = str(taxonomy.destination_url)
+                    category = taxonomy.content_type
 
-                similarity_score = match.similarity_score
+                similarity_score = match.semantic_similarity_score
 
                 # Get match stage info
                 match_stage = match.match_stage.value if match.match_stage else None
                 failed_at_stage = match.failed_at_stage
             elif match:
-                # Match exists but no content_id (unmatched)
-                similarity_score = match.similarity_score
+                # Match exists but no taxonomy_id (unmatched)
+                similarity_score = match.semantic_similarity_score
                 match_stage = match.match_stage.value if match.match_stage else None
                 failed_at_stage = match.failed_at_stage
 
             row = ExportRow(
-                source_url=str(taxonomy.destination_url),
+                source_url=str(content.url),
                 target_url=target_url,
                 category=category,
                 similarity_score=similarity_score,
@@ -138,7 +139,7 @@ class CSVExporter:
         return len(filtered_rows)
 
     def export_unmatched_only(self, output_path: Path) -> int:
-        """Export only unmatched taxonomy pages.
+        """Export only unmatched content items.
 
         Args:
             output_path: Path for output CSV file.
@@ -154,7 +155,7 @@ class CSVExporter:
         with open(output_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["source_url", "category"],
+                fieldnames=["source_url"],
             )
             writer.writeheader()
 
@@ -162,7 +163,6 @@ class CSVExporter:
                 writer.writerow(
                     {
                         "source_url": row.source_url,
-                        "category": row.category,
                     }
                 )
 

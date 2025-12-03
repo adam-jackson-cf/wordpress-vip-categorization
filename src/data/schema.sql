@@ -65,12 +65,11 @@ CREATE INDEX IF NOT EXISTS idx_categorization_batch_id ON categorization_results
 -- Matching results table
 CREATE TABLE IF NOT EXISTS matching_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    taxonomy_id UUID NOT NULL REFERENCES taxonomy_pages(id) ON DELETE CASCADE,
-    content_id UUID REFERENCES wordpress_content(id) ON DELETE CASCADE,
-    similarity_score FLOAT NOT NULL CHECK (similarity_score >= 0 AND similarity_score <= 1),
-    candidate_content_id UUID REFERENCES wordpress_content(id) ON DELETE SET NULL,
-    candidate_similarity_score FLOAT CHECK (
-        candidate_similarity_score >= 0 AND candidate_similarity_score <= 1
+    content_id UUID UNIQUE NOT NULL REFERENCES wordpress_content(id) ON DELETE CASCADE,
+    taxonomy_id UUID REFERENCES taxonomy_pages(id) ON DELETE SET NULL,
+    semantic_taxonomy_id UUID REFERENCES taxonomy_pages(id) ON DELETE SET NULL,
+    semantic_similarity_score FLOAT DEFAULT 0.0 CHECK (
+        semantic_similarity_score >= 0 AND semantic_similarity_score <= 1
     ),
     llm_topic_score FLOAT CHECK (llm_topic_score >= 0 AND llm_topic_score <= 1),
     match_stage TEXT,
@@ -81,27 +80,28 @@ CREATE TABLE IF NOT EXISTS matching_results (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for faster queries
-CREATE INDEX IF NOT EXISTS idx_matching_taxonomy_id ON matching_results(taxonomy_id);
-CREATE INDEX IF NOT EXISTS idx_matching_content_id ON matching_results(content_id);
-CREATE INDEX IF NOT EXISTS idx_matching_similarity_score ON matching_results(similarity_score DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_matching_taxonomy_current
-    ON matching_results(taxonomy_id)
+-- Indexes for faster lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matching_content_current
+    ON matching_results(content_id)
     WHERE is_current;
+CREATE INDEX IF NOT EXISTS idx_matching_taxonomy_id ON matching_results(taxonomy_id);
+CREATE INDEX IF NOT EXISTS idx_matching_semantic_taxonomy_id
+    ON matching_results(semantic_taxonomy_id);
+CREATE INDEX IF NOT EXISTS idx_matching_stage ON matching_results(match_stage);
 
 -- Create a view for export with denormalized data
 CREATE OR REPLACE VIEW export_results AS
 SELECT
-    tp.destination_url as source_url,
-    COALESCE(wc.url, '') as target_url,
-    COALESCE(mr.similarity_score, 0.0) as similarity_score,
-    tp.content_type,
+    wc.url AS source_url,
+    COALESCE(tp.destination_url, '') AS target_url,
+    COALESCE(tp.content_type, '') AS content_type,
+    COALESCE(mr.semantic_similarity_score, 0.0) AS similarity_score,
     mr.match_stage,
     mr.failed_at_stage
-FROM taxonomy_pages tp
-LEFT JOIN matching_results mr ON tp.id = mr.taxonomy_id AND mr.is_current IS TRUE
-LEFT JOIN wordpress_content wc ON mr.content_id = wc.id
-ORDER BY tp.content_type, mr.similarity_score DESC NULLS LAST;
+FROM wordpress_content wc
+LEFT JOIN matching_results mr ON wc.id = mr.content_id AND mr.is_current IS TRUE
+LEFT JOIN taxonomy_pages tp ON mr.taxonomy_id = tp.id
+ORDER BY wc.site_url, wc.url;
 
 -- Vector similarity helper for Supabase RPC usage
 CREATE OR REPLACE FUNCTION match_wordpress_content(
@@ -133,16 +133,38 @@ ORDER BY wc.content_embedding <=> query_embedding
 LIMIT match_count;
 $$;
 
--- Helper to fetch taxonomy rows without a canonical match or below a target score
-CREATE OR REPLACE FUNCTION get_unmatched_taxonomy(min_similarity float)
-RETURNS SETOF taxonomy_pages
+-- Vector similarity search for taxonomy pages
+CREATE OR REPLACE FUNCTION match_taxonomy_pages(
+    query_embedding vector(1536),
+    match_threshold float DEFAULT 0.6,
+    match_count integer DEFAULT 10
+)
+RETURNS TABLE (
+    id uuid,
+    destination_url text,
+    content_type text,
+    semantic_summary text,
+    key_topics jsonb,
+    similarity float
+)
 LANGUAGE SQL STABLE
 AS $$
-SELECT tp.*
+SELECT
+    tp.id,
+    tp.destination_url,
+    tp.content_type,
+    tp.semantic_summary,
+    tp.key_topics,
+    1 - (tp.taxonomy_embedding <=> query_embedding) as similarity
 FROM taxonomy_pages tp
-LEFT JOIN matching_results mr ON mr.taxonomy_id = tp.id AND mr.is_current IS TRUE
-WHERE mr.taxonomy_id IS NULL OR COALESCE(mr.similarity_score, 0.0) < min_similarity;
+WHERE tp.taxonomy_embedding IS NOT NULL
+  AND 1 - (tp.taxonomy_embedding <=> query_embedding) >= match_threshold
+ORDER BY tp.taxonomy_embedding <=> query_embedding
+LIMIT match_count;
 $$;
+
+-- Helper to fetch taxonomy rows without a canonical match or below a target score
+-- helper no longer needed; content-first workflow filters unmatched content directly
 
 -- Workflow run metadata for resumable processing
 CREATE TABLE IF NOT EXISTS workflow_runs (
