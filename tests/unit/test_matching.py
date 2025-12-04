@@ -148,6 +148,41 @@ class TestMatchingService:
         assert taxonomy.id == sample_taxonomy_page.id
         assert 0.0 <= score <= 1.0
 
+    def test_priority_boost_ignores_separator_tokens(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        taxonomy = TaxonomyPage(
+            id=uuid4(),
+            uid="TAX-URL",
+            destination_url="https://taxonomy.com/foo/bar",
+            english_page_name="Foo",
+            local_page_name="Bar",
+            content_type="Guide",
+            primary_audiance="Veterinarians",
+            secondary_audiance=None,
+            species=[],
+            semantic_summary="Summary",
+            key_topics=["foo"],
+        )
+        content = WordPressContent(
+            id=uuid4(),
+            url="https://content.com/baz/qux",
+            title="Content",
+            content="Body",
+            site_url="https://content.com",
+            metadata={"detected_audiences": [], "detected_species": []},
+            detected_audiences=[],
+            detected_species=[],
+        )
+
+        bonus = service._priority_boost(taxonomy, content)
+
+        # Base bonus of 0.01 for primary audience, no extra overlap boost.
+        assert bonus == pytest.approx(0.01)
+
     def test_match_taxonomy_to_content_filters_subset(
         self,
         mock_settings: Settings,

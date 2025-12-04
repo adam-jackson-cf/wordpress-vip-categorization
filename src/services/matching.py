@@ -1,6 +1,7 @@
 """Semantic matching service for taxonomy to content mapping."""
 
 import logging
+import re
 import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -54,6 +55,10 @@ class MatchingService:
             return "/"
         humanized = [segment.replace("-", " ").replace("_", " ") for segment in segments]
         return " > ".join(humanized)
+
+    def _path_tokens(self, url_value: str) -> set[str]:
+        normalized = self._tokenize_url_path(url_value).lower()
+        return {token for token in re.split(r"[^a-z0-9]+", normalized) if token}
 
     @staticmethod
     def _normalize_token(value: str | None) -> str:
@@ -140,11 +145,11 @@ class MatchingService:
                 )
 
             # URL token overlap bonus
-            tax_tokens = set(self._tokenize_url_path(str(taxonomy.destination_url)).lower().split())
-            content_tokens = set(self._tokenize_url_path(str(content.url)).lower().split())
+            tax_tokens = self._path_tokens(str(taxonomy.destination_url))
+            content_tokens = self._path_tokens(str(content.url))
 
             if tax_tokens and content_tokens:
-                overlap_ratio = len(tax_tokens & content_tokens) / max(len(tax_tokens), 1)
+                overlap_ratio = len(tax_tokens & content_tokens) / len(tax_tokens)
                 if overlap_ratio > 0.3:  # Significant overlap threshold
                     bonus += 0.03
                     logger.debug(
