@@ -11,7 +11,7 @@
 3. **Corporate SSL** – CLI/tests need the corp bundle for outbound HTTPS (WordPress REST + OpenAI). Added `ENABLE_CORP_CA` + `CORP_CA_BUNDLE_PATH` plus wrapper script `scripts/corp_ca_exec.sh`; Makefile automatically wraps black/mypy/pytest when flag = 1.
 4. **Preflight** – new `scripts/preflight_checks.sh` runs through all site/token combos and OpenAI `v1/models`. Observed results (12 sites / 4 tokens) to know which tokens work where. Currently: all but `bravovets.es` (301) and `vacunalavaca.com` (406) return HTTP 200.
 5. **Real ingestion** – even with tokens, runtime still hits SSL errors because the runtime command wasn’t wrapped in the corp CA helper. The new script or exporting env vars fixes that. (macOS trust store still needs corp CA import; helper remains required for CLI runs.)
-6. **DSPy dataset builder** – `scripts/build_spain_dspy_dataset.py` now fetches pages from `Spain_Pages_to_redirect.csv`, scores against taxonomy topics, and emits the dataset with Spain columns.
+6. **DSPy dataset builder** – `scripts/build_dspy_dataset.py` fetches sample pages, scores them against taxonomy topics, and emits the dataset.
 7. **OpenAI connectivity** – `LLM_BASE_URL` corrected to `https://api.openai.com`, `LLM_MODEL=gpt-4o-mini`. Preflight confirmed HTTP 200 and model presence.
 8. **Sample-mode defaults** – `.env` now points to `data/Spain_Sample.csv` and limits `WORDPRESS_VIP_SITE_TOKENS` to three Spain sites so we can iterate quickly. The full list remains commented just above for future restores.
 9. **Multilingual coverage via embeddings** – We now rely solely on `text-embedding-3-small` for cross-language handling; the old translation toggle/service has been removed so there’s a single, deterministic embedding path.
@@ -26,7 +26,7 @@
 | CLI ingestion/full-run workflow | `src/cli.py` |
 | WordPress connector (token via query param) | `src/connectors/wordpress_vip.py` + tests |
 | Ingestion service (site tokens) | `src/services/ingestion.py`, `tests/unit/test_ingestion.py`, `tests/unit/test_full_pipeline_mock.py` |
-| DSPy dataset tooling | `scripts/build_spain_dspy_dataset.py`, `scripts/generate_dspy_dataset.py`, `data/dspy_training_dataset.csv` |
+| DSPy dataset tooling | `scripts/build_dspy_dataset.py`, `scripts/generate_dspy_dataset.py`, `data/dspy_training_dataset.csv` |
 | Docs | `README.md`, `docs/SETUP.md`, `docs/DSPY_*` |
 | Corp CA wrapper | `scripts/corp_ca_exec.sh`, `Makefile`, `.env(.example)`, `scripts/preflight_checks.sh` |
 
@@ -72,7 +72,7 @@ tmux new-session -d -s spain_sample_run \
      --output results/sample_sitecheck.csv > logs/full_run_sample_20251202.log 2>&1"
 
 # 7. DSPy dataset builder / optimizer (when improving prompts)
-python scripts/build_spain_dspy_dataset.py
+python scripts/build_dspy_dataset.py --taxonomy-file data/Spain_New_4Dec.csv --pages-file data/Spain_Pages_to_redirect.csv
 scripts/corp_ca_exec.sh uv run python -m src.cli optimize-dataset \
   --dataset data/dspy_training_dataset.csv --optimizer gepa --budget medium
 ```
