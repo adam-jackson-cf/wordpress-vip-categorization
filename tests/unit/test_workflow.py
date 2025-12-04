@@ -33,7 +33,6 @@ def mock_settings() -> Settings:
     settings.llm_batch_artifact_dir = Path("data/batch")
     settings.llm_batch_chunk_size = 1000
     settings.llm_batch_completion_window = "24h"
-    settings.enable_translation = False
     return settings
 
 

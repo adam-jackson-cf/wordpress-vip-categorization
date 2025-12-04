@@ -11,7 +11,7 @@ from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.embeddings import EmbeddingService
-from src.services.language import TranslationService, detect_language_code
+from src.services.language import detect_language_code
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,6 @@ class MatchingService:
         settings: Settings,
         db_client: SupabaseClient,
         embedding_service: EmbeddingService | None = None,
-        translation_service: TranslationService | None = None,
     ) -> None:
         """Initialize matching service.
 
@@ -39,12 +38,6 @@ class MatchingService:
         self.settings = settings
         self.db = db_client
         self.embedding_service = embedding_service or EmbeddingService(settings)
-        if translation_service is not None:
-            self.translation_service = translation_service
-        elif settings.enable_translation:
-            self.translation_service = TranslationService(settings)
-        else:
-            self.translation_service = None
         self.embedding_model = settings.semantic_embedding_model
         logger.info(
             "Initialized matching service with model %s via %s",
@@ -60,33 +53,6 @@ class MatchingService:
             return "/"
         humanized = [segment.replace("-", " ").replace("_", " ") for segment in segments]
         return " > ".join(humanized)
-
-    def _bilingual_text(self, text: str, primary: str, secondary: str) -> tuple[str, str]:
-        snapshot = (text or "").strip()
-        if not snapshot:
-            return "", ""
-
-        detected = detect_language_code(snapshot)
-        translation_enabled = self.settings.enable_translation and self.translation_service is not None
-
-        primary_text = snapshot
-        secondary_text = snapshot
-
-        if translation_enabled:
-            if not detected.startswith(primary):
-                primary_text = self.translation_service.translate(  # type: ignore[union-attr]
-                    snapshot,
-                    target_language=primary,
-                    source_language=detected if detected != "unknown" else None,
-                )
-            if not detected.startswith(secondary):
-                secondary_text = self.translation_service.translate(  # type: ignore[union-attr]
-                    snapshot,
-                    target_language=secondary,
-                    source_language=detected if detected != "unknown" else None,
-                )
-
-        return primary_text, secondary_text
 
     def _describe_audiences(self, taxonomy: TaxonomyPage) -> str:
         audiences: list[str] = []
@@ -113,28 +79,7 @@ class MatchingService:
         audiences = ", ".join(
             filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
         )
-        translation_enabled = self.settings.enable_translation and self.translation_service is not None
-
         key_topics_sentence = ", ".join(taxonomy.key_topics)
-        summary_lines: list[str] = []
-        topic_lines: list[str] = []
-
-        if translation_enabled:
-            summary_en, summary_es = self._bilingual_text(taxonomy.semantic_summary, "en", "es")
-            if summary_en:
-                summary_lines.append(f"Summary (EN): {summary_en}")
-            if summary_es:
-                summary_lines.append(f"Resumen (ES): {summary_es}")
-            if key_topics_sentence:
-                topics_en, topics_es = self._bilingual_text(key_topics_sentence, "en", "es")
-                if topics_en:
-                    topic_lines.append(f"Key Topics (EN): {topics_en}")
-                if topics_es:
-                    topic_lines.append(f"Temas Clave (ES): {topics_es}")
-        else:
-            summary_lines.append(f"Summary: {taxonomy.semantic_summary}")
-            if key_topics_sentence:
-                topic_lines.append(f"Key Topics: {key_topics_sentence}")
 
         parts = [
             f"UID: {taxonomy.uid}" if taxonomy.uid else None,
@@ -143,8 +88,8 @@ class MatchingService:
             f"Audiences: {audiences}" if audiences else None,
             f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
             f"Spanish Name: {taxonomy.es_page_name}" if taxonomy.es_page_name else None,
-            *summary_lines,
-            *topic_lines,
+            f"Summary: {taxonomy.semantic_summary}",
+            f"Key Topics: {key_topics_sentence}" if key_topics_sentence else None,
         ]
 
         return "\n".join(part for part in parts if part)
@@ -164,17 +109,7 @@ class MatchingService:
         tags = [str(value) for value in (metadata.get("tags") or [])]
         excerpt = (metadata.get("excerpt") or "").strip()
         primary_excerpt = excerpt or content.content[:400]
-        translation_enabled = self.settings.enable_translation and self.translation_service is not None
-        excerpt_lines: list[str] = []
-        if primary_excerpt:
-            if translation_enabled:
-                excerpt_es, excerpt_en = self._bilingual_text(primary_excerpt, "es", "en")
-                if excerpt_es:
-                    excerpt_lines.append(f"Excerpt (ES): {excerpt_es}")
-                if excerpt_en:
-                    excerpt_lines.append(f"Excerpt (EN): {excerpt_en}")
-            else:
-                excerpt_lines.append(f"Excerpt: {primary_excerpt}")
+        excerpt_line = f"Excerpt: {primary_excerpt}" if primary_excerpt else None
 
         preview = content.content[:2000]
         language_code = detect_language_code(preview or content.title)
@@ -185,7 +120,7 @@ class MatchingService:
             f"Site: {content.site_url}",
             f"URL Path: {self._tokenize_url_path(str(content.url))}",
             f"Detected Language: {language_code}",
-            *excerpt_lines,
+            excerpt_line,
             f"Categories: {', '.join(categories)}" if categories else None,
             f"Tags: {', '.join(tags)}" if tags else None,
             (

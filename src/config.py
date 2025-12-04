@@ -131,14 +131,6 @@ class Settings(BaseSettings):
     llm_match_temperature: float = Field(
         default=0.3, description="Temperature for LLM matching/rubric evaluation"
     )
-    enable_translation: bool = Field(
-        default=False,
-        description=(
-            "Whether to translate taxonomy/content summaries into multiple languages "
-            "when building embeddings. Disabled by default to rely on cross-lingual "
-            "embedding robustness."
-        ),
-    )
     enable_semantic_matching: bool = Field(
         default=True, description="Enable semantic matching stage"
     )

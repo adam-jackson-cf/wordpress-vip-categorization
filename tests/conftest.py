@@ -170,23 +170,12 @@ def mock_embedding_service(mocker, mock_openai_client: Mock) -> Mock:  # type: i
     return service
 
 
-@pytest.fixture
-def mock_translation_service(mocker) -> Mock:  # type: ignore[misc]
-    """Stub translation service that echoes source text."""
-
-    service = mocker.Mock()
-    service.translate.side_effect = lambda text, target_language, source_language=None: text
-    return service
-
-
 @pytest.fixture(autouse=True)
 def patch_embedding_services(
     mocker,
     mock_embedding_service: Mock,  # type: ignore[misc]
-    mock_translation_service: Mock,  # type: ignore[misc]
 ) -> None:
-    """Patch embedding/translation dependencies to avoid network calls during tests."""
+    """Patch embedding dependencies to avoid network calls during tests."""
 
     mocker.patch("src.services.matching.EmbeddingService", return_value=mock_embedding_service)
     mocker.patch("src.services.ingestion.EmbeddingService", return_value=mock_embedding_service)
-    mocker.patch("src.services.matching.TranslationService", return_value=mock_translation_service)
