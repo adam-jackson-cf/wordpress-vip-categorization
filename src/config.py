@@ -138,6 +138,12 @@ class Settings(BaseSettings):
         default=True, description="Enable LLM categorization fallback stage"
     )
 
+    url_checker_category_ids: tuple[int, ...] = Field(
+        default=(),
+        validation_alias=AliasChoices("URL_CHECKER_CATEGORY_IDS"),
+        description="Comma-separated category IDs that should run Stage-0 URL checks",
+    )
+
     # DSPy Configuration
     dspy_optimization_metric: str = Field(
         default="accuracy", description="DSPy optimization metric"
@@ -209,6 +215,16 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_openai_base_urls(cls, value: str) -> str:
         return cls._normalize_openai_base_url(value)
+
+    @field_validator("url_checker_category_ids", mode="before")
+    @classmethod
+    def parse_category_ids(cls, value: Any) -> tuple[int, ...]:
+        if value in (None, ""):
+            return ()
+        if isinstance(value, (list, tuple)):
+            return tuple(int(v) for v in value if str(v).strip())
+        tokens = [token.strip() for token in str(value).split(",") if token.strip()]
+        return tuple(int(token) for token in tokens)
 
     def get_wordpress_site_tokens(self) -> list[tuple[str, str]]:
         """Return list of (site_url, token) tuples."""

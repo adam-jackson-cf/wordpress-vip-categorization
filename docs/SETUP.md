@@ -91,6 +91,9 @@ CORP_CA_BUNDLE_PATH=/path/to/corp-ca-bundle.pem
 # WordPress sites to ingest (comma-separated `site|token`)
 WORDPRESS_VIP_SITE_TOKENS="https://wordpress.org/news|example-token"
 
+# Optional Stage-0 URL checker (comma-separated WordPress category IDs)
+URL_CHECKER_CATEGORY_IDS=274
+
 ### Corporate CA helper
 
 When `ENABLE_CORP_CA=1`, the Makefile automatically wraps Black/Mypy/Pytest through `scripts/corp_ca_exec.sh` so every tool honours `CORP_CA_BUNDLE_PATH`. Use the same helper for manual commands that need network access:
@@ -135,7 +138,7 @@ You should see:
 Create or update `data/Spain_New.csv`:
 ```csv
 UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source
-TAX-001,https://example.com/wordpress,WordPress,WordPress,News,All,Media,WordPress news and updates,wordpress, cms, blogging
+TAX-001,https://example.com/wordpress,WordPress,WordPress,News,All,Media,WordPress news and updates,"wordpress, cms, blogging",https://example.com/wordpress
 ```
 
 Then load it:

@@ -34,6 +34,7 @@ def mock_settings() -> Settings:
             "LLM_MODEL": "gpt-4o-mini",
             "WORDPRESS_VIP_SITE_TOKENS": "https://test1.com|token1,https://test2.com|token2",
             "TAXONOMY_FILE_PATH": "./data/Spain_New.csv",
+            "URL_CHECKER_CATEGORY_IDS": "274",
         }
     )
     return Settings()
@@ -67,6 +68,7 @@ def sample_taxonomy_page() -> TaxonomyPage:
         id=uuid4(),
         uid="TAX-001",
         destination_url="https://taxonomy.com/porcino/bioseguridad",
+        reference_source="https://example.com/porcine-biosecurity",
         english_page_name="Swine Biosecurity",
         local_page_name="Bioseguridad en Porcino",
         content_type="Veterinary Guidance",

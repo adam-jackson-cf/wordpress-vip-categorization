@@ -16,6 +16,8 @@ def _utcnow() -> datetime:
 class MatchStage(str, Enum):
     """Stages in the matching workflow."""
 
+    URL_MATCHING = "url_matching"
+    URL_CHECKER_EXCLUDED = "url_checker_excluded"
     SEMANTIC_MATCHED = "semantic_matched"
     NEEDS_LLM_REVIEW = "needs_llm_review"
     LLM_CATEGORIZED = "llm_categorized"
@@ -88,6 +90,10 @@ class TaxonomyPage(BaseModel):
     content_type: str = Field(..., description="Content type/category for this taxonomy page")
     primary_audiance: str | None = Field(default=None, description="Primary audience")
     secondary_audiance: str | None = Field(default=None, description="Secondary audience")
+    reference_source: str | None = Field(
+        default=None,
+        description="Canonical WordPress URL/path used for stage-0 matching",
+    )
     species: list[str] = Field(default_factory=list, description="Target species list")
     semantic_summary: str = Field(..., description="Semantic summary of the page content")
     key_topics: list[str] = Field(default_factory=list, description="Key topics (keywords)")

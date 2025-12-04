@@ -185,7 +185,11 @@ class DSPyOptimizer:
             m
             for m in all_matchings
             if m.content_id is not None
-            and m.match_stage in (MatchStage.LLM_CATEGORIZED, MatchStage.SEMANTIC_MATCHED)
+            and m.match_stage in (
+                MatchStage.URL_MATCHING,
+                MatchStage.SEMANTIC_MATCHED,
+                MatchStage.LLM_CATEGORIZED,
+            )
         ]
 
         if not successful_matchings:

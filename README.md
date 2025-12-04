@@ -4,9 +4,10 @@ AI-powered workflow that ingests content from WordPress VIP, stores it in Supaba
 
 ## System Workflow
 
-1. **Semantic matching (default ≥0.70)** – Embed content + taxonomy (OpenAI `text-embedding-3-small` by default), compute cosine similarity, and persist the top taxonomy candidate per content row.
-2. **LLM batch fallback (rubric-gated)** – For any content whose semantic score falls below the floor, enqueue the items via the OpenAI Batch API (chat completions) so the rubric-judged fallback runs asynchronously. The pipeline automatically waits for completion during `match` runs, but you can also submit/poll/apply batches manually. The Batch prompt is sourced from the latest DSPy/GEPA-optimized matcher (instructions + demonstrations), so rerunning the optimizer and promoting the artifact immediately updates production prompts.
-3. **Human review** – Export content rows that still lack an accepted taxonomy so analysts can triage the backlog.
+1. **URL reference matching (stage 0)** – Before embeddings run, content whose metadata categories intersect `URL_CHECKER_CATEGORY_IDS` (e.g., `274` for Spain “Noticias”) must first match a taxonomy `reference_source`. Exact path hits are auto-accepted (`match_stage=url_matching`, score `1.0`) and skip downstream stages; misses are recorded as `match_stage=url_checker_excluded` / `failed_at_stage=url_check_excluded`, preventing those press releases from entering the semantic/LLM queues until a taxonomy reference is added.
+2. **Semantic matching (default ≥0.70)** – Embed content + taxonomy (OpenAI `text-embedding-3-small` by default), compute cosine similarity, and persist the top taxonomy candidate per content row.
+3. **LLM batch fallback (rubric-gated)** – For any content whose semantic score falls below the floor, enqueue the items via the OpenAI Batch API (chat completions) so the rubric-judged fallback runs asynchronously. The pipeline automatically waits for completion during `match` runs, but you can also submit/poll/apply batches manually. The Batch prompt is sourced from the latest DSPy/GEPA-optimized matcher (instructions + demonstrations), so rerunning the optimizer and promoting the artifact immediately updates production prompts.
+4. **Human review** – Export content rows that still lack an accepted taxonomy so analysts can triage the backlog.
 
 Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
 
@@ -45,6 +46,7 @@ Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, virtualenv management, 
 - Semantic embedding provider: `SEMANTIC_API_KEY`, `SEMANTIC_BASE_URL`, `SEMANTIC_EMBEDDING_MODEL`.
 - LLM categorization provider: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_BATCH_TIMEOUT`, `LLM_BATCH_COMPLETION_WINDOW`, `LLM_BATCH_CHUNK_SIZE`, `LLM_BATCH_ARTIFACT_DIR`.
 - Workflow tuning: `SIMILARITY_THRESHOLD`, `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`.
+- URL gate tuning: `URL_CHECKER_CATEGORY_IDS` (comma-separated WordPress category IDs that must pass Stage‑0 reference matching; e.g., `274` for Spain press releases).
 - LLM rubric gate: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, `LLM_CONSENSUS_VOTES`, `LLM_MATCH_TEMPERATURE` (0–1).
 - Data inputs: `TAXONOMY_FILE_PATH` (default `./data/Spain_New.csv`).
 
@@ -122,7 +124,7 @@ Semantic vectors are constructed with **priority field weighting** to emphasize 
 - **URL slug tokens** (2×): Extracted path segments mirroring taxonomy URL logic
 - **Page title** (2×): Concentrated semantic signal
 - **Detected audiences/species** (1×): Externalized detector outputs
-- **Heading hierarchy** (1×): H1-H3 structural outline
+- **Supporting metadata** (1×): Excerpt, categories, tags, detected language, and published date
 - **Content preview** (1× at end): First 1000 chars, deprioritized like taxonomy summaries
 
 **Symmetric design rationale**: Both taxonomy and content embeddings place URL/name/topic fields first with duplication, ensuring cosine similarity rewards structural alignment (URL overlap, topic match) before semantic prose.

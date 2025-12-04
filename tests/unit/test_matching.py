@@ -95,6 +95,72 @@ class TestMatchingService:
         assert "Content Preview:" in text
         assert "Excerpt:" in text
 
+    def test_url_matching_short_circuits_semantic_stage(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_wordpress_content.metadata["categories"] = [274]
+
+        results = service.match_all_taxonomy(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+            store_results=True,
+        )
+
+        assert sample_wordpress_content.id in results
+        match = results[sample_wordpress_content.id]
+        assert match.match_stage == MatchStage.URL_MATCHING
+        assert match.semantic_similarity_score == pytest.approx(1.0)
+        assert match.taxonomy_id == sample_taxonomy_page.id
+        mock_supabase_client.match_taxonomy_by_embedding.assert_not_called()
+
+    def test_url_checker_excludes_when_no_reference_hit(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        sample_wordpress_content.metadata["categories"] = [274]
+        sample_taxonomy_page.reference_source = "https://taxonomy.com/nope"
+
+        service = MatchingService(mock_settings, mock_supabase_client)
+
+        results = service.match_all_taxonomy(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+            store_results=True,
+        )
+
+        match = results[sample_wordpress_content.id]
+        assert match.match_stage == MatchStage.URL_CHECKER_EXCLUDED
+        assert match.taxonomy_id is None
+        assert match.failed_at_stage == "url_check_excluded"
+
+    def test_url_checker_ignores_other_categories(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        sample_wordpress_content.metadata["categories"] = [123]
+        service = MatchingService(mock_settings, mock_supabase_client)
+        service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.91))
+
+        results = service.match_all_taxonomy(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+        )
+
+        match = results[sample_wordpress_content.id]
+        assert match.match_stage == MatchStage.SEMANTIC_MATCHED
+        assert match.semantic_similarity_score == pytest.approx(0.91)
+
     def test_compute_similarity(self, mock_settings: Settings, mock_supabase_client: Mock) -> None:
         """Test similarity computation."""
         service = MatchingService(mock_settings, mock_supabase_client)
@@ -305,6 +371,8 @@ class TestMatchingService:
     ) -> None:
         """Scoped runs should not demote content tied to other taxonomy rows."""
 
+        sample_taxonomy_page.reference_source = None
+
         other_taxonomy = TaxonomyPage(
             id=uuid4(),
             uid="TAX-OTHER",
@@ -456,6 +524,8 @@ class TestMatchingService:
     ) -> None:
         """match_all_taxonomy should persist results using find_best_match."""
 
+        sample_taxonomy_page.reference_source = None
+
         service = MatchingService(mock_settings, mock_supabase_client)
         service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.92))
 
@@ -486,6 +556,8 @@ class TestMatchingService:
         sample_wordpress_content: WordPressContent,
     ) -> None:
         """When no best match exists, a needs-review result should be stored."""
+
+        sample_taxonomy_page.reference_source = None
 
         service = MatchingService(mock_settings, mock_supabase_client)
         service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.5))

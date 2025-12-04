@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from src.data.supabase_client import SupabaseClient
-from src.models import ExportRow
+from src.models import ExportRow, MatchStage, MatchingResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,16 @@ class CSVExporter:
         """
         self.db = db_client
         logger.info("Initialized CSV exporter")
+
+    @staticmethod
+    def _resolve_target_url(taxonomy, match: MatchingResult | None) -> str:
+        if (
+            match
+            and match.match_stage == MatchStage.URL_MATCHING
+            and taxonomy.reference_source
+        ):
+            return taxonomy.reference_source
+        return str(taxonomy.destination_url)
 
     def prepare_export_rows(self) -> list[ExportRow]:
         """Prepare rows for export.
@@ -45,10 +55,10 @@ class CSVExporter:
             failed_at_stage: str | None = None
 
             if match and match.taxonomy_id:
-                # Get matched taxonomy
+                # Accepted match (passed threshold/rubric)
                 taxonomy = self.db.get_taxonomy_by_id(match.taxonomy_id)
                 if taxonomy:
-                    target_url = str(taxonomy.destination_url)
+                    target_url = self._resolve_target_url(taxonomy, match)
                     category = taxonomy.content_type
 
                 similarity_score = match.semantic_similarity_score
@@ -56,8 +66,18 @@ class CSVExporter:
                 # Get match stage info
                 match_stage = match.match_stage.value if match.match_stage else None
                 failed_at_stage = match.failed_at_stage
+            elif match and match.semantic_taxonomy_id:
+                # Below-threshold or rejected match - show best semantic candidate
+                taxonomy = self.db.get_taxonomy_by_id(match.semantic_taxonomy_id)
+                if taxonomy:
+                    target_url = self._resolve_target_url(taxonomy, match)
+                    category = taxonomy.content_type
+
+                similarity_score = match.semantic_similarity_score
+                match_stage = match.match_stage.value if match.match_stage else None
+                failed_at_stage = match.failed_at_stage
             elif match:
-                # Match exists but no taxonomy_id (unmatched)
+                # Match exists but no candidates at all
                 similarity_score = match.semantic_similarity_score
                 match_stage = match.match_stage.value if match.match_stage else None
                 failed_at_stage = match.failed_at_stage

@@ -66,7 +66,11 @@ class Evaluator:
                 "avg_similarity": 0.0,
             }
 
-        accepted_stages = {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}
+        accepted_stages = {
+            MatchStage.URL_MATCHING,
+            MatchStage.SEMANTIC_MATCHED,
+            MatchStage.LLM_CATEGORIZED,
+        }
         matched_results = [r for r in results if r.match_stage in accepted_stages]
         similarities = [r.semantic_similarity_score for r in matched_results]
 

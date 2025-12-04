@@ -251,6 +251,8 @@ class IngestionService:
 
                     species = self._parse_species_field(row.get("Species"))
 
+                    reference_source = (row.get("Reference_Source") or "").strip() or None
+
                     taxonomy = TaxonomyPage(
                         uid=row.get("UID") or None,
                         destination_url=cast(HttpUrl, destination_raw),
@@ -259,6 +261,7 @@ class IngestionService:
                         content_type=row["Content_Type"],
                         primary_audiance=row.get("Primary_Audiance") or None,
                         secondary_audiance=row.get("Secondary_Audiance") or None,
+                        reference_source=reference_source,
                         species=species,
                         semantic_summary=row["Semantic_Summary"],
                         key_topics=topics,

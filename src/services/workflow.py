@@ -151,15 +151,27 @@ class WorkflowService:
                     min_threshold=self.settings.similarity_threshold,
                 )
 
+            accepted_semantic_stages = {MatchStage.URL_MATCHING, MatchStage.SEMANTIC_MATCHED}
+            excluded_ids = {
+                content_id
+                for content_id, result in match_results.items()
+                if result.match_stage == MatchStage.URL_CHECKER_EXCLUDED
+            }
             matched_content_ids = {
                 content_id
                 for content_id, result in match_results.items()
-                if result.match_stage == MatchStage.SEMANTIC_MATCHED
+                if result.match_stage in accepted_semantic_stages
             }
-            processed_ids = set(match_results.keys())
+            processed_ids = {
+                content_id
+                for content_id, result in match_results.items()
+                if content_id not in excluded_ids
+            }
             unmatched_content = [
                 c for c in content_items if c.id in processed_ids and c.id not in matched_content_ids
             ]
+
+            stats["skipped"] += len(excluded_ids)
 
             stats["semantic_matched"] = len(matched_content_ids)
             logger.info(

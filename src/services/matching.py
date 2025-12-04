@@ -56,6 +56,67 @@ class MatchingService:
         humanized = [segment.replace("-", " ").replace("_", " ") for segment in segments]
         return " > ".join(humanized)
 
+    @staticmethod
+    def _normalize_path_value(url_value: str | None) -> str | None:
+        if not url_value:
+            return None
+        value = url_value.strip()
+        if not value:
+            return None
+        parsed = urlparse(value)
+        path = parsed.path
+        if parsed.scheme or parsed.netloc:
+            path = parsed.path
+        elif value.startswith("/"):
+            path = value
+        else:
+            path = f"/{value}"
+        segments = [segment for segment in path.split("/") if segment]
+        normalized = "/" + "/".join(segments) if segments else "/"
+        return normalized.lower()
+
+    def _build_reference_lookup(
+        self, taxonomy_pages: list[TaxonomyPage] | None
+    ) -> dict[str, TaxonomyPage]:
+        lookup: dict[str, TaxonomyPage] = {}
+        if not taxonomy_pages:
+            return lookup
+        for taxonomy in taxonomy_pages:
+            normalized = self._normalize_path_value(taxonomy.reference_source)
+            if not normalized:
+                continue
+            lookup.setdefault(normalized, taxonomy)
+        return lookup
+
+    def _should_run_url_checker(self, content: WordPressContent) -> bool:
+        if not self.settings.url_checker_category_ids:
+            return False
+        metadata = content.metadata or {}
+        categories = metadata.get("categories") or []
+        if not categories:
+            return False
+        normalized: set[int] = set()
+        for entry in categories:
+            try:
+                normalized.add(int(entry))
+            except (TypeError, ValueError):
+                continue
+        if not normalized:
+            return False
+        return bool(normalized & set(self.settings.url_checker_category_ids))
+
+    def _match_reference_source(
+        self,
+        content: WordPressContent,
+        reference_lookup: dict[str, TaxonomyPage],
+    ) -> TaxonomyPage | None:
+        if not reference_lookup:
+            return None
+        normalized = self._normalize_path_value(str(content.url))
+        if not normalized:
+            return None
+        return reference_lookup.get(normalized)
+
     def _path_tokens(self, url_value: str) -> set[str]:
         normalized = self._tokenize_url_path(url_value).lower()
         return {token for token in re.split(r"[^a-z0-9]+", normalized) if token}
@@ -628,7 +689,11 @@ class MatchingService:
 
         taxonomy_pages = self.db.get_all_taxonomy()
         matched_rows = self.db.get_all_matchings()
-        accepted_stages = {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}
+        accepted_stages = {
+            MatchStage.URL_MATCHING,
+            MatchStage.SEMANTIC_MATCHED,
+            MatchStage.LLM_CATEGORIZED,
+        }
 
         matched_taxonomy_ids = {
             row.taxonomy_id
@@ -636,7 +701,7 @@ class MatchingService:
             if row.taxonomy_id is not None
             and row.match_stage in accepted_stages
             and (
-                row.match_stage != MatchStage.SEMANTIC_MATCHED
+                row.match_stage not in {MatchStage.SEMANTIC_MATCHED}
                 or row.semantic_similarity_score >= min_threshold
             )
         }
@@ -693,6 +758,17 @@ class MatchingService:
             len(content_items),
         )
 
+        reference_lookup: dict[str, TaxonomyPage] = {}
+        if self.settings.url_checker_category_ids:
+            reference_rows = taxonomy_pages
+            if reference_rows is None:
+                try:
+                    reference_rows = self.db.get_all_taxonomy()
+                except Exception as exc:  # pragma: no cover - monitoring only
+                    logger.warning("Failed to load taxonomy for URL matching stage: %s", exc)
+                    reference_rows = None
+            reference_lookup = self._build_reference_lookup(reference_rows)
+
         results: dict[UUID, MatchingResult] = {}
         pending: list[MatchingResult] = []
 
@@ -706,7 +782,51 @@ class MatchingService:
             pending.clear()
 
         for content in content_items:
-            # Ensure content embedding exists
+            should_run_url_checker = self._should_run_url_checker(content)
+            if should_run_url_checker:
+                direct_taxonomy = self._match_reference_source(content, reference_lookup)
+                if direct_taxonomy:
+                    matching_result = MatchingResult(
+                        taxonomy_id=direct_taxonomy.id,
+                        content_id=content.id,
+                        semantic_taxonomy_id=direct_taxonomy.id,
+                        semantic_similarity_score=1.0,
+                        match_stage=MatchStage.URL_MATCHING,
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    logger.info(
+                        "URL match ✔ %s → %s (reference_source)",
+                        content.url,
+                        direct_taxonomy.reference_source or direct_taxonomy.destination_url,
+                    )
+                    if store_results:
+                        pending.append(matching_result)
+                        if len(pending) >= self.settings.matching_batch_size:
+                            flush_pending()
+                    results[content.id] = matching_result
+                    continue
+                matching_result = MatchingResult(
+                    taxonomy_id=None,
+                    content_id=content.id,
+                    semantic_taxonomy_id=None,
+                    semantic_similarity_score=0.0,
+                    match_stage=MatchStage.URL_CHECKER_EXCLUDED,
+                    failed_at_stage="url_check_excluded",
+                    updated_at=datetime.now(timezone.utc),
+                )
+                logger.info(
+                    "URL check excluded %s (categories=%s)",
+                    content.url,
+                    content.metadata.get("categories"),
+                )
+                if store_results:
+                    pending.append(matching_result)
+                    if len(pending) >= self.settings.matching_batch_size:
+                        flush_pending()
+                results[content.id] = matching_result
+                continue
+
+            # Ensure content embedding exists for semantic stage
             self._ensure_content_embedding(content)
 
             # Find best matching taxonomy for this content
@@ -775,7 +895,9 @@ class MatchingService:
         flush_pending()
 
         matched_count = sum(
-            1 for result in results.values() if result.match_stage == MatchStage.SEMANTIC_MATCHED
+            1
+            for result in results.values()
+            if result.match_stage in {MatchStage.URL_MATCHING, MatchStage.SEMANTIC_MATCHED}
         )
         logger.info(
             "Completed semantic matching: %s/%s content items at ≥ %.2f",
