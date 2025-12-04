@@ -29,6 +29,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _setup_file_logging(command_name: str, log_file: Path | None = None) -> Path:
+    """Set up file logging for a CLI command.
+
+    Args:
+        command_name: Name of the CLI command (e.g., 'ingest', 'match').
+        log_file: Optional explicit log file path. If None, auto-generates
+                  a timestamped file in logs/ directory.
+
+    Returns:
+        Path to the log file being written.
+    """
+    if log_file is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = Path(f"logs/{command_name}_{timestamp}.log")
+
+    # Ensure logs directory exists
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Add file handler to root logger
+    file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+
+    logger.info(f"Logging to file: {log_file}")
+    return log_file
+
 _sql_retryer = Retrying(
     retry=retry_if_exception_type(httpx.HTTPError),
     stop=stop_after_attempt(5),
@@ -155,6 +187,8 @@ def ingest(
     resume: bool,
 ) -> None:
     """Ingest content from WordPress sites."""
+    _setup_file_logging("ingest")
+
     settings = get_settings()
     db = SupabaseClient(settings)
     ingestion_service = IngestionService(settings, db)
@@ -186,6 +220,8 @@ def ingest(
 )
 def load_taxonomy(taxonomy_file: Path | None) -> None:
     """Load taxonomy from CSV file."""
+    _setup_file_logging("load_taxonomy")
+
     settings = get_settings()
     db = SupabaseClient(settings)
     ingestion_service = IngestionService(settings, db)
@@ -202,6 +238,8 @@ def load_taxonomy(taxonomy_file: Path | None) -> None:
 @click.option("--wait/--no-wait", default=True, help="Wait for batch completion")
 def categorize(batch: bool, wait: bool) -> None:
     """Categorize content using OpenAI."""
+    _setup_file_logging("categorize")
+
     settings = get_settings()
     db = SupabaseClient(settings)
     categorization_service = CategorizationService(settings, db)
@@ -244,6 +282,8 @@ def batch() -> None:
 @click.option("--wait/--no-wait", default=False, help="Wait for completion and apply results")
 def batch_submit(limit: int | None, wait: bool) -> None:
     """Submit backlog content (needs_llm_review) to the Batch API."""
+    _setup_file_logging("batch_submit")
+
     settings = get_settings()
     db = SupabaseClient(settings)
     matching_service = MatchingService(settings, db)
@@ -396,6 +436,8 @@ def match(
     Use --taxonomy-ids/--taxonomy-file to filter which taxonomy pages are candidates.
     Use stage flags to disable/force semantic or LLM passes as needed.
     """
+    _setup_file_logging("match")
+
     filters_selected = sum(bool(flag) for flag in [taxonomy_ids, taxonomy_file, only_unmatched])
     if filters_selected > 1:
         raise click.UsageError("Use at most one of --taxonomy-ids/--taxonomy-file/--only-unmatched")
@@ -560,6 +602,7 @@ def full_run(
     min_similarity: float | None,
 ) -> None:
     """Run taxonomy load → ingestion → matching → export with one command."""
+    _setup_file_logging("full_run")
 
     base_settings = get_settings()
     db = SupabaseClient(base_settings)

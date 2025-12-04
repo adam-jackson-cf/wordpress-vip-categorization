@@ -220,7 +220,9 @@ class Settings(BaseSettings):
             if "|" not in entry:
                 raise ValueError("WORDPRESS_VIP_SITE_TOKENS entries must use 'site|token' format")
             base, token = entry.split("|", 1)
-            base = base.strip().rstrip("/")
+            # Strip whitespace, backslashes (from .env line continuations), and trailing slashes
+            # Note: strip() first, then lstrip backslashes, then strip again to remove any remaining whitespace
+            base = base.strip().lstrip("\\/").strip().rstrip("/")
             token = token.strip()
             if not base or not token:
                 raise ValueError("WORDPRESS_VIP_SITE_TOKENS contains empty site or token")
