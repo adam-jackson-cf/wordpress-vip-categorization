@@ -1,6 +1,7 @@
 """Semantic matching service for taxonomy to content mapping."""
 
 import logging
+import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from uuid import UUID
@@ -54,6 +55,87 @@ class MatchingService:
         humanized = [segment.replace("-", " ").replace("_", " ") for segment in segments]
         return " > ".join(humanized)
 
+    @staticmethod
+    def _normalize_token(value: str | None) -> str:
+        if not value:
+            return ""
+        decomposed = unicodedata.normalize("NFKD", value)
+        ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
+        return ascii_only.strip().lower()
+
+    def _get_content_audiences(self, content: WordPressContent) -> set[str]:
+        values = content.detected_audiences or content.metadata.get("detected_audiences") or []
+        return {self._normalize_token(value) for value in values if value}
+
+    def _get_content_species(self, content: WordPressContent) -> set[str]:
+        values = content.detected_species or content.metadata.get("detected_species") or []
+        return {self._normalize_token(value) for value in values if value}
+
+    def _audience_compatible(self, taxonomy: TaxonomyPage, content: WordPressContent) -> bool:
+        primary = self._normalize_token(taxonomy.primary_audiance)
+        secondary = self._normalize_token(taxonomy.secondary_audiance)
+        detected = self._get_content_audiences(content)
+        if not primary and not secondary:
+            return True
+        if not detected:
+            return False
+        if primary and not secondary:
+            return primary in detected
+        valid = {token for token in (primary, secondary) if token}
+        return bool(valid & detected)
+
+    def _species_compatible(self, taxonomy: TaxonomyPage, content: WordPressContent) -> bool:
+        if not taxonomy.species:
+            return True
+        required = {
+            self._normalize_token(value)
+            for value in taxonomy.species
+            if value and value.lower() not in {"n/a", "none"}
+        }
+        if not required:
+            return True
+        detected = self._get_content_species(content)
+        return bool(detected) and required.issubset(detected)
+
+    def _passes_compliance(self, taxonomy: TaxonomyPage, content: WordPressContent) -> bool:
+        return self._audience_compatible(taxonomy, content) and self._species_compatible(
+            taxonomy, content
+        )
+
+    def _priority_boost(self, taxonomy: TaxonomyPage) -> float:
+        bonus = 0.0
+        if taxonomy.primary_audiance or taxonomy.secondary_audiance:
+            bonus += 0.01
+        if taxonomy.species:
+            bonus += 0.02
+        return bonus
+
+    def _filter_taxonomy_candidates(
+        self,
+        content: WordPressContent,
+        matches: list[tuple[TaxonomyPage, float]],
+    ) -> list[tuple[TaxonomyPage, float]]:
+        filtered: list[tuple[TaxonomyPage, float]] = []
+        for taxonomy, score in matches:
+            if not self._passes_compliance(taxonomy, content):
+                continue
+            filtered.append((taxonomy, min(1.0, score + self._priority_boost(taxonomy))))
+        filtered.sort(key=lambda item: item[1], reverse=True)
+        return filtered
+
+    def _filter_content_candidates(
+        self,
+        taxonomy: TaxonomyPage,
+        matches: list[tuple[WordPressContent, float]],
+    ) -> list[tuple[WordPressContent, float]]:
+        filtered: list[tuple[WordPressContent, float]] = []
+        for content, score in matches:
+            if not self._passes_compliance(taxonomy, content):
+                continue
+            filtered.append((content, min(1.0, score + self._priority_boost(taxonomy))))
+        filtered.sort(key=lambda item: item[1], reverse=True)
+        return filtered
+
     def _describe_audiences(self, taxonomy: TaxonomyPage) -> str:
         audiences: list[str] = []
         if taxonomy.primary_audiance:
@@ -81,7 +163,7 @@ class MatchingService:
         )
         key_topics_sentence = ", ".join(taxonomy.key_topics)
 
-        species_sentence = ", ".join(taxonomy.species)
+        species_sentence = ", ".join(taxonomy.species) if taxonomy.species else "unknown"
 
         parts = [
             f"UID: {taxonomy.uid}" if taxonomy.uid else None,
@@ -90,7 +172,7 @@ class MatchingService:
             f"Audiences: {audiences}" if audiences else None,
             f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
             f"Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
-            f"Species: {species_sentence}" if species_sentence else None,
+            f"Species: {species_sentence}",
             f"Summary: {taxonomy.semantic_summary}",
             f"Key Topics: {key_topics_sentence}" if key_topics_sentence else None,
         ]
@@ -117,6 +199,9 @@ class MatchingService:
         preview = content.content[:2000]
         language_code = detect_language_code(preview or content.title)
 
+        detected_audiences = ", ".join(sorted(self._get_content_audiences(content))) or "unknown"
+        detected_species = ", ".join(sorted(self._get_content_species(content))) or "unknown"
+
         parts = [
             f"Title: {content.title}",
             f"Slug: {slug}" if slug else None,
@@ -124,6 +209,8 @@ class MatchingService:
             f"URL Path: {self._tokenize_url_path(str(content.url))}",
             f"Detected Language: {language_code}",
             excerpt_line,
+            f"Detected Audiences: {detected_audiences}",
+            f"Detected Species: {detected_species}",
             f"Categories: {', '.join(categories)}" if categories else None,
             f"Tags: {', '.join(tags)}" if tags else None,
             (
@@ -239,7 +326,7 @@ class MatchingService:
         allowed_ids = set(taxonomy_pool.keys()) if taxonomy_pool else None
 
         try:
-            matches = self.db.match_taxonomy_by_embedding(
+            raw_matches = self.db.match_taxonomy_by_embedding(
                 content_embedding,
                 0.0,
                 limit,
@@ -250,11 +337,24 @@ class MatchingService:
                 content.id,
                 exc,
             )
-            matches = self._local_similarity_search_taxonomy(
+            raw_matches = self._local_similarity_search_taxonomy(
                 content,
                 content_embedding,
                 limit,
                 taxonomy_pool,
+            )
+
+        matches = self._filter_taxonomy_candidates(content, raw_matches)
+
+        if not matches:
+            matches = self._filter_taxonomy_candidates(
+                content,
+                self._local_similarity_search_taxonomy(
+                    content,
+                    content_embedding,
+                    limit,
+                    taxonomy_pool,
+                ),
             )
 
         if allowed_ids is not None:
@@ -262,11 +362,14 @@ class MatchingService:
             if filtered:
                 matches = filtered
             else:
-                matches = self._local_similarity_search_taxonomy(
+                matches = self._filter_taxonomy_candidates(
                     content,
-                    content_embedding,
-                    limit,
-                    taxonomy_pool,
+                    self._local_similarity_search_taxonomy(
+                        content,
+                        content_embedding,
+                        limit,
+                        taxonomy_pool,
+                    ),
                 )
 
         logger.debug(
@@ -327,7 +430,7 @@ class MatchingService:
         taxonomy_embedding = self._ensure_taxonomy_embedding(taxonomy)
 
         try:
-            matches = self.db.match_content_by_embedding(
+            raw_matches = self.db.match_content_by_embedding(
                 taxonomy_embedding,
                 0.0,
                 limit,
@@ -338,7 +441,14 @@ class MatchingService:
                 taxonomy.id,
                 exc,
             )
-            matches = self._local_similarity_search(taxonomy, taxonomy_embedding, limit)
+            raw_matches = self._local_similarity_search(taxonomy, taxonomy_embedding, limit)
+
+        matches = self._filter_content_candidates(taxonomy, raw_matches)
+
+        if not matches:
+            matches = self._filter_content_candidates(
+                taxonomy, self._local_similarity_search(taxonomy, taxonomy_embedding, limit)
+            )
 
         logger.debug(
             f"Matched taxonomy {taxonomy.destination_url} to {len(matches)} content items. "

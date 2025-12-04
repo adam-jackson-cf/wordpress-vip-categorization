@@ -37,9 +37,25 @@ class WordPressContent(BaseModel):
     site_url: HttpUrl
     published_date: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    detected_audiences: list[str] = Field(default_factory=list)
+    detected_species: list[str] = Field(default_factory=list)
     content_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
     created_at: datetime = Field(default_factory=_utcnow)
+
+    @field_validator("detected_audiences", "detected_species", mode="before")
+    @classmethod
+    def _parse_detected_list(cls, value: Any) -> list[str]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            tokens = [token.strip() for token in value.split(",")]
+        elif isinstance(value, list):
+            tokens = [str(token).strip() for token in value]
+        else:
+            return []
+        cleaned = [token for token in tokens if token]
+        return cleaned
 
     @field_validator("content_embedding", mode="before")
     @classmethod

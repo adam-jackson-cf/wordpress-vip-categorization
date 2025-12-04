@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS wordpress_content (
     site_url TEXT NOT NULL,
     published_date TIMESTAMP WITH TIME ZONE,
     metadata JSONB DEFAULT '{}'::jsonb,
+    detected_audiences JSONB DEFAULT '[]'::jsonb,
+    detected_species JSONB DEFAULT '[]'::jsonb,
     content_embedding VECTOR(1536),
     embedding_updated_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

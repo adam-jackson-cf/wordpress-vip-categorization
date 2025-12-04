@@ -160,6 +160,8 @@ Limit pages for testing:
 python -m src.cli ingest --max-pages 2
 ```
 
+The ingestion command automatically runs audience/species detection (`src/services/detection.py`) over each page's title, excerpt, and body preview, storing the normalized hits under `detected_audiences` / `detected_species` so the matching pipeline can enforce regulatory alignment.
+
 Resume from the last successful pull or provide an explicit window:
 ```bash
 python -m src.cli ingest --resume              # per-site checkpoint

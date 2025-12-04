@@ -3,6 +3,8 @@
 from unittest.mock import Mock
 from uuid import uuid4
 
+import pytest
+
 from src.config import Settings
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.matching import MatchingService
@@ -176,6 +178,44 @@ class TestMatchingService:
         service._local_similarity_search_taxonomy.assert_called_once()
         assert matches[0][0].id == sample_taxonomy_page.id
 
+    def test_match_taxonomy_to_content_requires_audience_alignment(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        sample_taxonomy_page.secondary_audiance = None
+        sample_wordpress_content.detected_audiences = ["producers"]
+        service = MatchingService(mock_settings, mock_supabase_client)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (sample_taxonomy_page, 0.95)
+        ]
+        service._local_similarity_search_taxonomy = Mock(return_value=[])  # type: ignore[attr-defined]
+
+        matches = service.match_taxonomy_to_content(sample_wordpress_content)
+
+        assert matches == []
+
+    def test_match_taxonomy_to_content_requires_species_alignment(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        sample_taxonomy_page.species = ["bovine"]
+        sample_wordpress_content.detected_species = ["swine"]
+        service = MatchingService(mock_settings, mock_supabase_client)
+        mock_supabase_client.match_taxonomy_by_embedding.return_value = [
+            (sample_taxonomy_page, 0.9)
+        ]
+        service._local_similarity_search_taxonomy = Mock(return_value=[])  # type: ignore[attr-defined]
+
+        matches = service.match_taxonomy_to_content(sample_wordpress_content)
+
+        assert matches == []
+
     def test_match_all_taxonomy_subset_skips_unrelated_content(
         self,
         mock_settings: Settings,
@@ -285,7 +325,7 @@ class TestMatchingService:
         assert match is not None
         taxonomy, score = match
         assert taxonomy.id == sample_taxonomy_page.id
-        assert score == 0.5
+        assert score == pytest.approx(0.53, rel=1e-3)
 
     def test_get_unmatched_taxonomy_filters_by_threshold(
         self,

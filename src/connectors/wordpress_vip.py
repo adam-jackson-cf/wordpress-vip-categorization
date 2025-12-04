@@ -17,6 +17,7 @@ from tenacity import (
 from tqdm import tqdm
 
 from src.models import WordPressContent
+from src.services.detection import detect_audiences, detect_species
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,22 @@ class WordPressVIPConnector:
             "tags": item.get("tags", []),
         }
 
+        preview_text = " ".join(
+            filter(
+                None,
+                [
+                    title_text,
+                    metadata.get("excerpt"),
+                    content_text[:1500],
+                ],
+            )
+        )
+        detected_audiences = sorted(detect_audiences(preview_text))
+        detected_species = sorted(detect_species(preview_text))
+
+        metadata["detected_audiences"] = detected_audiences
+        metadata["detected_species"] = detected_species
+
         return WordPressContent(
             url=cast(HttpUrl, item.get("link", "")),
             title=title_text,
@@ -242,6 +259,8 @@ class WordPressVIPConnector:
             site_url=cast(HttpUrl, self.site_url),
             published_date=published_date,
             metadata=metadata,
+            detected_audiences=detected_audiences,
+            detected_species=detected_species,
         )
 
     def fetch_all_posts(

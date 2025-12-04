@@ -52,9 +52,11 @@ def sample_wordpress_content() -> WordPressContent:
         metadata={
             "type": "post",
             "wp_id": 123,
-            "page_audience": "veterinarians",
-            "page_species": "swine",
+            "detected_audiences": ["veterinarians"],
+            "detected_species": ["swine"],
         },
+        detected_audiences=["veterinarians"],
+        detected_species=["swine"],
     )
 
 
