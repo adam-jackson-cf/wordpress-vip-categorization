@@ -9,11 +9,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.config import Settings
+from src.data.supabase_client import SupabaseClient
+from src.models import MatchingResult, TaxonomyPage, WordPressContent
 from src.services.detection import (
     AUDIENCE_TERMS,
     SPECIES_TERMS,
@@ -61,6 +65,86 @@ def canonicalize_species_list(raw_value: str | None) -> set[str]:
     return {value for value in normalized if value}
 
 
+def _normalize_token(value: str | None) -> str:
+    """Normalize token for comparison by stripping and lowercasing.
+
+    Args:
+        value: String value to normalize.
+
+    Returns:
+        Normalized lowercase string, empty string if None.
+    """
+    if not value:
+        return ""
+    return value.strip().lower()
+
+
+def _is_audience_compatible(taxonomy: TaxonomyPage, content: WordPressContent) -> bool:
+    """Check if detected audiences in content overlap with required audiences in taxonomy.
+
+    Mirrors logic from src/services/matching.py (_audience_compatible method).
+
+    Args:
+        taxonomy: Taxonomy page with audience requirements.
+        content: WordPress content with detected audiences.
+
+    Returns:
+        True if audiences are compatible (overlap exists or no constraints), False otherwise.
+    """
+    primary = _normalize_token(taxonomy.primary_audiance)
+    secondary = _normalize_token(taxonomy.secondary_audiance)
+    detected = {_normalize_token(aud) for aud in content.detected_audiences if aud}
+
+    # No audience constraints
+    if not primary and not secondary:
+        return True
+
+    # Missing detections
+    if not detected:
+        return False
+
+    # Primary only
+    if primary and not secondary:
+        return primary in detected
+
+    # At least one required audience must be present
+    valid = {token for token in (primary, secondary) if token}
+    return bool(valid & detected)
+
+
+def _is_species_compatible(taxonomy: TaxonomyPage, content: WordPressContent) -> bool:
+    """Check if detected species in content overlap with required species in taxonomy.
+
+    Mirrors logic from src/services/matching.py (_species_compatible method).
+
+    Args:
+        taxonomy: Taxonomy page with species requirements.
+        content: WordPress content with detected species.
+
+    Returns:
+        True if species are compatible (all required present or no constraints), False otherwise.
+    """
+    # No species constraints
+    if not taxonomy.species:
+        return True
+
+    # Filter out wildcards
+    required = {
+        _normalize_token(sp)
+        for sp in taxonomy.species
+        if sp and sp.lower() not in {"n/a", "none"}
+    }
+
+    # No valid requirements after filtering
+    if not required:
+        return True
+
+    detected = {_normalize_token(sp) for sp in content.detected_species if sp}
+
+    # Must have detections and all required species must be present
+    return bool(detected) and required.issubset(detected)
+
+
 def load_analysis() -> list[dict[str, Any]]:
     """Load content analysis JSON."""
     with open("data/examples/content_analysis.json", "r", encoding="utf-8") as f:
@@ -81,6 +165,128 @@ def load_taxonomy() -> dict[str, dict[str, str]]:
             taxonomy[url] = row
             taxonomy[normalized] = row
     return taxonomy
+
+
+def load_matching_results() -> dict[str, Any]:
+    """Load matching results from Supabase with content and taxonomy lookups.
+
+    Returns:
+        Dictionary with keys:
+            - matchings: List of MatchingResult objects
+            - content_lookup: Dict mapping content_id to WordPressContent
+            - taxonomy_lookup: Dict mapping taxonomy_id to TaxonomyPage
+    """
+    settings = Settings()
+    db_client = SupabaseClient(settings)
+
+    # Load all matching results
+    matchings = db_client.get_all_matchings()
+
+    # Build content lookup
+    content_ids = [m.content_id for m in matchings]
+    content_lookup = db_client.get_content_by_ids(content_ids)
+
+    # Build taxonomy lookup
+    taxonomy_ids = [m.taxonomy_id for m in matchings if m.taxonomy_id is not None]
+    taxonomy_pages = db_client.get_taxonomy_by_ids(taxonomy_ids)
+    taxonomy_lookup = {tax.id: tax for tax in taxonomy_pages}
+
+    return {
+        "matchings": matchings,
+        "content_lookup": content_lookup,
+        "taxonomy_lookup": taxonomy_lookup,
+    }
+
+
+def compute_compliant_score_distribution(
+    matchings: list[MatchingResult],
+    content_lookup: dict[Any, WordPressContent],
+    taxonomy_lookup: dict[Any, TaxonomyPage],
+) -> dict[str, Any]:
+    """Compute score distribution for compliant matches only.
+
+    Filters matches where both audience AND species align between content
+    and taxonomy, then buckets by cosine similarity score ranges.
+
+    Args:
+        matchings: List of matching results from Supabase.
+        content_lookup: Dict mapping content_id to WordPressContent.
+        taxonomy_lookup: Dict mapping taxonomy_id to TaxonomyPage.
+
+    Returns:
+        Dictionary with keys:
+            - buckets: Dict mapping score range to count
+            - total_compliant: Total number of compliant matches
+            - total_evaluated: Total number of matches evaluated
+            - empty_detection_count: Matches missing audience or species detections
+            - above_threshold: Count of compliant matches with score >= 0.70
+    """
+    # Define bucket boundaries
+    bucket_ranges = [
+        ("0.50-0.60", 0.50, 0.60),
+        ("0.60-0.70", 0.60, 0.70),
+        ("0.70-0.80", 0.70, 0.80),
+        ("0.80-0.90", 0.80, 0.90),
+        ("0.90-1.00", 0.90, 1.00),
+    ]
+
+    buckets: dict[str, int] = {label: 0 for label, _, _ in bucket_ranges}
+    total_compliant = 0
+    empty_detection_count = 0
+    total_evaluated = 0
+
+    for match in matchings:
+        # Skip matches without taxonomy assignment
+        if match.taxonomy_id is None:
+            continue
+
+        content = content_lookup.get(match.content_id)
+        taxonomy = taxonomy_lookup.get(match.taxonomy_id)
+
+        # Skip if we can't resolve both sides
+        if content is None or taxonomy is None:
+            continue
+
+        total_evaluated += 1
+
+        # Check compliance (both audience AND species compatible)
+        audience_ok = _is_audience_compatible(taxonomy, content)
+        species_ok = _is_species_compatible(taxonomy, content)
+
+        if not (audience_ok and species_ok):
+            continue
+
+        # Track empty detections
+        if not content.detected_audiences or not content.detected_species:
+            empty_detection_count += 1
+
+        total_compliant += 1
+        score = match.semantic_similarity_score
+
+        # Assign to bucket
+        for label, min_score, max_score in bucket_ranges:
+            if min_score <= score < max_score:
+                buckets[label] += 1
+                break
+        else:
+            # Handle edge case: score == 1.00
+            if score == 1.00:
+                buckets["0.90-1.00"] += 1
+
+    # Count above threshold
+    above_threshold = sum(
+        buckets[label]
+        for label, min_score, _ in bucket_ranges
+        if min_score >= 0.70
+    )
+
+    return {
+        "buckets": buckets,
+        "total_compliant": total_compliant,
+        "total_evaluated": total_evaluated,
+        "empty_detection_count": empty_detection_count,
+        "above_threshold": above_threshold,
+    }
 
 
 def analyze_match_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -168,6 +374,71 @@ def _format_ratio(aligned: int, total: int) -> str:
     return f"{aligned}/{total} ({(aligned / total) * 100:.1f}%)"
 
 
+def format_compliance_score_table(distribution: dict[str, Any]) -> str:
+    """Format compliance score distribution as markdown table.
+
+    Args:
+        distribution: Result from compute_compliant_score_distribution().
+
+    Returns:
+        Formatted markdown table with distribution statistics.
+    """
+    buckets = distribution["buckets"]
+    total_compliant = distribution["total_compliant"]
+    total_evaluated = distribution["total_evaluated"]
+    above_threshold = distribution["above_threshold"]
+    empty_detection_count = distribution["empty_detection_count"]
+
+    lines = ["## Compliant Score Distribution", ""]
+
+    # Summary stats
+    compliance_rate = (
+        f"{(total_compliant / total_evaluated * 100):.1f}%"
+        if total_evaluated > 0
+        else "n/a"
+    )
+    above_threshold_pct = (
+        f"{(above_threshold / total_compliant * 100):.1f}%"
+        if total_compliant > 0
+        else "n/a"
+    )
+    below_threshold_pct = (
+        f"{((total_compliant - above_threshold) / total_compliant * 100):.1f}%"
+        if total_compliant > 0
+        else "n/a"
+    )
+    empty_detection_pct = (
+        f"{(empty_detection_count / total_compliant * 100):.1f}%"
+        if total_compliant > 0
+        else "n/a"
+    )
+
+    lines.extend([
+        f"**Total Matches Evaluated**: {total_evaluated}",
+        f"**Total Compliant Matches**: {total_compliant} ({compliance_rate})",
+        f"**Above 0.70 Threshold**: {above_threshold} ({above_threshold_pct})",
+        f"**Below 0.70 Threshold**: {total_compliant - above_threshold} ({below_threshold_pct})",
+        f"**Empty Detection Gaps**: {empty_detection_count} ({empty_detection_pct})",
+        "",
+    ])
+
+    # Distribution table
+    lines.extend([
+        "### Score Distribution",
+        "",
+        "| Score Range | Count | Percentage |",
+        "|-------------|-------|------------|",
+    ])
+
+    for bucket_label in ["0.50-0.60", "0.60-0.70", "0.70-0.80", "0.80-0.90", "0.90-1.00"]:
+        count = buckets[bucket_label]
+        percentage = f"{(count / total_compliant * 100):.1f}%" if total_compliant > 0 else "0.0%"
+        lines.append(f"| {bucket_label} | {count} | {percentage} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def format_metrics(metrics: dict[str, Any], score_ranges: dict[str, Any]) -> str:
     primary = metrics["primary_only"]
     dual = metrics["dual_audience"]
@@ -200,11 +471,38 @@ def format_metrics(metrics: dict[str, Any], score_ranges: dict[str, Any]) -> str
     return "\n".join(lines)
 
 
-def generate_report(results: list[dict[str, Any]], taxonomy: dict[str, dict[str, str]]) -> str:
-    """Generate markdown report."""
+def generate_report(
+    results: list[dict[str, Any]],
+    taxonomy: dict[str, dict[str, str]],
+    include_supabase_analysis: bool = True,
+) -> str:
+    """Generate markdown report.
+
+    Args:
+        results: Legacy content analysis results from JSON.
+        taxonomy: Legacy taxonomy lookup from CSV.
+        include_supabase_analysis: Whether to include Supabase compliance distribution.
+
+    Returns:
+        Generated markdown report.
+    """
     score_ranges = analyze_match_quality(results)
     metrics = compute_alignment_metrics(results, taxonomy)
     metrics_section = format_metrics(metrics, score_ranges)
+
+    # Load and compute compliance distribution from Supabase
+    compliance_section = ""
+    if include_supabase_analysis:
+        try:
+            matching_data = load_matching_results()
+            distribution = compute_compliant_score_distribution(
+                matching_data["matchings"],
+                matching_data["content_lookup"],
+                matching_data["taxonomy_lookup"],
+            )
+            compliance_section = "\n\n" + format_compliance_score_table(distribution)
+        except Exception as exc:
+            compliance_section = f"\n\n## Compliant Score Distribution\n\n*Error loading data from Supabase: {exc}*\n"
 
     report = f"""# Semantic Match Analysis Report
 *Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
@@ -537,6 +835,13 @@ Implementing these changes should raise the similarity score threshold from ~0.7
 """
     if "## Executive Summary" in report:
         report = report.replace("## Executive Summary\n\n", f"## Executive Summary\n\n{metrics_section}\n\n", 1)
+
+    # Insert compliance distribution section before Appendix
+    if compliance_section and "## Appendix:" in report:
+        report = report.replace("## Appendix:", f"{compliance_section}\n\n---\n\n## Appendix:", 1)
+    elif compliance_section:
+        # Fallback: insert before conclusion if no appendix found
+        report = report.replace("## Conclusion", f"{compliance_section}\n\n---\n\n## Conclusion", 1)
 
     return report
 
