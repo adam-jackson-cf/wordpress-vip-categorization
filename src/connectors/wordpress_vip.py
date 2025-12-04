@@ -196,6 +196,37 @@ class WordPressVIPConnector:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
+    def _infer_from_url(self, url: str) -> tuple[list[str], list[str]]:
+        """Infer audiences and species from URL path patterns."""
+        import json
+        from pathlib import Path
+
+        config_path = Path("data/detection_terms.json")
+        if not config_path.exists():
+            return [], []
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            patterns = data.get("url_path_patterns", {})
+            url_lower = url.lower()
+
+            inferred_audiences = []
+            for audience, path_segments in patterns.get("audiences", {}).items():
+                if any(seg in url_lower for seg in path_segments):
+                    inferred_audiences.append(audience)
+
+            inferred_species = []
+            for species, path_segments in patterns.get("species", {}).items():
+                if any(seg in url_lower for seg in path_segments):
+                    inferred_species.append(species)
+
+            return inferred_audiences, inferred_species
+
+        except Exception:
+            return [], []
+
     def _parse_wordpress_item(
         self, item: dict[str, Any], content_type: str = "post"
     ) -> WordPressContent:
@@ -246,11 +277,22 @@ class WordPressVIPConnector:
                 ],
             )
         )
+        # Text-based detection
         detected_audiences = sorted(detect_audiences(preview_text))
         detected_species = sorted(detect_species(preview_text))
 
-        metadata["detected_audiences"] = detected_audiences
-        metadata["detected_species"] = detected_species
+        # URL-based inference
+        url_audiences, url_species = self._infer_from_url(item.get("link", ""))
+
+        # Combine both detection methods
+        combined_audiences = sorted(set(detected_audiences + url_audiences))
+        combined_species = sorted(set(detected_species + url_species))
+
+        # Store both in metadata for transparency
+        metadata["detected_audiences"] = combined_audiences
+        metadata["detected_species"] = combined_species
+        metadata["url_inferred_audiences"] = url_audiences
+        metadata["url_inferred_species"] = url_species
 
         return WordPressContent(
             url=cast(HttpUrl, item.get("link", "")),
@@ -259,8 +301,8 @@ class WordPressVIPConnector:
             site_url=cast(HttpUrl, self.site_url),
             published_date=published_date,
             metadata=metadata,
-            detected_audiences=detected_audiences,
-            detected_species=detected_species,
+            detected_audiences=combined_audiences,
+            detected_species=combined_species,
         )
 
     def fetch_all_posts(

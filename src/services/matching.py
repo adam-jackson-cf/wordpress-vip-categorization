@@ -102,12 +102,58 @@ class MatchingService:
             taxonomy, content
         )
 
-    def _priority_boost(self, taxonomy: TaxonomyPage) -> float:
+    def _priority_boost(
+        self,
+        taxonomy: TaxonomyPage,
+        content: WordPressContent | None = None
+    ) -> float:
+        """Calculate priority boost for taxonomy-content pairs.
+
+        Rewards compliant matches (audience + species alignment) and
+        URL token overlap to improve semantic scoring of valid pairs.
+
+        Args:
+            taxonomy: Taxonomy page to evaluate.
+            content: Optional content for enhanced bonuses.
+
+        Returns:
+            Boost value to add to similarity score.
+        """
         bonus = 0.0
+
+        # Base bonuses (existing)
         if taxonomy.primary_audiance or taxonomy.secondary_audiance:
             bonus += 0.01
         if taxonomy.species:
             bonus += 0.02
+
+        # Enhanced bonuses when content is provided
+        if content:
+            # Combined compliance bonus: reward when BOTH audience AND species align
+            if (self._audience_compatible(taxonomy, content) and
+                self._species_compatible(taxonomy, content)):
+                bonus += 0.05
+                logger.debug(
+                    "Compliance bonus +0.05 applied for %s → %s",
+                    content.url,
+                    taxonomy.destination_url
+                )
+
+            # URL token overlap bonus
+            tax_tokens = set(self._tokenize_url_path(str(taxonomy.destination_url)).lower().split())
+            content_tokens = set(self._tokenize_url_path(str(content.url)).lower().split())
+
+            if tax_tokens and content_tokens:
+                overlap_ratio = len(tax_tokens & content_tokens) / max(len(tax_tokens), 1)
+                if overlap_ratio > 0.3:  # Significant overlap threshold
+                    bonus += 0.03
+                    logger.debug(
+                        "URL overlap bonus +0.03 applied for %s → %s (overlap=%.2f)",
+                        content.url,
+                        taxonomy.destination_url,
+                        overlap_ratio
+                    )
+
         return bonus
 
     def _filter_taxonomy_candidates(
@@ -119,7 +165,28 @@ class MatchingService:
         for taxonomy, score in matches:
             if not self._passes_compliance(taxonomy, content):
                 continue
-            filtered.append((taxonomy, min(1.0, score + self._priority_boost(taxonomy))))
+
+            boosted_score = min(1.0, score + self._priority_boost(taxonomy, content))
+
+            # Debug log for compliant but low-scoring pairs
+            if boosted_score < self.settings.similarity_threshold:
+                logger.debug(
+                    "Compliant candidate fell below threshold: content=%s, taxonomy=%s, "
+                    "score=%.3f, boosted=%.3f, threshold=%.2f, "
+                    "detected_aud=%s, detected_spc=%s, required_aud=%s/%s, required_spc=%s",
+                    content.url,
+                    taxonomy.destination_url,
+                    score,
+                    boosted_score,
+                    self.settings.similarity_threshold,
+                    self._get_content_audiences(content),
+                    self._get_content_species(content),
+                    taxonomy.primary_audiance,
+                    taxonomy.secondary_audiance,
+                    taxonomy.species,
+                )
+
+            filtered.append((taxonomy, boosted_score))
         filtered.sort(key=lambda item: item[1], reverse=True)
         return filtered
 
@@ -132,7 +199,8 @@ class MatchingService:
         for content, score in matches:
             if not self._passes_compliance(taxonomy, content):
                 continue
-            filtered.append((content, min(1.0, score + self._priority_boost(taxonomy))))
+            # Pass content to enable enhanced bonuses
+            filtered.append((content, min(1.0, score + self._priority_boost(taxonomy, content))))
         filtered.sort(key=lambda item: item[1], reverse=True)
         return filtered
 
@@ -152,6 +220,9 @@ class MatchingService:
     def create_taxonomy_text(self, taxonomy: TaxonomyPage) -> str:
         """Create text representation of taxonomy page for embedding.
 
+        Priority fields (destination URL, local name, key topics) are emphasized
+        through duplication and explicit markers to improve semantic matching.
+
         Args:
             taxonomy: Taxonomy page.
 
@@ -160,27 +231,47 @@ class MatchingService:
         """
         primary_audience = taxonomy.primary_audiance or "unspecified"
         secondary_audience = taxonomy.secondary_audiance or "none"
-        key_topics_sentence = ", ".join(taxonomy.key_topics)
-
         species_sentence = ", ".join(taxonomy.species) if taxonomy.species else "unknown"
 
+        # Emphasize key topics through duplication
+        key_topics_list = taxonomy.key_topics or []
+        topics_emphasized = " | ".join(key_topics_list) if key_topics_list else ""
+
+        # Priority-first ordering with duplication for weight
         parts = [
-            f"UID: {taxonomy.uid}" if taxonomy.uid else None,
+            # Priority Field 1: Destination URL (duplicate for emphasis)
+            f"Priority Field - Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
             f"Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
-            f"Content Type: {taxonomy.content_type}",
-            f"Primary Audience: {primary_audience}",
-            f"Secondary Audience: {secondary_audience}",
-            f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
+
+            # Priority Field 2: Local Page Name (duplicate for emphasis)
+            f"Priority Field - Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
             f"Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
+
+            # Priority Field 3: Key Topics (duplicate for weight)
+            f"Key Topics (Primary): {topics_emphasized}" if topics_emphasized else None,
+            f"Key Topics (Secondary): {', '.join(key_topics_list)}" if key_topics_list else None,
+
+            # Priority Field 4: Audiences (duplicate for alignment with content)
+            f"Priority Field - Primary Audience: {primary_audience}",
+            f"Primary Audience: {primary_audience}",
+            f"Priority Field - Secondary Audience: {secondary_audience}",
+            f"Secondary Audience: {secondary_audience}",
+
+            # Priority Field 5: Species (duplicate for alignment with content)
+            f"Priority Field - Species: {species_sentence}",
             f"Species: {species_sentence}",
+
+            # Summary last (previously dominant, now deprioritized)
             f"Summary: {taxonomy.semantic_summary}",
-            f"Key Topics: {key_topics_sentence}" if key_topics_sentence else None,
         ]
 
         return "\n".join(part for part in parts if part)
 
     def create_content_text(self, content: WordPressContent) -> str:
         """Create text representation of content for embedding.
+
+        URL path, title, slug, and detection signals are emphasized through
+        duplication to align better with reweighted taxonomy embeddings.
 
         Args:
             content: WordPress content.
@@ -192,25 +283,43 @@ class MatchingService:
         slug = metadata.get("slug")
         categories = [str(value) for value in (metadata.get("categories") or [])]
         tags = [str(value) for value in (metadata.get("tags") or [])]
+
+        # Optimize excerpt length
         excerpt = (metadata.get("excerpt") or "").strip()
         primary_excerpt = excerpt or content.content[:400]
-        excerpt_line = f"Excerpt: {primary_excerpt}" if primary_excerpt else None
+        excerpt_line = f"Excerpt: {primary_excerpt[:400]}" if primary_excerpt else None
 
-        preview = content.content[:2000]
+        # Truncate preview to 1000 chars (previously 2000) to emphasize structured fields
+        preview = content.content[:1000]
         language_code = detect_language_code(preview or content.title)
 
         detected_audiences = ", ".join(sorted(self._get_content_audiences(content))) or "unknown"
         detected_species = ", ".join(sorted(self._get_content_species(content))) or "unknown"
 
+        # Priority-first ordering with duplication
         parts = [
-            f"Title: {content.title}",
-            f"Slug: {slug}" if slug else None,
-            f"Site: {content.site_url}",
+            # Priority Field 1: Title (duplicate for weight)
+            f"Title (Primary): {content.title}",
+            f"Title (Secondary): {content.title}",
+
+            # Priority Field 2: URL Path (duplicate with emphasis)
+            f"Priority Field - URL Path: {self._tokenize_url_path(str(content.url))}",
             f"URL Path: {self._tokenize_url_path(str(content.url))}",
+
+            # Priority Field 3: Slug (duplicate for weight)
+            f"Slug (Primary): {slug}" if slug else None,
+            f"Slug (Secondary): {slug}" if slug else None,
+
+            # Priority Field 4: Detection Signals (duplicate for emphasis)
+            f"Priority Field - Detected Audiences: {detected_audiences}",
+            f"Detected Audiences: {detected_audiences}",
+            f"Priority Field - Detected Species: {detected_species}",
+            f"Detected Species: {detected_species}",
+
+            # Supporting metadata
+            f"Site: {content.site_url}",
             f"Detected Language: {language_code}",
             excerpt_line,
-            f"Detected Audiences: {detected_audiences}",
-            f"Detected Species: {detected_species}",
             f"Categories: {', '.join(categories)}" if categories else None,
             f"Tags: {', '.join(tags)}" if tags else None,
             (
@@ -218,6 +327,8 @@ class MatchingService:
                 if content.published_date
                 else None
             ),
+
+            # Content preview last (truncated to 1000 chars)
             f"Content Preview: {preview}",
         ]
 

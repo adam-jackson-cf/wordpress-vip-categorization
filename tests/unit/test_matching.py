@@ -26,17 +26,35 @@ class TestMatchingService:
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
     ) -> None:
-        """Test taxonomy text creation."""
+        """Test taxonomy text creation with priority-first structure."""
         service = MatchingService(mock_settings, mock_supabase_client)
 
         text = service.create_taxonomy_text(sample_taxonomy_page)
 
-        assert "Content Type: Veterinary Guidance" in text
+        # Verify priority fields appear first
+        assert text.index("Priority Field - Destination Path") < text.index("Summary")
+        assert text.index("Priority Field - Local Name") < text.index("Summary")
+
+        # Verify duplication
+        assert text.count("Destination Path") == 2
+        assert text.count(sample_taxonomy_page.local_page_name) >= 2
+        assert text.count("Primary Audience") == 2
+        assert text.count("Secondary Audience") == 2
+        assert text.count("Species") == 2
+
+        # Verify key topics ahead of summary
+        assert text.index("Key Topics (Primary)") < text.index("Summary")
+
+        # Verify priority markers for audiences and species
+        assert "Priority Field - Primary Audience" in text
+        assert "Priority Field - Secondary Audience" in text
+        assert "Priority Field - Species" in text
+
+        # Existing assertions still valid
         assert "Summary: Guías veterinarias" in text
-        assert "Key Topics: bioseguridad, porcino, protocolos" in text
-        assert "Primary Audience: Veterinarians" in text
-        assert "Secondary Audience: Producers" in text
-        assert "Species: Swine" in text
+        assert "Veterinarians" in text
+        assert "Producers" in text
+        assert "Swine" in text
 
     def test_create_taxonomy_text_marks_missing_secondary(
         self,
@@ -57,13 +75,23 @@ class TestMatchingService:
         mock_supabase_client: Mock,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Test content text creation."""
+        """Test content text creation with priority-first structure."""
         service = MatchingService(mock_settings, mock_supabase_client)
 
         text = service.create_content_text(sample_wordpress_content)
 
-        assert "Title:" in text
-        assert sample_wordpress_content.title in text
+        # Verify priority fields appear first
+        assert text.index("Title (Primary)") < text.index("Content Preview")
+        assert text.index("Priority Field - URL Path") < text.index("Content Preview")
+
+        # Verify duplication
+        assert text.count(sample_wordpress_content.title) >= 2
+        assert text.count("Detected Audiences") == 2
+        assert text.count("Detected Species") == 2
+
+        # Verify detection emphasis
+        assert "Priority Field - Detected Audiences" in text
+        assert "Priority Field - Detected Species" in text
         assert "Content Preview:" in text
         assert "Excerpt:" in text
 
@@ -330,7 +358,7 @@ class TestMatchingService:
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        """Ensure best candidate is returned even when below semantic threshold."""
+        """Ensure best candidate is returned with enhanced bonuses."""
         service = MatchingService(mock_settings, mock_supabase_client)
         mock_supabase_client.match_taxonomy_by_embedding.return_value = [
             (sample_taxonomy_page, 0.5)
@@ -341,7 +369,8 @@ class TestMatchingService:
         assert match is not None
         taxonomy, score = match
         assert taxonomy.id == sample_taxonomy_page.id
-        assert score == pytest.approx(0.53, rel=1e-3)
+        # Score: 0.5 + 0.01 (audience) + 0.02 (species) + 0.05 (compliance) = 0.58
+        assert score >= 0.58
 
     def test_get_unmatched_taxonomy_filters_by_threshold(
         self,

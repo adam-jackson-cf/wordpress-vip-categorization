@@ -1,0 +1,152 @@
+{
+  "audience_terms": {
+    "veterinarians": [
+      "veterinario",
+      "veterinaria",
+      "veterinarios",
+      "vet",
+      "veterinarian",
+      "veterinary",
+      "profesional sanitario",
+      "profesionales veterinarios",
+      "clinica veterinaria"
+    ],
+    "producers": [
+      "ganadero",
+      "ganaderos",
+      "ganaderia",
+      "farmer",
+      "producers",
+      "agricultor",
+      "producer",
+      "industria porcina",
+      "avicultor",
+      "ganaderia extensiva",
+      "explotacion ganadera",
+      "granja"
+    ],
+    "pet_owners": [
+      "propietario",
+      "dueño",
+      "tutor",
+      "pet owner",
+      "familia",
+      "hogar",
+      "tutores de mascotas",
+      "propietarios de animales"
+    ],
+    "investors": [
+      "gerente",
+      "director",
+      "management",
+      "inversionista",
+      "responsable"
+    ]
+  },
+  "species_terms": {
+    "swine": [
+      "porcino",
+      "porcina",
+      "porcinos",
+      "porcinas",
+      "cerdo",
+      "cerdos",
+      "swine",
+      "hog",
+      "lechon",
+      "lechones",
+      "ganaderia porcina",
+      "sector porcino"
+    ],
+    "bovine": [
+      "bovino",
+      "vaca",
+      "vacuno",
+      "ganado",
+      "cattle",
+      "novilla",
+      "ternero",
+      "ganaderia bovina",
+      "explotacion vacuna"
+    ],
+    "poultry": [
+      "avicola",
+      "avícola",
+      "avicolas",
+      "avícolas",
+      "avicultura",
+      "pollo",
+      "pollos",
+      "gallina",
+      "gallinas",
+      "broiler",
+      "poultry",
+      "aves acuaticas",
+      "pato",
+      "pavo"
+    ],
+    "companion": [
+      "mascota",
+      "perro",
+      "gato",
+      "pet",
+      "companion animal"
+    ],
+    "equine": [
+      "equino",
+      "caballo",
+      "equine"
+    ],
+    "aqua": [
+      "acuicultura",
+      "aqua",
+      "pez",
+      "piscicultura",
+      "piscifactoria",
+      "piscifactorias",
+      "acuatico"
+    ]
+  },
+  "url_path_patterns": {
+    "audiences": {
+      "veterinarians": [
+        "veterinario",
+        "veterinaria",
+        "profesionales-veterinarios"
+      ],
+      "producers": [
+        "ganadero",
+        "ganaderos",
+        "productores",
+        "granja"
+      ],
+      "pet_owners": [
+        "mascotas",
+        "tutores-de-mascotas",
+        "propietarios"
+      ]
+    },
+    "species": {
+      "swine": [
+        "porcino",
+        "porcina",
+        "cerdo"
+      ],
+      "bovine": [
+        "bovino",
+        "vaca",
+        "vacuno"
+      ],
+      "poultry": [
+        "avicola",
+        "avicultura",
+        "pollo"
+      ],
+      "companion": [
+        "mascota",
+        "perro",
+        "gato"
+      ]
+    }
+  }
+}
