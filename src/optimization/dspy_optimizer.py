@@ -373,6 +373,14 @@ class DSPyOptimizer:
             Dictionary with prompt information including demonstrations.
         """
         info: dict[str, str | list[dict[str, str | int | float]]] = {}
+
+        def _coalesce_attr(example: Any, names: tuple[str, ...]) -> str | None:
+            for attr in names:
+                if hasattr(example, attr):
+                    value = getattr(example, attr)
+                    if value not in (None, ""):
+                        return str(value)
+            return None
         try:
             # Try to extract instructions from the predict module
             if hasattr(model, "predict") and hasattr(model.predict, "instructions"):
@@ -395,13 +403,29 @@ class DSPyOptimizer:
                     for demo in demos:
                         try:
                             demo_dict: dict[str, str | int | float] = {}
-                            # Extract fields from dspy.Example
-                            if hasattr(demo, "taxonomy_content_type"):
-                                demo_dict["taxonomy_content_type"] = str(demo.taxonomy_content_type)
-                            if hasattr(demo, "taxonomy_summary"):
-                                demo_dict["taxonomy_summary"] = str(demo.taxonomy_summary)
-                            if hasattr(demo, "taxonomy_topics"):
-                                demo_dict["taxonomy_topics"] = str(demo.taxonomy_topics)
+                            # Extract fields from dspy.Example, supporting legacy names
+                            content_type = _coalesce_attr(
+                                demo,
+                                ("taxonomy_content_type", "taxonomy_category", "category"),
+                            )
+                            taxonomy_summary = _coalesce_attr(
+                                demo,
+                                (
+                                    "taxonomy_summary",
+                                    "taxonomy_description",
+                                    "summary",
+                                ),
+                            )
+                            taxonomy_topics = _coalesce_attr(
+                                demo,
+                                ("taxonomy_topics", "taxonomy_keywords", "keywords"),
+                            )
+                            if content_type:
+                                demo_dict["taxonomy_content_type"] = content_type
+                            if taxonomy_summary:
+                                demo_dict["taxonomy_summary"] = taxonomy_summary
+                            if taxonomy_topics:
+                                demo_dict["taxonomy_topics"] = taxonomy_topics
                             if hasattr(demo, "content_summaries"):
                                 demo_dict["content_summaries"] = str(demo.content_summaries)
                             if hasattr(demo, "best_match_index"):

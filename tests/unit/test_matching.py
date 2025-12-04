@@ -34,6 +34,22 @@ class TestMatchingService:
         assert "Content Type: Veterinary Guidance" in text
         assert "Summary: Guías veterinarias" in text
         assert "Key Topics: bioseguridad, porcino, protocolos" in text
+        assert "Primary Audience: Veterinarians" in text
+        assert "Secondary Audience: Producers" in text
+        assert "Species: Swine" in text
+
+    def test_create_taxonomy_text_marks_missing_secondary(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.secondary_audiance = None
+
+        text = service.create_taxonomy_text(sample_taxonomy_page)
+
+        assert "Secondary Audience: none" in text
 
     def test_create_content_text(
         self,

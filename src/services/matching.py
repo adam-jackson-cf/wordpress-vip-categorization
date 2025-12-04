@@ -158,9 +158,8 @@ class MatchingService:
         Returns:
             Combined text for embedding.
         """
-        audiences = ", ".join(
-            filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
-        )
+        primary_audience = taxonomy.primary_audiance or "unspecified"
+        secondary_audience = taxonomy.secondary_audiance or "none"
         key_topics_sentence = ", ".join(taxonomy.key_topics)
 
         species_sentence = ", ".join(taxonomy.species) if taxonomy.species else "unknown"
@@ -169,7 +168,8 @@ class MatchingService:
             f"UID: {taxonomy.uid}" if taxonomy.uid else None,
             f"Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
             f"Content Type: {taxonomy.content_type}",
-            f"Audiences: {audiences}" if audiences else None,
+            f"Primary Audience: {primary_audience}",
+            f"Secondary Audience: {secondary_audience}",
             f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
             f"Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
             f"Species: {species_sentence}",

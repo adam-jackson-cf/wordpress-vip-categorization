@@ -172,6 +172,15 @@ class IngestionService:
                         continue
 
                     self._seen_content_urls.add(content_url)
+                    metadata = enriched.metadata or {}
+                    detected_audiences = metadata.get("detected_audiences") or []
+                    detected_species = metadata.get("detected_species") or []
+                    enriched = enriched.model_copy(
+                        update={
+                            "detected_audiences": detected_audiences,
+                            "detected_species": detected_species,
+                        }
+                    )
                     self._content_buffer.append(enriched)
                     site_count += 1
 

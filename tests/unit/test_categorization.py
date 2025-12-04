@@ -82,6 +82,42 @@ class TestCategorizationService:
         assert requests[0]["url"] == "/v1/chat/completions"
         assert "model" in requests[0]["body"]
 
+    @patch("src.services.categorization.openai.OpenAI")
+    def test_format_content_section_includes_detection_cues(
+        self,
+        mock_openai_class: Mock,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+
+        section = service._format_content_section(sample_wordpress_content)
+
+        assert "Detected Audiences: veterinarians" in section
+        assert "Detected Species: swine" in section
+
+    @patch("src.services.categorization.openai.OpenAI")
+    def test_prepare_llm_fallback_requests_carry_detection_hints(
+        self,
+        mock_openai_class: Mock,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        service = CategorizationService(mock_settings, mock_supabase_client)
+
+        requests = service.prepare_llm_fallback_requests(
+            [sample_wordpress_content],
+            {sample_wordpress_content.id: [sample_taxonomy_page]},
+        )
+
+        assert len(requests) == 1
+        prompt = requests[0]["body"]["messages"][1]["content"]
+        assert "Detected Audiences: veterinarians" in prompt
+        assert "Detected Species: swine" in prompt
+
     def test_create_batch_file(
         self,
         mock_settings: Settings,

@@ -180,6 +180,8 @@ class TestFullPipeline:
         assert first_content.content
         assert first_content.url
         assert str(first_content.site_url).rstrip("/") == public_wordpress_site.rstrip("/")
+        assert first_content.detected_audiences == ["veterinarians"]
+        assert first_content.detected_species == ["swine"]
 
     def test_taxonomy_loading(
         self,

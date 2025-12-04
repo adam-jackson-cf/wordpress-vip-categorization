@@ -230,6 +230,14 @@ Respond with a JSON object in this exact format:
         tags = ", ".join(str(value) for value in metadata.get("tags", []) or [])
         excerpt = (metadata.get("excerpt") or content.content[:800] or "").strip()
         published = content.published_date.isoformat() if content.published_date else "unknown"
+        detected_audiences = ", ".join(
+            sorted(content.detected_audiences or metadata.get("detected_audiences") or [])
+        )
+        detected_species = ", ".join(
+            sorted(content.detected_species or metadata.get("detected_species") or [])
+        )
+        detected_audiences = detected_audiences or "unknown"
+        detected_species = detected_species or "unknown"
         return "\n".join(
             part
             for part in [
@@ -237,6 +245,8 @@ Respond with a JSON object in this exact format:
                 f"URL: {content.url}",
                 f"Site: {content.site_url}",
                 f"Published: {published}",
+                f"Detected Audiences: {detected_audiences}",
+                f"Detected Species: {detected_species}",
                 f"Categories: {categories or 'n/a'}",
                 f"Tags: {tags or 'n/a'}",
                 f"Excerpt: {excerpt[:800]}",

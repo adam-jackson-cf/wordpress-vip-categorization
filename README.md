@@ -10,6 +10,14 @@ AI-powered workflow that ingests content from WordPress VIP, stores it in Supaba
 
 Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
 
+### Regulatory Compliance Signals
+
+- **Detector-backed metadata** – During ingestion every WordPress page runs through `src/services/detection.py`, storing multilingual `detected_audiences` / `detected_species` sets in both the Supabase columns and the JSON metadata. These cues are always embedded in the content vectors (`MatchingService.create_content_text`).
+- **Taxonomy cues** – `create_taxonomy_text` now emits explicit `Primary Audience`, `Secondary Audience`, and `Species` lines even when the fields are blank so embeddings can learn the absence of a secondary audience (which means “primary-only” compliance).
+- **Semantic gating** – Before any cosine candidate survives, the matching service enforces the regulatory rules: taxonomy rows with only a primary audience require an exact detector match, dual-audience rows accept either, and species lists must be a subset of detected species. Compliant pairs get a micro boost so they float to the top of the candidate list.
+- **LLM visibility** – The LLM fallback prompt now includes the detector output in the content section, so rubric decisions can explicitly reason about audience/species alignment instead of inferring it from the raw article.
+- **Reporting** – `scripts/generate_report.py` summarizes how often detector outputs align with taxonomy rules (primary-only coverage, dual-audience coverage, species compliance) so we can trend adherence before/after each tuning cycle.
+
 ## Operations Quick Reference
 
 - `python -m src.cli full-run --output results/results.csv` – Taxonomy load → ingestion → cascading matching → CSV export.

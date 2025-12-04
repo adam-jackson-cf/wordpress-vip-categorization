@@ -199,6 +199,26 @@ def test_bulk_insert_executes(supabase_client, mocker):
     table.insert.assert_called_once_with([{}])
 
 
+def test_bulk_upsert_content_persists_detection_fields(
+    supabase_client,
+    mocker,
+    sample_wordpress_content,
+) -> None:
+    table = mocker.Mock()
+    table.upsert.return_value = table
+    table.execute.return_value = SimpleNamespace(
+        data=[sample_wordpress_content.model_dump(mode="json")]
+    )
+    supabase_client.client.table.return_value = table
+
+    supabase_client.bulk_upsert_content([sample_wordpress_content], chunk_size=1)
+
+    table.upsert.assert_called_once()
+    payload = table.upsert.call_args.args[0]
+    assert payload[0]["detected_audiences"] == ["veterinarians"]
+    assert payload[0]["detected_species"] == ["swine"]
+
+
 def test_upsert_taxonomy_and_get_by_id(
     supabase_client,
     mocker,
