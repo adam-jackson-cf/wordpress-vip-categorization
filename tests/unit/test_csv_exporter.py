@@ -40,7 +40,7 @@ class TestCSVExporter:
         assert isinstance(row, ExportRow)
         assert row.source_url == str(sample_wordpress_content.url)
         assert row.target_url == str(sample_taxonomy_page.destination_url)
-        assert row.category == "Technology"
+        assert row.category == "Veterinary Guidance"
         assert row.similarity_score == 0.85
 
     def test_export_to_csv(

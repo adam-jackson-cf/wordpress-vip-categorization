@@ -55,10 +55,10 @@ class TestCategorizationService:
         """Test categorization prompt creation."""
         service = CategorizationService(mock_settings, mock_supabase_client)
 
-        categories = ["Technology", "Business", "Health"]
+        categories = ["Veterinary Guidance", "Animal Health", "Pharmacovigilance"]
         prompt = service.create_categorization_prompt(sample_wordpress_content, categories)
 
-        assert "Technology, Business, Health" in prompt
+        assert "Veterinary Guidance, Animal Health, Pharmacovigilance" in prompt
         assert sample_wordpress_content.title in prompt
         assert "JSON" in prompt
 
@@ -72,7 +72,7 @@ class TestCategorizationService:
         service = CategorizationService(mock_settings, mock_supabase_client)
 
         content_items = [sample_wordpress_content]
-        categories = ["Technology", "Business"]
+        categories = ["Veterinary Guidance", "Animal Health"]
 
         requests = service.prepare_batch_requests(content_items, categories)
 
@@ -167,7 +167,7 @@ class TestCategorizationService:
         categories = service.get_categories_from_taxonomy()
 
         assert len(categories) == 1
-        assert "Technology" in categories
+        assert "Veterinary Guidance" in categories
 
     def test_parse_batch_results_success(
         self,

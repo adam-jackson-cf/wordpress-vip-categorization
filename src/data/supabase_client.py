@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, cast
 from uuid import UUID
 
@@ -219,7 +219,7 @@ class SupabaseClient:
             .update(
                 {
                     "content_embedding": embedding,
-                    "embedding_updated_at": datetime.utcnow().isoformat(),
+                    "embedding_updated_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
             .eq("id", str(content_id))
@@ -234,7 +234,7 @@ class SupabaseClient:
             .update(
                 {
                     "taxonomy_embedding": embedding,
-                    "embedding_updated_at": datetime.utcnow().isoformat(),
+                    "embedding_updated_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
             .eq("id", str(taxonomy_id))
@@ -575,7 +575,7 @@ class SupabaseClient:
     @staticmethod
     def _prepare_matching_payload(result: MatchingResult) -> dict[str, Any]:
         data = result.model_dump(mode="json")
-        data["updated_at"] = datetime.utcnow().isoformat()
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
         data["is_current"] = True
         return data
 
@@ -588,7 +588,7 @@ class SupabaseClient:
         return WorkflowRun.model_validate(result.data[0])
 
     def update_workflow_run(self, run_id: UUID, **fields: Any) -> WorkflowRun:
-        fields["updated_at"] = datetime.utcnow().isoformat()
+        fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = self._with_retry(
             lambda: self.client.table("workflow_runs")
             .update(fields)

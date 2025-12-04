@@ -1,7 +1,7 @@
 """Orchestration service for cascading semantic matching and LLM categorization workflow."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -262,7 +262,7 @@ class WorkflowService:
                 status=WorkflowRunStatus.COMPLETED.value,
                 current_stage="completed",
                 stats=stats,
-                completed_at=datetime.utcnow().isoformat(),
+                completed_at=datetime.now(timezone.utc).isoformat(),
             )
             return stats
         except Exception as exc:  # pragma: no cover - error propagation

@@ -222,9 +222,9 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
         writer.writeheader()
         writer.writerow(
             {
-                "taxonomy_content_type": "Tech",
-                "taxonomy_summary": "Tech content",
-                "taxonomy_topics": "tech",
+                "taxonomy_content_type": "Veterinary",
+                "taxonomy_summary": "Contenido veterinario",
+                "taxonomy_topics": "bioseguridad",
                 "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                 "best_match_index": "0",
                 "confidence": "0.9",

@@ -134,7 +134,7 @@ You should see:
 
 Create or update `data/Spain_New.csv`:
 ```csv
-UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics
+UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source
 TAX-001,https://example.com/wordpress,WordPress,WordPress,News,All,Media,WordPress news and updates,wordpress, cms, blogging
 ```
 

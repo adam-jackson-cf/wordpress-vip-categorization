@@ -191,9 +191,9 @@ class TestFullPipeline:
         # Create test taxonomy CSV
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
-            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
-            "TAX-1,https://example.com/page1,News Page,Pagina de Noticias,News,All,Media,News articles,wordpress, updates, news\n"
-            "TAX-2,https://example.com/page2,Tech Page,Pagina Tech,Technology,Developers,General Public,Technology content,technology, development, code\n"
+            "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics\n"
+            "TAX-1,https://example.com/page1,News Page,Pagina de Noticias,News,All,Media,,News articles,wordpress, updates, news\n"
+            "TAX-2,https://example.com/page2,Swine Article,Articulo Porcino,Veterinary Guidance,Veterinarians,Producers,Swine,Consejos para granjas porcinas,bioseguridad, porcino, manejo\n"
         )
 
         ingestion_service = IngestionService(mock_settings, mock_db_client)
@@ -203,7 +203,7 @@ class TestFullPipeline:
 
         taxonomy_pages = mock_db_client.get_all_taxonomy()
         assert len(taxonomy_pages) == 2
-        assert taxonomy_pages[0].content_type in ["News", "Technology"]
+        assert taxonomy_pages[0].content_type in ["News", "Veterinary Guidance"]
         assert len(taxonomy_pages[0].key_topics) > 0
 
     def test_semantic_matching_integration(
@@ -222,8 +222,8 @@ class TestFullPipeline:
         # Step 2: Load taxonomy
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
-            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
-            "TAX-3,https://example.com/wordpress-news,WordPress News,Noticias de WordPress,News,All,Media,WordPress news and updates,wordpress, news, updates, announcements\n"
+            "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics\n"
+            "TAX-3,https://example.com/wordpress-news,WordPress News,Noticias de WordPress,News,All,Media,,WordPress news and updates,wordpress, news, updates, announcements\n"
         )
         ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
 
@@ -269,9 +269,9 @@ class TestFullPipeline:
         # 2. Load taxonomy
         taxonomy_csv = tmp_path / "taxonomy.csv"
         taxonomy_csv.write_text(
-            "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
-            "TAX-4,https://example.com/wp-news,WordPress News,Noticias WordPress,News,All,Media,WordPress announcements,wordpress, release, update, announcement\n"
-            "TAX-5,https://example.com/tech,Technology,Tech Articulos,Technology,Developers,General Public,Tech articles,technology, development, programming\n"
+            "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics\n"
+            "TAX-4,https://example.com/wp-news,Veterinary News,Noticias Veterinarias,News,Veterinarians,Producers,,WordPress announcements,wordpress, release, update, announcement\n"
+            "TAX-5,https://example.com/porcino,Bioseguridad,Bioseguridad Porcina,Veterinary Guidance,Veterinarians,Producers,Swine,Artículos sobre bioseguridad,bioseguridad, porcino, protocolos\n"
         )
         taxonomy_count = ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
         assert taxonomy_count == 2

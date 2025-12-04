@@ -29,9 +29,9 @@ class TestMatchingService:
 
         text = service.create_taxonomy_text(sample_taxonomy_page)
 
-        assert "Content Type: Technology" in text
-        assert "Summary: Technology-related content" in text
-        assert "Key Topics: technology, innovation, digital" in text
+        assert "Content Type: Veterinary Guidance" in text
+        assert "Summary: Guías veterinarias" in text
+        assert "Key Topics: bioseguridad, porcino, protocolos" in text
 
     def test_create_content_text(
         self,
@@ -117,7 +117,7 @@ class TestMatchingService:
             uid="TAX-ALT",
             destination_url="https://taxonomy.com/alt",
             english_page_name="Alt",
-            es_page_name="Alt",
+            local_page_name="Alt",
             content_type="Alt",
             primary_audiance="All",
             secondary_audiance="All",
@@ -154,7 +154,7 @@ class TestMatchingService:
             uid="TAX-DENY",
             destination_url="https://taxonomy.com/disallowed",
             english_page_name="Nope",
-            es_page_name="Nope",
+            local_page_name="Nope",
             content_type="Nope",
             primary_audiance="All",
             secondary_audiance="All",
@@ -191,7 +191,7 @@ class TestMatchingService:
             uid="TAX-OTHER",
             destination_url="https://taxonomy.com/other",
             english_page_name="Other",
-            es_page_name="Otro",
+            local_page_name="Otro",
             content_type="Other",
             primary_audiance="All",
             secondary_audiance="All",
@@ -301,7 +301,7 @@ class TestMatchingService:
             uid="TAX-SECOND",
             destination_url="https://taxonomy.com/second",
             english_page_name="News Page",
-            es_page_name="Pagina Noticias",
+            local_page_name="Pagina Noticias",
             content_type="News",
             primary_audiance="All",
             secondary_audiance="Media",

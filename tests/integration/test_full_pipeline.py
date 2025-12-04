@@ -63,9 +63,9 @@ def public_wordpress_site() -> str:
 def _write_taxonomy(tmp_path: Path) -> Path:
     taxonomy_csv = tmp_path / "live_taxonomy.csv"
     taxonomy_csv.write_text(
-        "UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics\n"
-        "TAX-1,https://example.com/wp-news,WordPress News,Noticias de WordPress,News,All,Media,WordPress announcements and updates.,wordpress, release, update, announcement\n"
-        "TAX-2,https://example.com/tech,Technology Overview,Tecnologia,Technology,Developers,General Public,Tech articles and resources.,technology, development, programming\n"
+        "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics\n"
+        "TAX-1,https://example.com/wp-news,Veterinary News,Noticias Veterinarias,Veterinary News,Veterinarians,Producers,,Noticias sobre salud animal.,veterinaria, noticias, regulaciones\n"
+        "TAX-2,https://example.com/porcino,Swine Biosecurity,Bioseguridad Porcina,Veterinary Guidance,Veterinarians,Producers,Swine,Protocolos para bioseguridad en porcino.,bioseguridad, porcino, protocolos\n"
     )
     return taxonomy_csv
 
@@ -100,4 +100,4 @@ def test_full_e2e_pipeline_live(
     assert output_path.exists()
     content = output_path.read_text()
     assert "WordPress News" in content
-    assert "Technology" in content
+    assert "Veterinary" in content

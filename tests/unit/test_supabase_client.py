@@ -1,6 +1,6 @@
 """Supabase client helper tests."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -235,7 +235,7 @@ def test_get_categorizations_by_content(
                 "content_id": str(sample_wordpress_content.id),
                 "category": "Tech",
                 "confidence": 0.9,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
         ]
     )

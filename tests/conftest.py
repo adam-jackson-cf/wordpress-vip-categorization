@@ -9,6 +9,7 @@ import pytest
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
+
 from src.models import (
     CategorizationResult,
     MatchingResult,
@@ -43,12 +44,17 @@ def sample_wordpress_content() -> WordPressContent:
     """Create sample WordPress content."""
     return WordPressContent(
         id=uuid4(),
-        url="https://example.com/sample-post",
-        title="Sample Post Title",
-        content="This is sample content about technology and innovation.",
+        url="https://example.com/porcine-biosecurity",
+        title="Prácticas de bioseguridad en porcino",
+        content="Articulo detallando protocolos veterinarios para reducir brotes respiratorios en granjas porcinas.",
         site_url="https://example.com",
         published_date=datetime(2024, 1, 1, 12, 0, 0),
-        metadata={"type": "post", "wp_id": 123},
+        metadata={
+            "type": "post",
+            "wp_id": 123,
+            "page_audience": "veterinarians",
+            "page_species": "swine",
+        },
     )
 
 
@@ -58,14 +64,15 @@ def sample_taxonomy_page() -> TaxonomyPage:
     return TaxonomyPage(
         id=uuid4(),
         uid="TAX-001",
-        destination_url="https://taxonomy.com/tech",
-        english_page_name="Technology Overview",
-        es_page_name="Tecnologia",
-        content_type="Technology",
-        primary_audiance="Developers",
-        secondary_audiance="General Public",
-        semantic_summary="Technology-related content and updates.",
-        key_topics=["technology", "innovation", "digital"],
+        destination_url="https://taxonomy.com/porcino/bioseguridad",
+        english_page_name="Swine Biosecurity",
+        local_page_name="Bioseguridad en Porcino",
+        content_type="Veterinary Guidance",
+        primary_audiance="Veterinarians",
+        secondary_audiance="Producers",
+        species=["Swine"],
+        semantic_summary="Guías veterinarias para mejorar la bioseguridad en granjas porcinas.",
+        key_topics=["bioseguridad", "porcino", "protocolos"],
     )
 
 
@@ -77,7 +84,7 @@ def sample_categorization_result(
     return CategorizationResult(
         id=uuid4(),
         content_id=sample_wordpress_content.id,
-        category="Technology",
+        category="Veterinary Guidance",
         batch_id="test-batch-123",
     )
 
@@ -129,7 +136,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     # Mock chat completions
     mock_completion_response = mocker.Mock()
     mock_completion_response.choices = [
-        mocker.Mock(message=mocker.Mock(content='{"category": "Technology", "reasoning": "test"}'))
+        mocker.Mock(message=mocker.Mock(content='{"category": "Veterinary Guidance", "reasoning": "test"}'))
     ]
     mock_client.chat.completions.create.return_value = mock_completion_response
 
@@ -152,7 +159,7 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     mock_client.files.create.return_value = mock_file
 
     mock_file_content = mocker.Mock()
-    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Technology\\"}"}}]}}}'
+    mock_file_content.text = '{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"category\\": \\"Veterinary Guidance\\"}"}}]}}}'
     mock_client.files.content.return_value = mock_file_content
 
     return mock_client

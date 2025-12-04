@@ -6,7 +6,7 @@ import random
 import shutil
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -454,7 +454,7 @@ Respond with a JSON object in this exact format:
         if not requests:
             return []
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         run_dir = self.batch_artifact_root / f"llm_match_{timestamp}_{uuid4().hex[:6]}"
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -469,7 +469,7 @@ Respond with a JSON object in this exact format:
             artifacts.append(BatchRequestFile(path=file_path, run_dir=run_dir, count=len(chunk)))
 
         manifest = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "total_requests": len(requests),
             "files": [
                 {"file": artifact.path.name, "count": artifact.count}

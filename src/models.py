@@ -1,12 +1,16 @@
 """Pydantic models for data validation and serialization."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class MatchStage(str, Enum):
@@ -35,7 +39,7 @@ class WordPressContent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     content_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     @field_validator("content_embedding", mode="before")
     @classmethod
@@ -64,15 +68,39 @@ class TaxonomyPage(BaseModel):
     uid: str | None = Field(default=None, description="Optional taxonomy UID from source CSV")
     destination_url: HttpUrl = Field(..., description="Destination URL from taxonomy")
     english_page_name: str | None = Field(default=None, description="English page name")
-    es_page_name: str | None = Field(default=None, description="Spanish page name")
+    local_page_name: str | None = Field(default=None, description="Localized page name")
     content_type: str = Field(..., description="Content type/category for this taxonomy page")
     primary_audiance: str | None = Field(default=None, description="Primary audience")
     secondary_audiance: str | None = Field(default=None, description="Secondary audience")
+    species: list[str] = Field(default_factory=list, description="Target species list")
     semantic_summary: str = Field(..., description="Semantic summary of the page content")
     key_topics: list[str] = Field(default_factory=list, description="Key topics (keywords)")
     taxonomy_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+    @field_validator("species", mode="before")
+    @classmethod
+    def _parse_species(cls, value: Any) -> list[str]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            tokens = [token.strip() for token in value.split(",")]
+        elif isinstance(value, list):
+            tokens = [str(token).strip() for token in value]
+        else:
+            return []
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for token in tokens:
+            if not token or token.lower() in {"n/a", "none"}:
+                continue
+            normalized = token
+            key = normalized.lower()
+            if key not in seen:
+                seen.add(key)
+                cleaned.append(normalized)
+        return cleaned
 
     @field_validator("taxonomy_embedding", mode="before")
     @classmethod
@@ -97,7 +125,7 @@ class CategorizationResult(BaseModel):
     content_id: UUID
     category: str
     batch_id: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class MatchingResult(BaseModel):
@@ -138,7 +166,7 @@ class MatchingResult(BaseModel):
         default=None, description="Rubric scores and decision from judge"
     )
     is_current: bool = Field(default=True, description="Whether this row is the active match")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime | None = None
 
 
@@ -178,7 +206,7 @@ class WorkflowRun(BaseModel):
     current_stage: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     stats: dict[str, Any] = Field(default_factory=dict)
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None

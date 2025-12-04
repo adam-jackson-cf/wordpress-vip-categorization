@@ -16,10 +16,10 @@ from src.optimization.dspy_optimizer import DSPyOptimizer, MatchingModule
 def sample_dspy_example() -> dspy.Example:
     """Create a sample DSPy example."""
     return dspy.Example(
-        taxonomy_content_type="Technology",
-        taxonomy_summary="Technology-related content",
-        taxonomy_topics="technology, innovation",
-        content_summaries="0. Title: Tech Post\n   URL: https://example.com/tech\n   Preview: Content...",
+        taxonomy_content_type="Veterinary Medicine",
+        taxonomy_summary="Veterinary Medicine-related content",
+        taxonomy_topics="veterinary, innovation",
+        content_summaries="0. Title: Vet Post\n   URL: https://example.com/vet\n   Preview: Content...",
         best_match_index=0,
         reasoning="Good match",
     ).with_inputs(
@@ -61,9 +61,9 @@ class TestLoadTrainingDataset:
             writer.writeheader()
             writer.writerow(
                 {
-                    "taxonomy_content_type": "Technology",
-                    "taxonomy_summary": "Tech content",
-                    "taxonomy_topics": "tech, innovation",
+                    "taxonomy_content_type": "Veterinary Medicine",
+                    "taxonomy_summary": "Vet content",
+                    "taxonomy_topics": "vet, innovation",
                     "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                     "best_match_index": "0",
                     "reasoning": "Good match",
@@ -73,7 +73,7 @@ class TestLoadTrainingDataset:
         examples = mock_dspy_optimizer.load_training_dataset(csv_file)
 
         assert len(examples) == 1
-        assert examples[0].taxonomy_content_type == "Technology"
+        assert examples[0].taxonomy_content_type == "Veterinary Medicine"
         assert examples[0].best_match_index == 0
         # Confidence is no longer emitted; ensure attribute is absent
         assert not hasattr(examples[0], "confidence")
@@ -83,9 +83,9 @@ class TestLoadTrainingDataset:
         json_file = tmp_path / "dataset.json"
         data = [
             {
-                "taxonomy_content_type": "Technology",
-                "taxonomy_summary": "Tech content",
-                "taxonomy_topics": "tech, innovation",
+                "taxonomy_content_type": "Veterinary Medicine",
+                "taxonomy_summary": "Vet content",
+                "taxonomy_topics": "vet, innovation",
                 "content_summaries": "0. Title: Post\n   URL: https://example.com\n   Preview: Content...",
                 "best_match_index": 0,
                 "reasoning": "Good match",
@@ -97,7 +97,7 @@ class TestLoadTrainingDataset:
         examples = mock_dspy_optimizer.load_training_dataset(json_file)
 
         assert len(examples) == 1
-        assert examples[0].taxonomy_content_type == "Technology"
+        assert examples[0].taxonomy_content_type == "Veterinary Medicine"
         assert examples[0].best_match_index == 0
 
     def test_load_dataset_file_not_found(self, mock_dspy_optimizer) -> None:
@@ -119,7 +119,7 @@ class TestLoadTrainingDataset:
         with open(csv_file, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=["taxonomy_content_type"])
             writer.writeheader()
-            writer.writerow({"taxonomy_content_type": "Tech"})
+            writer.writerow({"taxonomy_content_type": "Vet"})
 
         with pytest.raises(ValueError, match="CSV must contain columns"):
             mock_dspy_optimizer.load_training_dataset(csv_file)
@@ -149,7 +149,7 @@ class TestLoadTrainingDataset:
             writer.writeheader()
             writer.writerow(
                 {
-                    "taxonomy_content_type": "Tech",
+                    "taxonomy_content_type": "Vet",
                     "taxonomy_summary": "Description",
                     "content_summaries": "Summaries",
                     "best_match_index": "invalid",  # Invalid integer
@@ -157,7 +157,7 @@ class TestLoadTrainingDataset:
             )
             writer.writerow(
                 {
-                    "taxonomy_content_type": "Tech2",
+                    "taxonomy_content_type": "Vet2",
                     "taxonomy_summary": "Description2",
                     "content_summaries": "Summaries2",
                     "best_match_index": "1",
@@ -168,7 +168,7 @@ class TestLoadTrainingDataset:
 
         # Should only have one valid example
         assert len(examples) == 1
-        assert examples[0].taxonomy_content_type == "Tech2"
+        assert examples[0].taxonomy_content_type == "Vet2"
 
     def test_load_dataset_empty_file(self, mock_dspy_optimizer, tmp_path: Path) -> None:
         """Test loading an empty dataset file."""
@@ -187,6 +187,64 @@ class TestLoadTrainingDataset:
 
         with pytest.raises(ValueError, match="No valid examples found"):
             mock_dspy_optimizer.load_training_dataset(csv_file)
+
+
+class TestPromptExtraction:
+    """Tests for extracting prompt info and demonstrations."""
+
+    @staticmethod
+    def _build_model(instructions: str, demos: list[dspy.Example]) -> SimpleNamespace:
+        predict = SimpleNamespace(instructions=instructions, demos=demos)
+        return SimpleNamespace(predict=predict)
+
+    def test_extract_prompt_info_supports_legacy_demo_fields(
+        self,
+        mock_dspy_optimizer,
+    ) -> None:
+        """Legacy taxonomy field names should still serialize into prompt metadata."""
+
+        legacy_demo = dspy.Example(
+            taxonomy_category="WordPress",
+            taxonomy_description="WordPress news and information",
+            taxonomy_keywords="wordpress, cms, blogging",
+            content_summaries="0. Title: Post",
+            best_match_index=1,
+            reasoning="WordPress-specific",
+        )
+        model = self._build_model("Legacy instructions", [legacy_demo])
+
+        info = mock_dspy_optimizer._extract_prompt_info(model)
+
+        assert info["demonstrations"], "Should emit serialized demos"
+        serialized = info["demonstrations"][0]
+        assert serialized["taxonomy_content_type"] == "WordPress"
+        assert serialized["taxonomy_summary"] == "WordPress news and information"
+        assert serialized["taxonomy_topics"] == "wordpress, cms, blogging"
+        assert serialized["best_match_index"] == 1
+
+    def test_extract_prompt_info_handles_new_demo_fields(
+        self,
+        mock_dspy_optimizer,
+    ) -> None:
+        """New GEPA field names should remain unchanged during extraction."""
+
+        new_demo = dspy.Example(
+            taxonomy_content_type="Veterinary Medicine",
+            taxonomy_summary="Veterinary Medicine updates",
+            taxonomy_topics="ai, ml",
+            content_summaries="0. Title: Vet",
+            best_match_index=0,
+            reasoning="Vet fits",
+        )
+        model = self._build_model("New instructions", [new_demo])
+
+        info = mock_dspy_optimizer._extract_prompt_info(model)
+
+        serialized = info["demonstrations"][0]
+        assert serialized["taxonomy_content_type"] == "Veterinary Medicine"
+        assert serialized["taxonomy_summary"] == "Veterinary Medicine updates"
+        assert serialized["taxonomy_topics"] == "ai, ml"
+        assert serialized["best_match_index"] == 0
 
 
 class TestMetricSelection:

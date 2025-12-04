@@ -2,7 +2,7 @@
 
 import csv
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
@@ -49,6 +49,7 @@ class IngestionService:
     @staticmethod
     def _render_taxonomy_embedding_text(taxonomy: TaxonomyPage) -> str:
         topics = ", ".join(taxonomy.key_topics) if taxonomy.key_topics else ""
+        species = ", ".join(taxonomy.species) if taxonomy.species else ""
         audiences = ", ".join(
             filter(None, [taxonomy.primary_audiance, taxonomy.secondary_audiance])
         )
@@ -63,14 +64,33 @@ class IngestionService:
             parts.append(f"UID: {taxonomy.uid}")
         if taxonomy.english_page_name:
             parts.append(f"English Name: {taxonomy.english_page_name}")
-        if taxonomy.es_page_name:
-            parts.append(f"Spanish Name: {taxonomy.es_page_name}")
+        if taxonomy.local_page_name:
+            parts.append(f"Local Name: {taxonomy.local_page_name}")
         if audiences:
             parts.append(f"Audiences: {audiences}")
         parts.append(f"URL Path: {url_path}")
         if topics:
             parts.append(f"Key Topics: {topics}")
+        if species:
+            parts.append(f"Species: {species}")
         return "\n".join(parts)
+
+    @staticmethod
+    def _parse_species_field(raw_value: str | None) -> list[str]:
+        if not raw_value:
+            return []
+        tokens = [token.strip() for token in raw_value.split(",")]
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for token in tokens:
+            if not token:
+                continue
+            lowered = token.lower()
+            if lowered in {"n/a", "none"} or lowered in seen:
+                continue
+            seen.add(lowered)
+            cleaned.append(token)
+        return cleaned
 
     def ingest_wordpress_sites(
         self,
@@ -135,7 +155,7 @@ class IngestionService:
                             enriched = content.model_copy(
                                 update={
                                     "content_embedding": embedding,
-                                    "embedding_updated_at": datetime.utcnow(),
+                                    "embedding_updated_at": datetime.now(timezone.utc),
                                 }
                             )
                         except Exception as exc:  # pragma: no cover - external API
@@ -181,8 +201,8 @@ class IngestionService:
         """Load taxonomy from CSV file.
 
         Expected CSV format (Spain canonical):
-        UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,
-        Secondary_Audiance,Semantic_Summary,Key_Topics
+        UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,
+        Secondary_Audiance,Species,Semantic_Summary,Key_Topics[,Reference_Source]
 
         Key_Topics is comma-separated.
 
@@ -220,14 +240,17 @@ class IngestionService:
                     if row.get("Key_Topics"):
                         topics = [kw.strip() for kw in row["Key_Topics"].split(",") if kw.strip()]
 
+                    species = self._parse_species_field(row.get("Species"))
+
                     taxonomy = TaxonomyPage(
                         uid=row.get("UID") or None,
                         destination_url=cast(HttpUrl, destination_raw),
                         english_page_name=row.get("English_Page Name") or None,
-                        es_page_name=row.get("ES_Page_Name") or None,
+                        local_page_name=row.get("Local_Page_Name") or None,
                         content_type=row["Content_Type"],
                         primary_audiance=row.get("Primary_Audiance") or None,
                         secondary_audiance=row.get("Secondary_Audiance") or None,
+                        species=species,
                         semantic_summary=row["Semantic_Summary"],
                         key_topics=topics,
                     )
@@ -241,7 +264,7 @@ class IngestionService:
                             enriched = taxonomy.model_copy(
                                 update={
                                     "taxonomy_embedding": embedding,
-                                    "embedding_updated_at": datetime.utcnow(),
+                                    "embedding_updated_at": datetime.now(timezone.utc),
                                 }
                             )
                         except Exception as exc:  # pragma: no cover - external API

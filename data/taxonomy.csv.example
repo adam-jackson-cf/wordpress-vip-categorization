@@ -1,6 +1,6 @@
-UID,Destination_URL,English_Page Name,ES_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Semantic_Summary,Key_Topics
-TAX-001,https://example.com/home,Home,Inicio,Homepage,All,General Public,Entry point to the site with navigation to key sections.,home, navigation, welcome
-TAX-002,https://example.com/products/widget-a,Widget A,Producto A,Product Hub,Customers,Prospects,Overview of Widget A features, pricing, and specs.,widget a, features, pricing, specifications
-TAX-003,https://example.com/services/consulting,Consulting Services,Servicios de Consultoría,Services,Corporate,SMB,Consulting offerings and engagement models.,consulting, advisory, professional services
-TAX-004,https://example.com/legal/terms,Terms & Conditions,Términos y Condiciones,Legal Page,All,Legal/Compliance,Site terms of use and legal notices.,terms, conditions, legal, compliance
-TAX-005,https://example.com/about/company,About Us,Acerca de,Section Landing Page,General Public,Media,Company mission, history, and leadership overview.,company, mission, history, leadership
+UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source
+TAX-001,https://example.com/home,Home,Inicio,Homepage,All,General Public,,Entry point to the site with navigation to key sections.,"home, navigation, welcome",https://example.com/home
+TAX-002,https://example.com/products/widget-a,Widget A,Producto A,Product Hub,Customers,Prospects,"Canine",Overview of Widget A features, pricing, and specs.,"widget a, features, pricing, specifications",https://example.com/products/widget-a
+TAX-003,https://example.com/services/consulting,Consulting Services,Servicios de Consultoría,Services,Corporate,SMB,"Beef Cattle, Dairy Cattle",Consulting offerings and engagement models.,"consulting, advisory, professional services",https://example.com/services/consulting
+TAX-004,https://example.com/legal/terms,Terms & Conditions,Términos y Condiciones,Legal Page,All,Legal/Compliance,,Site terms of use and legal notices.,"terms, conditions, legal, compliance",https://example.com/legal/terms
+TAX-005,https://example.com/about/company,About Us,Acerca de,Section Landing Page,General Public,Media,,Company mission, history, and leadership overview.,"company, mission, history, leadership",https://example.com/about/company

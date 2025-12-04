@@ -1,7 +1,7 @@
 """Semantic matching service for taxonomy to content mapping."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -81,13 +81,16 @@ class MatchingService:
         )
         key_topics_sentence = ", ".join(taxonomy.key_topics)
 
+        species_sentence = ", ".join(taxonomy.species)
+
         parts = [
             f"UID: {taxonomy.uid}" if taxonomy.uid else None,
             f"Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
             f"Content Type: {taxonomy.content_type}",
             f"Audiences: {audiences}" if audiences else None,
             f"English Name: {taxonomy.english_page_name}" if taxonomy.english_page_name else None,
-            f"Spanish Name: {taxonomy.es_page_name}" if taxonomy.es_page_name else None,
+            f"Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
+            f"Species: {species_sentence}" if species_sentence else None,
             f"Summary: {taxonomy.semantic_summary}",
             f"Key Topics: {key_topics_sentence}" if key_topics_sentence else None,
         ]
@@ -506,7 +509,7 @@ class MatchingService:
                     semantic_taxonomy_id=semantic_taxonomy_id,
                     semantic_similarity_score=candidate_score,
                     match_stage=MatchStage.SEMANTIC_MATCHED,
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(timezone.utc),
                 )
                 logger.info(
                     "Semantic match ✔ %s → %s (score %.3f)",
@@ -533,7 +536,7 @@ class MatchingService:
                     semantic_similarity_score=candidate_score if candidate_taxonomy else 0.0,
                     match_stage=MatchStage.NEEDS_LLM_REVIEW,
                     failed_at_stage="semantic_matching",
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(timezone.utc),
                 )
 
             if store_results:

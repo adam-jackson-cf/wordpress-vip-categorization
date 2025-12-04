@@ -93,8 +93,6 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
 ]
-asyncio_mode = "auto"
-timeout = 60
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
