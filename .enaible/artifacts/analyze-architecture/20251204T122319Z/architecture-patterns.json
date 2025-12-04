@@ -1,0 +1,86 @@
+{
+  "analyzed_at": "2024-12-04T12:23:19Z",
+  "patterns_detected": {
+    "primary_pattern": "Layered Architecture with Service Layer",
+    "sub_patterns": [
+      "Dependency Injection (constructor-based)",
+      "Repository Pattern (SupabaseClient)",
+      "Domain Models (Pydantic models)",
+      "Command Pattern (Click CLI)",
+      "Strategy Pattern (DSPy optimizers)",
+      "Batch Processing Pattern (OpenAI Batch API)"
+    ]
+  },
+  "layer_analysis": {
+    "presentation_layer": {
+      "location": "src/cli.py",
+      "components": ["CLI commands", "Click decorators"],
+      "responsibilities": "User interaction, argument parsing, output formatting"
+    },
+    "service_layer": {
+      "location": "src/services/",
+      "components": [
+        "WorkflowService",
+        "MatchingService", 
+        "CategorizationService",
+        "IngestionService",
+        "EmbeddingService"
+      ],
+      "responsibilities": "Business logic orchestration, domain workflows"
+    },
+    "data_access_layer": {
+      "location": "src/data/",
+      "components": ["SupabaseClient"],
+      "responsibilities": "Database operations, query building, retry logic"
+    },
+    "connector_layer": {
+      "location": "src/connectors/",
+      "components": ["WordPressVIPConnector"],
+      "responsibilities": "External API integration, content fetching"
+    },
+    "domain_layer": {
+      "location": "src/models.py",
+      "components": [
+        "WordPressContent",
+        "TaxonomyPage",
+        "MatchingResult",
+        "CategorizationResult",
+        "WorkflowRun"
+      ],
+      "responsibilities": "Domain entities, validation, serialization"
+    },
+    "configuration_layer": {
+      "location": "src/config.py",
+      "components": ["Settings", "get_settings()"],
+      "responsibilities": "Environment configuration, settings validation"
+    },
+    "optimization_layer": {
+      "location": "src/optimization/",
+      "components": ["DSPyOptimizer", "Evaluator", "MatchingModule"],
+      "responsibilities": "ML prompt optimization, model evaluation"
+    },
+    "export_layer": {
+      "location": "src/exporters/",
+      "components": ["CSVExporter"],
+      "responsibilities": "Data export, format transformation"
+    }
+  },
+  "conventions_observed": {
+    "naming": {
+      "services": "*Service suffix",
+      "connectors": "*Connector suffix",
+      "exporters": "*Exporter suffix",
+      "models": "PascalCase domain entities"
+    },
+    "dependency_injection": "Constructor-based, explicit dependencies",
+    "configuration": "Pydantic Settings with env file support",
+    "error_handling": "Tenacity retry decorators for external calls",
+    "logging": "Module-level loggers via logging.getLogger(__name__)"
+  },
+  "alignment_score": 0.92,
+  "alignment_notes": [
+    "Clean separation between layers",
+    "Consistent DI pattern across services",
+    "Some CLI methods contain business logic that could be extracted"
+  ]
+}

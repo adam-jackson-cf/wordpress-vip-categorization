@@ -1,0 +1,796 @@
+{
+  "tool": "quality:lizard",
+  "analyzer_type": "performance",
+  "success": true,
+  "exit_code": 0,
+  "started_at": "2025-12-04T12:17:47.769841+00:00",
+  "completed_at": "2025-12-04T12:18:02.029896+00:00",
+  "duration_ms": 14260,
+  "target": "/Users/adamjackson/LocalDev/wordpress-vip-categorization",
+  "findings": [
+    {
+      "id": "COMPLEXITY001",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'main' has cyclomatic complexity of 20",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "scripts/build_spain_dspy_dataset.py",
+      "line_number": 109,
+      "evidence": {
+        "function_name": "main",
+        "cyclomatic_complexity": 20,
+        "lines_of_code": 96,
+        "parameters": 0
+      }
+    },
+    {
+      "id": "COMPLEXITY021",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'match' has cyclomatic complexity of 27",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/cli.py",
+      "line_number": 380,
+      "evidence": {
+        "function_name": "match",
+        "cyclomatic_complexity": 27,
+        "lines_of_code": 106,
+        "parameters": 10
+      }
+    },
+    {
+      "id": "COMPLEXITY022",
+      "title": "Long Function",
+      "description": "Function 'match' is 106 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/cli.py",
+      "line_number": 380,
+      "evidence": {
+        "function_name": "match",
+        "lines_of_code": 106,
+        "cyclomatic_complexity": 27
+      }
+    },
+    {
+      "id": "COMPLEXITY023",
+      "title": "Too Many Parameters",
+      "description": "Function 'match' has 10 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/cli.py",
+      "line_number": 380,
+      "evidence": {
+        "function_name": "match",
+        "parameter_count": 10
+      }
+    },
+    {
+      "id": "COMPLEXITY025",
+      "title": "Too Many Parameters",
+      "description": "Function 'full_run' has 11 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/cli.py",
+      "line_number": 549,
+      "evidence": {
+        "function_name": "full_run",
+        "parameter_count": 11
+      }
+    },
+    {
+      "id": "COMPLEXITY026",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'optimize_dataset' has cyclomatic complexity of 26",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/cli.py",
+      "line_number": 881,
+      "evidence": {
+        "function_name": "optimize_dataset",
+        "cyclomatic_complexity": 26,
+        "lines_of_code": 154,
+        "parameters": 13
+      }
+    },
+    {
+      "id": "COMPLEXITY027",
+      "title": "Long Function",
+      "description": "Function 'optimize_dataset' is 154 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/cli.py",
+      "line_number": 881,
+      "evidence": {
+        "function_name": "optimize_dataset",
+        "lines_of_code": 154,
+        "cyclomatic_complexity": 26
+      }
+    },
+    {
+      "id": "COMPLEXITY028",
+      "title": "Too Many Parameters",
+      "description": "Function 'optimize_dataset' has 13 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/cli.py",
+      "line_number": 881,
+      "evidence": {
+        "function_name": "optimize_dataset",
+        "parameter_count": 13
+      }
+    },
+    {
+      "id": "COMPLEXITY041",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function '_extract_prompt_info' has cyclomatic complexity of 20",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 364,
+      "evidence": {
+        "function_name": "_extract_prompt_info",
+        "cyclomatic_complexity": 20,
+        "lines_of_code": 55,
+        "parameters": 2
+      }
+    },
+    {
+      "id": "COMPLEXITY047",
+      "title": "Long Function",
+      "description": "Function 'generate_optimization_report' is 145 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 540,
+      "evidence": {
+        "function_name": "generate_optimization_report",
+        "lines_of_code": 145,
+        "cyclomatic_complexity": 19
+      }
+    },
+    {
+      "id": "COMPLEXITY048",
+      "title": "Too Many Parameters",
+      "description": "Function 'generate_optimization_report' has 9 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 540,
+      "evidence": {
+        "function_name": "generate_optimization_report",
+        "parameter_count": 9
+      }
+    },
+    {
+      "id": "COMPLEXITY051",
+      "title": "Too Many Parameters",
+      "description": "Function 'extract_optimization_config' has 10 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 734,
+      "evidence": {
+        "function_name": "extract_optimization_config",
+        "parameter_count": 10
+      }
+    },
+    {
+      "id": "COMPLEXITY052",
+      "title": "Too Many Parameters",
+      "description": "Function 'save_optimization_config' has 10 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 841,
+      "evidence": {
+        "function_name": "save_optimization_config",
+        "parameter_count": 10
+      }
+    },
+    {
+      "id": "COMPLEXITY055",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'optimize_with_gepa' has cyclomatic complexity of 23",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 1147,
+      "evidence": {
+        "function_name": "optimize_with_gepa",
+        "cyclomatic_complexity": 23,
+        "lines_of_code": 135,
+        "parameters": 8
+      }
+    },
+    {
+      "id": "COMPLEXITY056",
+      "title": "Long Function",
+      "description": "Function 'optimize_with_gepa' is 135 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 1147,
+      "evidence": {
+        "function_name": "optimize_with_gepa",
+        "lines_of_code": 135,
+        "cyclomatic_complexity": 23
+      }
+    },
+    {
+      "id": "COMPLEXITY057",
+      "title": "Too Many Parameters",
+      "description": "Function 'optimize_with_gepa' has 8 parameters",
+      "severity": "high",
+      "recommendation": "Consider using parameter objects or configuration classes",
+      "file_path": "src/optimization/dspy_optimizer.py",
+      "line_number": 1147,
+      "evidence": {
+        "function_name": "optimize_with_gepa",
+        "parameter_count": 8
+      }
+    },
+    {
+      "id": "COMPLEXITY061",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function '_summarize_rubric' has cyclomatic complexity of 20",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/optimization/evaluator.py",
+      "line_number": 179,
+      "evidence": {
+        "function_name": "_summarize_rubric",
+        "cyclomatic_complexity": 20,
+        "lines_of_code": 49,
+        "parameters": 2
+      }
+    },
+    {
+      "id": "COMPLEXITY074",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'apply_llm_batch_results' has cyclomatic complexity of 28",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/services/categorization.py",
+      "line_number": 818,
+      "evidence": {
+        "function_name": "apply_llm_batch_results",
+        "cyclomatic_complexity": 28,
+        "lines_of_code": 97,
+        "parameters": 6
+      }
+    },
+    {
+      "id": "COMPLEXITY084",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'match_all_taxonomy' has cyclomatic complexity of 21",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/services/matching.py",
+      "line_number": 536,
+      "evidence": {
+        "function_name": "match_all_taxonomy",
+        "cyclomatic_complexity": 21,
+        "lines_of_code": 111,
+        "parameters": 5
+      }
+    },
+    {
+      "id": "COMPLEXITY085",
+      "title": "Long Function",
+      "description": "Function 'match_all_taxonomy' is 111 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/services/matching.py",
+      "line_number": 536,
+      "evidence": {
+        "function_name": "match_all_taxonomy",
+        "lines_of_code": 111,
+        "cyclomatic_complexity": 21
+      }
+    },
+    {
+      "id": "COMPLEXITY091",
+      "title": "High Cyclomatic Complexity",
+      "description": "Function 'run_matching_workflow' has cyclomatic complexity of 20",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+      "file_path": "src/services/workflow.py",
+      "line_number": 63,
+      "evidence": {
+        "function_name": "run_matching_workflow",
+        "cyclomatic_complexity": 20,
+        "lines_of_code": 143,
+        "parameters": 5
+      }
+    },
+    {
+      "id": "COMPLEXITY092",
+      "title": "Long Function",
+      "description": "Function 'run_matching_workflow' is 143 lines long",
+      "severity": "high",
+      "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+      "file_path": "src/services/workflow.py",
+      "line_number": 63,
+      "evidence": {
+        "function_name": "run_matching_workflow",
+        "lines_of_code": 143,
+        "cyclomatic_complexity": 20
+      }
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 22,
+    "medium": 114,
+    "low": 0,
+    "info": 0
+  },
+  "metadata": {
+    "analyzer_type": "complexity",
+    "target_path": ".",
+    "files_analyzed": 77,
+    "files_processed": 77,
+    "files_skipped": 0,
+    "processing_errors": 0,
+    "total_findings": 136,
+    "severity_breakdown": {
+      "critical": 0,
+      "high": 22,
+      "medium": 114,
+      "low": 0,
+      "info": 0
+    },
+    "analyzer_config": {
+      "max_files": null,
+      "max_file_size_mb": 5,
+      "extensions_count": 26,
+      "skip_patterns_count": 23
+    },
+    "analysis_type": "code_complexity",
+    "complexity_metrics": [
+      "cyclomatic_complexity",
+      "function_length",
+      "parameter_count"
+    ],
+    "thresholds": {
+      "cyclomatic_complexity": {
+        "high": 20,
+        "medium": 10,
+        "low": 5
+      },
+      "function_length": {
+        "high": 100,
+        "medium": 50,
+        "low": 25
+      },
+      "parameter_count": {
+        "high": 7,
+        "medium": 5,
+        "low": 4
+      }
+    },
+    "supported_languages": [
+      "Python",
+      "JavaScript",
+      "TypeScript",
+      "Java",
+      "C/C++",
+      "C#",
+      "Ruby",
+      "PHP",
+      "Swift",
+      "Go",
+      "Rust",
+      "Kotlin",
+      "Scala",
+      "Dart",
+      "Lua",
+      "Perl",
+      "R"
+    ],
+    "tool": "Lizard",
+    "tool_installed": true
+  },
+  "stats": {
+    "execution_time_seconds": 14.259594917297363
+  },
+  "errors": [],
+  "raw": {
+    "analysis_type": "performance",
+    "script_name": "complexity_analyzer.py",
+    "target_path": "/Users/adamjackson/LocalDev/wordpress-vip-categorization",
+    "timestamp": "2025-12-04T12:17:47.769875",
+    "execution_time": 14.26,
+    "success": true,
+    "error_message": null,
+    "summary": {
+      "critical": 0,
+      "high": 22,
+      "medium": 114,
+      "low": 0,
+      "info": 0
+    },
+    "findings": [
+      {
+        "id": "COMPLEXITY001",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'main' has cyclomatic complexity of 20",
+        "severity": "high",
+        "file_path": "scripts/build_spain_dspy_dataset.py",
+        "line_number": 109,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "main",
+          "cyclomatic_complexity": 20,
+          "lines_of_code": 96,
+          "parameters": 0
+        }
+      },
+      {
+        "id": "COMPLEXITY021",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'match' has cyclomatic complexity of 27",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 380,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "match",
+          "cyclomatic_complexity": 27,
+          "lines_of_code": 106,
+          "parameters": 10
+        }
+      },
+      {
+        "id": "COMPLEXITY022",
+        "title": "Long Function",
+        "description": "Function 'match' is 106 lines long",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 380,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "match",
+          "lines_of_code": 106,
+          "cyclomatic_complexity": 27
+        }
+      },
+      {
+        "id": "COMPLEXITY023",
+        "title": "Too Many Parameters",
+        "description": "Function 'match' has 10 parameters",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 380,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "match",
+          "parameter_count": 10
+        }
+      },
+      {
+        "id": "COMPLEXITY025",
+        "title": "Too Many Parameters",
+        "description": "Function 'full_run' has 11 parameters",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 549,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "full_run",
+          "parameter_count": 11
+        }
+      },
+      {
+        "id": "COMPLEXITY026",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'optimize_dataset' has cyclomatic complexity of 26",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 881,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "optimize_dataset",
+          "cyclomatic_complexity": 26,
+          "lines_of_code": 154,
+          "parameters": 13
+        }
+      },
+      {
+        "id": "COMPLEXITY027",
+        "title": "Long Function",
+        "description": "Function 'optimize_dataset' is 154 lines long",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 881,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "optimize_dataset",
+          "lines_of_code": 154,
+          "cyclomatic_complexity": 26
+        }
+      },
+      {
+        "id": "COMPLEXITY028",
+        "title": "Too Many Parameters",
+        "description": "Function 'optimize_dataset' has 13 parameters",
+        "severity": "high",
+        "file_path": "src/cli.py",
+        "line_number": 881,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "optimize_dataset",
+          "parameter_count": 13
+        }
+      },
+      {
+        "id": "COMPLEXITY041",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function '_extract_prompt_info' has cyclomatic complexity of 20",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 364,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "_extract_prompt_info",
+          "cyclomatic_complexity": 20,
+          "lines_of_code": 55,
+          "parameters": 2
+        }
+      },
+      {
+        "id": "COMPLEXITY047",
+        "title": "Long Function",
+        "description": "Function 'generate_optimization_report' is 145 lines long",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 540,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "generate_optimization_report",
+          "lines_of_code": 145,
+          "cyclomatic_complexity": 19
+        }
+      },
+      {
+        "id": "COMPLEXITY048",
+        "title": "Too Many Parameters",
+        "description": "Function 'generate_optimization_report' has 9 parameters",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 540,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "generate_optimization_report",
+          "parameter_count": 9
+        }
+      },
+      {
+        "id": "COMPLEXITY051",
+        "title": "Too Many Parameters",
+        "description": "Function 'extract_optimization_config' has 10 parameters",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 734,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "extract_optimization_config",
+          "parameter_count": 10
+        }
+      },
+      {
+        "id": "COMPLEXITY052",
+        "title": "Too Many Parameters",
+        "description": "Function 'save_optimization_config' has 10 parameters",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 841,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "save_optimization_config",
+          "parameter_count": 10
+        }
+      },
+      {
+        "id": "COMPLEXITY055",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'optimize_with_gepa' has cyclomatic complexity of 23",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 1147,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "optimize_with_gepa",
+          "cyclomatic_complexity": 23,
+          "lines_of_code": 135,
+          "parameters": 8
+        }
+      },
+      {
+        "id": "COMPLEXITY056",
+        "title": "Long Function",
+        "description": "Function 'optimize_with_gepa' is 135 lines long",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 1147,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "optimize_with_gepa",
+          "lines_of_code": 135,
+          "cyclomatic_complexity": 23
+        }
+      },
+      {
+        "id": "COMPLEXITY057",
+        "title": "Too Many Parameters",
+        "description": "Function 'optimize_with_gepa' has 8 parameters",
+        "severity": "high",
+        "file_path": "src/optimization/dspy_optimizer.py",
+        "line_number": 1147,
+        "recommendation": "Consider using parameter objects or configuration classes",
+        "evidence": {
+          "function_name": "optimize_with_gepa",
+          "parameter_count": 8
+        }
+      },
+      {
+        "id": "COMPLEXITY061",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function '_summarize_rubric' has cyclomatic complexity of 20",
+        "severity": "high",
+        "file_path": "src/optimization/evaluator.py",
+        "line_number": 179,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "_summarize_rubric",
+          "cyclomatic_complexity": 20,
+          "lines_of_code": 49,
+          "parameters": 2
+        }
+      },
+      {
+        "id": "COMPLEXITY074",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'apply_llm_batch_results' has cyclomatic complexity of 28",
+        "severity": "high",
+        "file_path": "src/services/categorization.py",
+        "line_number": 818,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "apply_llm_batch_results",
+          "cyclomatic_complexity": 28,
+          "lines_of_code": 97,
+          "parameters": 6
+        }
+      },
+      {
+        "id": "COMPLEXITY084",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'match_all_taxonomy' has cyclomatic complexity of 21",
+        "severity": "high",
+        "file_path": "src/services/matching.py",
+        "line_number": 536,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "match_all_taxonomy",
+          "cyclomatic_complexity": 21,
+          "lines_of_code": 111,
+          "parameters": 5
+        }
+      },
+      {
+        "id": "COMPLEXITY085",
+        "title": "Long Function",
+        "description": "Function 'match_all_taxonomy' is 111 lines long",
+        "severity": "high",
+        "file_path": "src/services/matching.py",
+        "line_number": 536,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "match_all_taxonomy",
+          "lines_of_code": 111,
+          "cyclomatic_complexity": 21
+        }
+      },
+      {
+        "id": "COMPLEXITY091",
+        "title": "High Cyclomatic Complexity",
+        "description": "Function 'run_matching_workflow' has cyclomatic complexity of 20",
+        "severity": "high",
+        "file_path": "src/services/workflow.py",
+        "line_number": 63,
+        "recommendation": "Consider breaking down this function. Aim for complexity < 10",
+        "evidence": {
+          "function_name": "run_matching_workflow",
+          "cyclomatic_complexity": 20,
+          "lines_of_code": 143,
+          "parameters": 5
+        }
+      },
+      {
+        "id": "COMPLEXITY092",
+        "title": "Long Function",
+        "description": "Function 'run_matching_workflow' is 143 lines long",
+        "severity": "high",
+        "file_path": "src/services/workflow.py",
+        "line_number": 63,
+        "recommendation": "Consider breaking down this function. Aim for < 50 lines",
+        "evidence": {
+          "function_name": "run_matching_workflow",
+          "lines_of_code": 143,
+          "cyclomatic_complexity": 20
+        }
+      }
+    ],
+    "metadata": {
+      "analyzer_type": "complexity",
+      "target_path": ".",
+      "files_analyzed": 77,
+      "files_processed": 77,
+      "files_skipped": 0,
+      "processing_errors": 0,
+      "total_findings": 136,
+      "severity_breakdown": {
+        "critical": 0,
+        "high": 22,
+        "medium": 114,
+        "low": 0,
+        "info": 0
+      },
+      "analyzer_config": {
+        "max_files": null,
+        "max_file_size_mb": 5,
+        "extensions_count": 26,
+        "skip_patterns_count": 23
+      },
+      "analysis_type": "code_complexity",
+      "complexity_metrics": [
+        "cyclomatic_complexity",
+        "function_length",
+        "parameter_count"
+      ],
+      "thresholds": {
+        "cyclomatic_complexity": {
+          "high": 20,
+          "medium": 10,
+          "low": 5
+        },
+        "function_length": {
+          "high": 100,
+          "medium": 50,
+          "low": 25
+        },
+        "parameter_count": {
+          "high": 7,
+          "medium": 5,
+          "low": 4
+        }
+      },
+      "supported_languages": [
+        "Python",
+        "JavaScript",
+        "TypeScript",
+        "Java",
+        "C/C++",
+        "C#",
+        "Ruby",
+        "PHP",
+        "Swift",
+        "Go",
+        "Rust",
+        "Kotlin",
+        "Scala",
+        "Dart",
+        "Lua",
+        "Perl",
+        "R"
+      ],
+      "tool": "Lizard",
+      "tool_installed": true
+    },
+    "min_severity_filter": "high",
+    "total_findings_before_filter": 136,
+    "total_findings_after_filter": 22
+  }
+}

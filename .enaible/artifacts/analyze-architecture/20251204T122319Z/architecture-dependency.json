@@ -1,0 +1,135 @@
+{
+  "analyzed_at": "2024-12-04T12:23:19Z",
+  "dependency_graph": {
+    "src/cli.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.services.workflow.WorkflowService",
+        "src.services.ingestion.IngestionService",
+        "src.services.matching.MatchingService",
+        "src.services.categorization.CategorizationService",
+        "src.services.embeddings.EmbeddingService",
+        "src.optimization.dspy_optimizer.DSPyOptimizer",
+        "src.exporters.csv_exporter.CSVExporter"
+      ],
+      "in_degree": 0,
+      "out_degree": 9,
+      "role": "composition_root"
+    },
+    "src/services/workflow.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.services.matching.MatchingService",
+        "src.services.categorization.CategorizationService",
+        "src.services.embeddings.EmbeddingService",
+        "src.models"
+      ],
+      "in_degree": 1,
+      "out_degree": 6,
+      "role": "orchestrator"
+    },
+    "src/services/matching.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.services.embeddings.EmbeddingService",
+        "src.models"
+      ],
+      "in_degree": 2,
+      "out_degree": 4,
+      "role": "core_service"
+    },
+    "src/services/categorization.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.optimization.dspy_optimizer.DSPyOptimizer",
+        "src.models"
+      ],
+      "in_degree": 2,
+      "out_degree": 4,
+      "role": "core_service"
+    },
+    "src/services/ingestion.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.connectors.wordpress_vip.WordPressVIPConnector",
+        "src.services.embeddings.EmbeddingService",
+        "src.models"
+      ],
+      "in_degree": 1,
+      "out_degree": 5,
+      "role": "data_collector"
+    },
+    "src/services/embeddings.py": {
+      "imports": [
+        "src.config.Settings"
+      ],
+      "in_degree": 4,
+      "out_degree": 1,
+      "role": "utility_service"
+    },
+    "src/data/supabase_client.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.models"
+      ],
+      "in_degree": 6,
+      "out_degree": 2,
+      "role": "data_access"
+    },
+    "src/connectors/wordpress_vip.py": {
+      "imports": [
+        "src.models"
+      ],
+      "in_degree": 1,
+      "out_degree": 1,
+      "role": "external_connector"
+    },
+    "src/optimization/dspy_optimizer.py": {
+      "imports": [
+        "src.config.Settings",
+        "src.data.supabase_client.SupabaseClient",
+        "src.models"
+      ],
+      "in_degree": 2,
+      "out_degree": 3,
+      "role": "ml_optimization"
+    },
+    "src/exporters/csv_exporter.py": {
+      "imports": [
+        "src.data.supabase_client.SupabaseClient",
+        "src.models"
+      ],
+      "in_degree": 1,
+      "out_degree": 2,
+      "role": "data_export"
+    },
+    "src/models.py": {
+      "imports": [],
+      "in_degree": 8,
+      "out_degree": 0,
+      "role": "domain_model"
+    },
+    "src/config.py": {
+      "imports": [],
+      "in_degree": 7,
+      "out_degree": 0,
+      "role": "configuration"
+    }
+  },
+  "circular_dependencies": [],
+  "high_in_degree_modules": [
+    {"module": "src/models.py", "in_degree": 8, "note": "Expected - domain models should be widely used"},
+    {"module": "src/config.py", "in_degree": 7, "note": "Expected - settings needed everywhere"},
+    {"module": "src/data/supabase_client.py", "in_degree": 6, "note": "Expected - central data access"}
+  ],
+  "high_out_degree_modules": [
+    {"module": "src/cli.py", "out_degree": 9, "note": "Expected - CLI is composition root"}
+  ],
+  "boundary_violations": [],
+  "dependency_health_score": 0.95
+}

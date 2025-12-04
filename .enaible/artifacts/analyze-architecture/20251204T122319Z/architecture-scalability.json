@@ -1,0 +1,100 @@
+{
+  "analyzed_at": "2024-12-04T12:23:19Z",
+  "scalability_analysis": {
+    "data_volume_handling": {
+      "batch_processing": {
+        "status": "implemented",
+        "patterns": [
+          "Configurable batch sizes via Settings",
+          "OpenAI Batch API for cost-effective LLM calls",
+          "Bulk upsert operations in SupabaseClient",
+          "Chunked embedding generation with parallel processing"
+        ],
+        "config_knobs": [
+          "ingestion_batch_size",
+          "matching_batch_size", 
+          "embedding_batch_size",
+          "llm_batch_chunk_size"
+        ]
+      },
+      "vector_operations": {
+        "status": "optimized",
+        "patterns": [
+          "IVFFlat indexes on vector columns",
+          "Configurable similarity threshold",
+          "Top-K retrieval limiting"
+        ]
+      }
+    },
+    "concurrency_patterns": {
+      "async_embedding": {
+        "status": "implemented",
+        "location": "embeddings.py",
+        "pattern": "asyncio.gather with parallel chunk processing"
+      },
+      "retry_logic": {
+        "status": "implemented",
+        "library": "tenacity",
+        "patterns": ["Exponential backoff", "Selective exception retry"]
+      }
+    },
+    "bottleneck_analysis": [
+      {
+        "component": "CategorizationService.wait_for_batch_completion",
+        "type": "synchronous_polling",
+        "impact": "medium",
+        "description": "Blocking wait loop for OpenAI batch jobs",
+        "mitigation": "Already has configurable poll interval; async option available via wait=False"
+      },
+      {
+        "component": "SupabaseClient bulk operations",
+        "type": "sequential_chunks",
+        "impact": "low",
+        "description": "Chunked inserts are sequential within each batch",
+        "mitigation": "Chunk sizes are configurable; parallel chunks could be added if needed"
+      }
+    ],
+    "resource_usage": {
+      "memory": {
+        "concerns": [
+          "Large content lists loaded into memory for embedding",
+          "Full taxonomy loaded for candidate matching"
+        ],
+        "mitigations": [
+          "Generator-based content fetching in WordPress connector",
+          "Chunked database operations"
+        ]
+      },
+      "api_calls": {
+        "rate_limiting": "Handled via tenacity retry with exponential backoff",
+        "batching": "OpenAI Batch API reduces per-request overhead"
+      }
+    },
+    "horizontal_scaling_readiness": {
+      "status": "partial",
+      "supports": [
+        "Stateless CLI commands",
+        "Database-backed state (workflow_runs table)",
+        "Configurable chunk sizes for distributed processing"
+      ],
+      "gaps": [
+        "No distributed task queue integration",
+        "Single-process embedding generation",
+        "No partition strategy for parallel site processing"
+      ]
+    }
+  },
+  "scalability_health_score": 0.78,
+  "recommendations": [
+    {
+      "priority": "low",
+      "action": "Consider Celery/RQ integration for distributed batch processing",
+      "rationale": "Current sync batch flow is sufficient for moderate volumes"
+    },
+    {
+      "priority": "medium", 
+      "action": "Add streaming/pagination for very large content exports",
+      "rationale": "Full result sets loaded into memory before CSV write"
+    }
+  ]
+}

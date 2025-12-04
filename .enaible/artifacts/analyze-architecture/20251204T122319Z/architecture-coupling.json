@@ -1,0 +1,56 @@
+{
+  "analyzed_at": "2024-12-04T12:23:19Z",
+  "coupling_analysis": {
+    "afferent_coupling": {
+      "models.py": {"Ca": 8, "instability": 0.0, "status": "stable"},
+      "config.py": {"Ca": 7, "instability": 0.0, "status": "stable"},
+      "supabase_client.py": {"Ca": 6, "instability": 0.25, "status": "stable"}
+    },
+    "efferent_coupling": {
+      "cli.py": {"Ce": 9, "instability": 1.0, "status": "volatile_expected"},
+      "workflow.py": {"Ce": 6, "instability": 0.85, "status": "orchestrator"},
+      "ingestion.py": {"Ce": 5, "instability": 0.83, "status": "normal"}
+    },
+    "instability_by_module": {
+      "models.py": 0.0,
+      "config.py": 0.0,
+      "supabase_client.py": 0.25,
+      "embeddings.py": 0.2,
+      "csv_exporter.py": 0.67,
+      "wordpress_vip.py": 0.5,
+      "dspy_optimizer.py": 0.6,
+      "matching.py": 0.67,
+      "categorization.py": 0.67,
+      "ingestion.py": 0.83,
+      "workflow.py": 0.85,
+      "cli.py": 1.0
+    }
+  },
+  "tight_coupling_issues": [
+    {
+      "modules": ["workflow.py", "matching.py", "categorization.py"],
+      "issue": "Workflow passes database client through to services; consider using repository interfaces",
+      "severity": "low",
+      "recommendation": "Already well-structured with constructor injection; current approach is acceptable"
+    }
+  ],
+  "loose_coupling_observations": [
+    "Clean separation between CLI and business logic",
+    "Services receive dependencies via constructor injection",
+    "Models layer has no outward dependencies (pure domain)",
+    "Configuration isolated in dedicated module"
+  ],
+  "component_cohesion": {
+    "services/": {"cohesion": "high", "reason": "Each service has single responsibility"},
+    "data/": {"cohesion": "high", "reason": "Focused on database operations"},
+    "connectors/": {"cohesion": "high", "reason": "Single external integration"},
+    "optimization/": {"cohesion": "high", "reason": "DSPy-related functionality grouped"},
+    "exporters/": {"cohesion": "high", "reason": "Export functionality isolated"}
+  },
+  "coupling_health_score": 0.88,
+  "notes": [
+    "Instability gradient follows Stable Dependencies Principle",
+    "No circular dependencies detected",
+    "CLI correctly positioned as unstable (depends on stable abstractions)"
+  ]
+}
