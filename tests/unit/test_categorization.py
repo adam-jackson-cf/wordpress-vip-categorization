@@ -10,7 +10,11 @@ import pytest
 from src.config import Settings
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.optimization.dspy_optimizer import PromptContext
-from src.services.categorization import BatchRequestFile, CategorizationService
+from src.services.categorization import (
+    BatchRequestFile,
+    CategorizationService,
+    LLMBatchStats,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -337,7 +341,7 @@ class TestCategorizationService:
             content_lookup={sample_wordpress_content.id: sample_wordpress_content},
         )
 
-        assert stats == {"matched": 1, "needs_review": 0, "total": 1}
+        assert stats.to_dict() == {"matched": 1, "needs_review": 0, "total": 1}
         mock_supabase_client.bulk_upsert_matchings.assert_called_once()
         saved = mock_supabase_client.bulk_upsert_matchings.call_args[0][0][0]
         assert saved.match_stage == MatchStage.LLM_CATEGORIZED
@@ -365,9 +369,67 @@ class TestCategorizationService:
             semantic_results={sample_wordpress_content.id: sample_matching_result},
         )
 
-        assert stats == {"matched": 0, "needs_review": 1, "total": 1}
+        assert stats.to_dict() == {"matched": 0, "needs_review": 1, "total": 1}
         saved = mock_supabase_client.bulk_upsert_matchings.call_args[0][0][0]
         assert saved.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
+
+    def test_both_stages_failed_status(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+        sample_taxonomy_page: TaxonomyPage,
+    ) -> None:
+        """Verify failed_at_stage='both_stages_failed' when semantic and LLM both fail."""
+        service = CategorizationService(mock_settings, mock_supabase_client)
+
+        # Create semantic result that failed at semantic stage
+        semantic_result = MatchingResult(
+            id=uuid4(),
+            content_id=sample_wordpress_content.id,
+            taxonomy_id=None,  # Semantic did not accept
+            semantic_taxonomy_id=sample_taxonomy_page.id,
+            semantic_similarity_score=0.65,  # Below threshold
+            match_stage=MatchStage.NEEDS_LLM_REVIEW,
+            failed_at_stage="semantic_matching",  # Failed at semantic stage
+        )
+
+        # LLM result that also rejects
+        payload = {
+            "decision": "review",  # LLM also rejects
+            "taxonomy_id": str(sample_taxonomy_page.id),
+            "taxonomy_url": str(sample_taxonomy_page.destination_url),
+            "topic_alignment": 0.55,
+            "intent_fit": 0.60,
+            "entity_overlap": 0.40,
+            "reasoning": "Not confident enough",
+        }
+        results = [
+            {
+                "custom_id": str(sample_wordpress_content.id),
+                "response": {
+                    "body": {
+                        "choices": [
+                            {"message": {"content": json.dumps(payload)}}
+                        ]
+                    }
+                },
+            }
+        ]
+
+        stats = service.apply_llm_batch_results(
+            results,
+            "batch-both-failed",
+            taxonomy_lookup={sample_taxonomy_page.id: sample_taxonomy_page},
+            semantic_results={sample_wordpress_content.id: semantic_result},
+            content_lookup={sample_wordpress_content.id: sample_wordpress_content},
+        )
+
+        assert stats.to_dict() == {"matched": 0, "needs_review": 1, "total": 1}
+        mock_supabase_client.bulk_upsert_matchings.assert_called_once()
+        saved = mock_supabase_client.bulk_upsert_matchings.call_args[0][0][0]
+        assert saved.match_stage == MatchStage.NEEDS_HUMAN_REVIEW
+        assert saved.failed_at_stage == "both_stages_failed"  # Both stages failed
 
     def test_categorize_for_matching_waits_and_applies(
         self,
@@ -389,7 +451,7 @@ class TestCategorizationService:
         service.wait_for_batch_completion = Mock()
         service.retrieve_batch_results = Mock(return_value=[{"custom_id": str(sample_wordpress_content.id)}])
         service.apply_llm_batch_results = Mock(
-            return_value={"matched": 1, "needs_review": 0}
+            return_value=LLMBatchStats(matched=1, needs_review=0, total=1)
         )
 
         stats = service.categorize_for_matching(

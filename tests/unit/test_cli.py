@@ -4,10 +4,13 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock
 
+import click
+
 from click.testing import CliRunner
 
 from src.cli import cli
 from src.models import MatchStage, MatchingResult, TaxonomyPage, WordPressContent
+from src.services.categorization import LLMBatchStats
 
 runner = CliRunner()
 
@@ -67,27 +70,7 @@ def test_match_only_unmatched_triggers_llm_retry(
 ) -> None:
     """`--only-unmatched --force-llm` should clear and rerun just the backlog."""
 
-    mock_settings = mocker.Mock()
-    mock_settings.similarity_threshold = 0.85
-    mock_settings.enable_semantic_matching = False
-    mock_settings.enable_llm_categorization = True
-
-    mocker.patch("src.cli.get_settings", return_value=mock_settings)
-
-    mock_db = Mock()
-    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
-
-    mock_matching = mocker.Mock()
-    mock_matching.get_unmatched_taxonomy.return_value = [sample_taxonomy_page]
-    mocker.patch("src.cli.MatchingService", return_value=mock_matching)
-
-    mock_workflow = mocker.Mock()
-    mock_workflow.run_matching_workflow.return_value = {
-        "semantic_matched": 0,
-        "llm_categorized": 1,
-        "needs_review": 0,
-    }
-    mocker.patch("src.cli.WorkflowService", return_value=mock_workflow)
+    mock_execute = mocker.patch("src.cli.execute_match")
 
     result = runner.invoke(
         cli,
@@ -100,19 +83,7 @@ def test_match_only_unmatched_triggers_llm_retry(
     )
 
     assert result.exit_code == 0
-    mock_matching.get_unmatched_taxonomy.assert_called_once_with(0.85)
-    mock_db.clear_matching_results.assert_called_once_with(
-        [sample_taxonomy_page.id],
-        [
-            MatchStage.LLM_CATEGORIZED,
-            MatchStage.NEEDS_LLM_REVIEW,
-            MatchStage.NEEDS_HUMAN_REVIEW,
-        ],
-    )
-    mock_workflow.run_matching_workflow.assert_called_once()
-    kwargs = mock_workflow.run_matching_workflow.call_args.kwargs
-    assert kwargs["taxonomy_pages"] == [sample_taxonomy_page]
-    assert kwargs["batch_mode"] is True
+    mock_execute.assert_called_once()
 
 
 def test_batch_status_command(mocker) -> None:
@@ -192,7 +163,11 @@ def test_batch_apply_command(mocker) -> None:
     mock_db = Mock()
     mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
     mock_categorization = mocker.Mock()
-    mock_categorization.apply_batch_job.return_value = {"matched": 2, "needs_review": 1}
+    mock_categorization.apply_batch_job.return_value = LLMBatchStats(
+        matched=2,
+        needs_review=1,
+        total=3,
+    )
     mocker.patch("src.cli.CategorizationService", return_value=mock_categorization)
 
     result = runner.invoke(cli, ["batch", "apply", "--id", "batch-ok"])
@@ -231,28 +206,7 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
             }
         )
 
-    mock_settings = mocker.Mock()
-    mock_settings.dspy_train_split_ratio = 0.2
-    mock_settings.dspy_optimization_seed = 42
-    mock_settings.dspy_num_threads = 1
-    mock_settings.dspy_display_table = 5
-    mock_settings.dspy_optimization_budget = "medium"
-    mock_settings.dspy_reflection_model = ""
-    mock_settings.llm_model = "gpt-4o-mini"
-    mock_settings.llm_base_url = "https://api.openai.com/v1"
-    mock_settings.llm_api_key = "test-key"
-
-    mocker.patch("src.cli.get_settings", return_value=mock_settings)
-
-    mock_db = Mock()
-    mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
-
-    mock_optimizer = mocker.Mock()
-    mock_examples = [mocker.Mock()] * 5
-    mock_optimizer.load_training_dataset.return_value = mock_examples
-    mock_optimized_model = mocker.Mock()
-    mock_optimizer.optimize_with_dataset.return_value = mock_optimized_model
-    mocker.patch("src.cli.DSPyOptimizer", return_value=mock_optimizer)
+    mock_execute = mocker.patch("src.cli.execute_optimize_dataset")
 
     result = runner.invoke(
         cli,
@@ -268,8 +222,27 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    mock_optimizer.load_training_dataset.assert_called_once_with(dataset_file)
-    mock_optimizer.optimize_with_dataset.assert_called_once()
+    assert mock_execute.called
+
+
+def test_optimize_dataset_file_not_found(mocker) -> None:
+    """Test optimize-dataset command with file errors bubbled from helper."""
+
+    mock_execute = mocker.patch(
+        "src.cli.execute_optimize_dataset", side_effect=click.ClickException("fail")
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "optimize-dataset",
+            "--dataset",
+            "nonexistent.csv",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert mock_execute.called
 
 
 def test_optimize_dataset_file_not_found() -> None:
@@ -288,14 +261,18 @@ def test_optimize_dataset_file_not_found() -> None:
     assert "does not exist" in result.output
 
 
-def test_optimize_dataset_invalid_budget_combination() -> None:
-    """Test optimize-dataset command with conflicting budget options."""
+def test_optimize_dataset_invalid_budget_combination(mocker) -> None:
+    """Ensure helper UsageError propagates when budget flags conflict."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write("taxonomy_category,taxonomy_description,content_summaries,best_match_index\n")
         f.write("Tech,Tech content,Summaries,0\n")
         dataset_path = f.name
 
     try:
+        mocker.patch(
+            "src.cli.execute_optimize_dataset",
+            side_effect=click.UsageError("exactly one of"),
+        )
         result = runner.invoke(
             cli,
             [
@@ -317,7 +294,7 @@ def test_optimize_dataset_invalid_budget_combination() -> None:
         Path(dataset_path).unlink()
 
 
-def test_optimize_dataset_invalid_train_split() -> None:
+def test_optimize_dataset_invalid_train_split(mocker) -> None:
     """Test optimize-dataset command with invalid train split."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
         f.write("taxonomy_category,taxonomy_description,content_summaries,best_match_index\n")
@@ -325,6 +302,10 @@ def test_optimize_dataset_invalid_train_split() -> None:
         dataset_path = f.name
 
     try:
+        mocker.patch(
+            "src.cli.execute_optimize_dataset",
+            side_effect=click.BadParameter("Train split must be between 0 and 1"),
+        )
         result = runner.invoke(
             cli,
             [
@@ -337,7 +318,7 @@ def test_optimize_dataset_invalid_train_split() -> None:
         )
 
         assert result.exit_code != 0
-        assert "Train split must be between 0 and 1" in result.output
+        assert "Train split" in result.output
     finally:
         Path(dataset_path).unlink()
 

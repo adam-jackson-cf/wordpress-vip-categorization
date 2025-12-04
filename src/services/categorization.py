@@ -47,6 +47,31 @@ class BatchRequestFile:
     count: int
 
 
+@dataclass(slots=True)
+class LLMBatchStats:
+    matched: int = 0
+    needs_review: int = 0
+    total: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "matched": self.matched,
+            "needs_review": self.needs_review,
+            "total": self.total,
+        }
+
+
+@dataclass(slots=True)
+class LLMBatchDecision:
+    content_id: UUID
+    decision: str
+    taxonomy_id: UUID | None
+    rubric_payload: dict[str, Any]
+    topic_alignment: float | None
+    intent_fit: float | None
+    entity_overlap: float | None
+
+
 LLM_SYSTEM_PROMPT = (
     "You are a bilingual (Spanish/English) taxonomy reviewer for MSD Animal Health. "
     "Given WordPress source content plus a short list of candidate taxonomy pages, "
@@ -367,6 +392,101 @@ Respond with a JSON object in this exact format:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def _parse_llm_batch_record(
+        self,
+        record: dict[str, Any],
+        batch_id: str,
+    ) -> LLMBatchDecision | None:
+        custom_id = record.get("custom_id")
+        try:
+            content_id = UUID(str(custom_id))
+        except (TypeError, ValueError):
+            logger.error("Batch %s included invalid custom_id: %s", batch_id, custom_id)
+            return None
+
+        parsed = self._extract_message_json(record)
+        taxonomy_uuid: UUID | None = None
+        decision = "review"
+        rubric_payload: dict[str, Any]
+        topic_score: float | None = None
+        intent_score: float | None = None
+        entity_score: float | None = None
+
+        if parsed is not None:
+            decision = str(parsed.get("decision", "review")).strip().lower() or "review"
+            taxonomy_value = parsed.get("taxonomy_id")
+            if taxonomy_value:
+                try:
+                    taxonomy_uuid = UUID(str(taxonomy_value))
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Batch %s returned invalid taxonomy_id '%s' for content %s",
+                        batch_id,
+                        taxonomy_value,
+                        content_id,
+                    )
+                    taxonomy_uuid = None
+            topic_score = self._safe_float(parsed.get("topic_alignment"))
+            intent_score = self._safe_float(parsed.get("intent_fit"))
+            entity_score = self._safe_float(parsed.get("entity_overlap"))
+            rubric_payload = {**parsed, "batch_id": batch_id}
+        else:
+            rubric_payload = {"batch_id": batch_id, "error": "invalid_response"}
+
+        return LLMBatchDecision(
+            content_id=content_id,
+            decision=decision,
+            taxonomy_id=taxonomy_uuid,
+            rubric_payload=rubric_payload,
+            topic_alignment=topic_score,
+            intent_fit=intent_score,
+            entity_overlap=entity_score,
+        )
+
+    def _build_matching_result(
+        self,
+        decision: LLMBatchDecision,
+        taxonomy_lookup: dict[UUID, TaxonomyPage],
+        semantic_results: dict[UUID, MatchingResult],
+    ) -> tuple[MatchingResult, bool, TaxonomyPage | None]:
+        taxonomy = taxonomy_lookup.get(decision.taxonomy_id) if decision.taxonomy_id else None
+        accepted = False
+        if decision.decision == "accept" and taxonomy is not None:
+            accepted = self._accept_by_rubric(taxonomy, decision.rubric_payload)
+
+        stage = MatchStage.LLM_CATEGORIZED if accepted else MatchStage.NEEDS_HUMAN_REVIEW
+        semantic_match = semantic_results.get(decision.content_id)
+        semantic_taxonomy_id = semantic_match.semantic_taxonomy_id if semantic_match else None
+        semantic_score = semantic_match.semantic_similarity_score if semantic_match else 0.0
+        if semantic_taxonomy_id is None and decision.taxonomy_id is not None:
+            semantic_taxonomy_id = decision.taxonomy_id
+
+        llm_topic_score = (
+            _clamp(decision.topic_alignment)
+            if decision.topic_alignment is not None
+            else None
+        )
+
+        failed_at_stage = None
+        if stage == MatchStage.NEEDS_HUMAN_REVIEW:
+            if semantic_match and semantic_match.failed_at_stage == "semantic_matching":
+                failed_at_stage = "both_stages_failed"
+            else:
+                failed_at_stage = "llm_batch"
+
+        result_row = MatchingResult(
+            content_id=decision.content_id,
+            taxonomy_id=decision.taxonomy_id if accepted else None,
+            semantic_taxonomy_id=semantic_taxonomy_id,
+            semantic_similarity_score=semantic_score,
+            llm_topic_score=llm_topic_score,
+            match_stage=stage,
+            failed_at_stage=failed_at_stage,
+            rubric=decision.rubric_payload,
+        )
+
+        return result_row, accepted, taxonomy
 
     @staticmethod
     def _extract_message_json(result: dict[str, Any]) -> dict[str, Any] | None:
@@ -807,8 +927,8 @@ Respond with a JSON object in this exact format:
                 semantic_results=semantic_results,
                 content_lookup=content_lookup,
             )
-            stats["matched"] += chunk_stats.get("matched", 0)
-            stats["below_threshold"] += chunk_stats.get("needs_review", 0)
+            stats["matched"] += chunk_stats.matched
+            stats["below_threshold"] += chunk_stats.needs_review
 
         if wait_for_completion:
             logger.info(
@@ -832,116 +952,59 @@ Respond with a JSON object in this exact format:
         taxonomy_lookup: dict[UUID, TaxonomyPage] | None = None,
         semantic_results: dict[UUID, MatchingResult] | None = None,
         content_lookup: dict[UUID, WordPressContent] | None = None,
-    ) -> dict[str, int]:
+    ) -> LLMBatchStats:
         taxonomy_lookup = taxonomy_lookup or {}
         semantic_results = semantic_results or {}
         content_lookup = content_lookup or {}
 
+        stats = LLMBatchStats(total=len(results))
         updates: list[MatchingResult] = []
-        matched = 0
-        needs_review = 0
 
-        for result in results:
-            custom_id = result.get("custom_id")
-            try:
-                content_id = UUID(str(custom_id))
-            except (TypeError, ValueError):
-                logger.error("Batch %s included invalid custom_id: %s", batch_id, custom_id)
-                needs_review += 1
+        for record in results:
+            decision = self._parse_llm_batch_record(record, batch_id)
+            if decision is None:
+                stats.needs_review += 1
                 continue
 
-            parsed = self._extract_message_json(result)
-            decision = "review"
-            taxonomy_uuid: UUID | None = None
-            rubric_payload: dict[str, Any] | None = None
-            topic_score: float | None = None
-            intent_score: float | None = None
-            entity_score: float | None = None
-
-            if parsed is not None:
-                rubric_payload = {**parsed, "batch_id": batch_id}
-                decision = str(parsed.get("decision", "")).strip().lower()
-                taxonomy_value = parsed.get("taxonomy_id")
-                if taxonomy_value:
-                    try:
-                        taxonomy_uuid = UUID(str(taxonomy_value))
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "Batch %s returned invalid taxonomy_id '%s' for content %s",
-                            batch_id,
-                            taxonomy_value,
-                            content_id,
-                        )
-                        taxonomy_uuid = None
-                topic_score = self._safe_float(parsed.get("topic_alignment"))
-                intent_score = self._safe_float(parsed.get("intent_fit"))
-                entity_score = self._safe_float(parsed.get("entity_overlap"))
-            else:
-                rubric_payload = {
-                    "batch_id": batch_id,
-                    "error": "invalid_response",
-                }
-
-            taxonomy = taxonomy_lookup.get(taxonomy_uuid) if taxonomy_uuid else None
-            accepted = False
-            if decision == "accept" and taxonomy is not None and rubric_payload is not None:
-                accepted = self._accept_by_rubric(taxonomy, rubric_payload)
-
-            stage = MatchStage.LLM_CATEGORIZED if accepted else MatchStage.NEEDS_HUMAN_REVIEW
-            taxonomy_result_id = taxonomy_uuid if accepted else None
-
-            semantic_match = semantic_results.get(content_id)
-            semantic_taxonomy_id = semantic_match.semantic_taxonomy_id if semantic_match else None
-            semantic_score = semantic_match.semantic_similarity_score if semantic_match else 0.0
-            if semantic_taxonomy_id is None and taxonomy_uuid is not None:
-                semantic_taxonomy_id = taxonomy_uuid
-
-            llm_topic_score = _clamp(topic_score) if topic_score is not None else None
-
-            result_row = MatchingResult(
-                content_id=content_id,
-                taxonomy_id=taxonomy_result_id,
-                semantic_taxonomy_id=semantic_taxonomy_id,
-                semantic_similarity_score=semantic_score,
-                llm_topic_score=llm_topic_score,
-                match_stage=stage,
-                failed_at_stage="llm_batch" if stage == MatchStage.NEEDS_HUMAN_REVIEW else None,
-                rubric=rubric_payload,
+            result_row, accepted, taxonomy = self._build_matching_result(
+                decision,
+                taxonomy_lookup,
+                semantic_results,
             )
             updates.append(result_row)
 
-            content_ref = content_lookup.get(content_id)
-            content_label = content_ref.url if content_ref else str(content_id)
-            if stage == MatchStage.LLM_CATEGORIZED and taxonomy is not None:
-                matched += 1
+            content_ref = content_lookup.get(decision.content_id)
+            content_label = content_ref.url if content_ref else str(decision.content_id)
+            if accepted and taxonomy is not None:
+                stats.matched += 1
                 logger.info(
                     "LLM batch accepted %s → %s (topic=%.2f, intent=%.2f, entity=%.2f)",
                     content_label,
                     taxonomy.destination_url,
-                    llm_topic_score or 0.0,
-                    _clamp(intent_score or 0.0),
-                    _clamp(entity_score or 0.0),
+                    result_row.llm_topic_score or 0.0,
+                    _clamp(decision.intent_fit or 0.0),
+                    _clamp(decision.entity_overlap or 0.0),
                 )
             else:
-                needs_review += 1
+                stats.needs_review += 1
                 logger.debug(
                     "LLM batch deferred %s for human review (decision=%s)",
                     content_label,
-                    decision,
+                    decision.decision,
                 )
 
         if updates:
             self.db.bulk_upsert_matchings(updates, chunk_size=self.settings.matching_batch_size)
 
-        return {"matched": matched, "needs_review": needs_review, "total": len(results)}
+        return stats
 
-    def apply_batch_job(self, batch_id: str) -> dict[str, int]:
+    def apply_batch_job(self, batch_id: str) -> LLMBatchStats:
         """Download, parse, and persist results for an existing batch job."""
 
         raw_results = self.retrieve_batch_results(batch_id)
         if not raw_results:
             logger.warning("Batch %s returned no results", batch_id)
-            return {"matched": 0, "needs_review": 0, "total": 0}
+            return LLMBatchStats(total=0)
 
         content_ids: list[UUID] = []
         for record in raw_results:
