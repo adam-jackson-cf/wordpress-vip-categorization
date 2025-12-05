@@ -59,16 +59,17 @@ class TestWordPressVIPConnector:
         assert "<p>" not in text
         assert "<strong>" not in text
 
-    def test_parse_wordpress_item(self) -> None:
+    @patch("src.connectors.wordpress_vip.detect_content_type", return_value="Product Catalogue Listing Page")
+    def test_parse_wordpress_item(self, mock_detect: Mock) -> None:
         """Test parsing WordPress API response."""
         connector = WordPressVIPConnector("https://example.com")
 
         item = {
             "id": 123,
-            "link": "https://example.com/test-post",
+            "link": "https://example.com/lista-de-productos/",
             "title": {"rendered": "Test Post"},
-            "content": {"rendered": "<p>Test content</p>"},
-            "excerpt": {"rendered": "<p>Excerpt</p>"},
+            "content": {"rendered": "<p>Guia clave para veterinarios especialistas</p>"},
+            "excerpt": {"rendered": "<p>Resumen para veterinarios</p>"},
             "date_gmt": "2024-01-01T12:00:00",
             "slug": "test-post",
             "author": 1,
@@ -80,10 +81,13 @@ class TestWordPressVIPConnector:
 
         assert isinstance(content, WordPressContent)
         assert content.title == "Test Post"
-        assert content.content == "Test content"
-        assert str(content.url) == "https://example.com/test-post"
+        assert content.content == "Guia clave para veterinarios especialistas"
+        assert str(content.url) == "https://example.com/lista-de-productos/"
         assert content.metadata["type"] == "post"
         assert content.metadata["wp_id"] == 123
+        mock_detect.assert_called_once()
+        assert content.metadata["content_type_hint"] == "Product Catalogue Listing Page"
+        assert "veterinarians" in content.detected_audiences
 
     @patch("src.connectors.wordpress_vip.requests.Session.get")
     def test_test_connection_success(self, mock_get: Mock) -> None:

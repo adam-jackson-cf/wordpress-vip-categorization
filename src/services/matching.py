@@ -12,6 +12,11 @@ import numpy as np
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
+from src.services.content_type_detector import (
+    CONTENT_TYPE_RULES,
+    ContentTypeRule,
+    detect_content_type,
+)
 from src.services.embeddings import EmbeddingService
 from src.services.language import detect_language_code
 
@@ -89,6 +94,8 @@ class MatchingService:
         return lookup
 
     def _should_run_url_checker(self, content: WordPressContent) -> bool:
+        if not self.settings.enable_url_stage_zero:
+            return False
         if not self.settings.url_checker_category_ids:
             return False
         metadata = content.metadata or {}
@@ -220,6 +227,26 @@ class MatchingService:
                         overlap_ratio
                     )
 
+            content_type_hint = self._infer_content_type_hint(content)
+            if (
+                self.settings.enable_content_type_hinting
+                and content_type_hint
+                and taxonomy.content_type
+            ):
+                normalized_taxonomy_type = self._normalize_token(taxonomy.content_type)
+                normalized_hint = self._normalize_token(content_type_hint)
+                if normalized_taxonomy_type and normalized_hint == normalized_taxonomy_type:
+                    rule = CONTENT_TYPE_RULES.get(content_type_hint)
+                    hint_bonus = rule.bonus if rule else 0.02
+                    bonus += hint_bonus
+                    logger.debug(
+                        "Content-type hint bonus +%.3f applied for %s → %s (%s)",
+                        hint_bonus,
+                        content.url,
+                        taxonomy.destination_url,
+                        content_type_hint,
+                    )
+
         return bonus
 
     def _filter_taxonomy_candidates(
@@ -277,6 +304,14 @@ class MatchingService:
         if taxonomy.secondary_audiance:
             audiences.append(f"Secondary: {taxonomy.secondary_audiance}")
         return ", ".join(audiences)
+
+    @staticmethod
+    def _infer_content_type_hint(content: WordPressContent) -> str | None:
+        metadata_hint = (content.metadata or {}).get("content_type_hint")
+        if metadata_hint:
+            return str(metadata_hint)
+        slug_value = (content.metadata or {}).get("slug")
+        return detect_content_type(str(content.url), slug_value)
 
     def get_embedding(self, text: str) -> list[float]:
         """Get embedding vector for text using the shared embedding service."""
@@ -355,8 +390,8 @@ class MatchingService:
         primary_excerpt = excerpt or content.content[:400]
         excerpt_line = f"Excerpt: {primary_excerpt[:400]}" if primary_excerpt else None
 
-        # Truncate preview to 1000 chars (previously 2000) to emphasize structured fields
-        preview = content.content[:1000]
+        # Truncate preview to 4000 chars to retain more catalog copy for detection cues
+        preview = content.content[:4000]
         language_code = detect_language_code(preview or content.title)
 
         detected_audiences = ", ".join(sorted(self._get_content_audiences(content))) or "unknown"
@@ -759,7 +794,7 @@ class MatchingService:
         )
 
         reference_lookup: dict[str, TaxonomyPage] = {}
-        if self.settings.url_checker_category_ids:
+        if self.settings.enable_url_stage_zero and self.settings.url_checker_category_ids:
             reference_rows = taxonomy_pages
             if reference_rows is None:
                 try:

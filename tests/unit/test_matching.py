@@ -1,6 +1,6 @@
 """Unit tests for matching service."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -161,6 +161,26 @@ class TestMatchingService:
         assert match.match_stage == MatchStage.SEMANTIC_MATCHED
         assert match.semantic_similarity_score == pytest.approx(0.91)
 
+    def test_url_checker_disabled_via_flag(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        mock_settings.enable_url_stage_zero = False
+        sample_wordpress_content.metadata["categories"] = [274]
+        service = MatchingService(mock_settings, mock_supabase_client)
+        service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.88))  # type: ignore[attr-defined]
+
+        results = service.match_all_taxonomy(
+            taxonomy_pages=[sample_taxonomy_page],
+            content_items=[sample_wordpress_content],
+        )
+
+        match = results[sample_wordpress_content.id]
+        assert match.match_stage == MatchStage.SEMANTIC_MATCHED
+
     def test_compute_similarity(self, mock_settings: Settings, mock_supabase_client: Mock) -> None:
         """Test similarity computation."""
         service = MatchingService(mock_settings, mock_supabase_client)
@@ -192,6 +212,67 @@ class TestMatchingService:
         assert isinstance(embedding, list)
         assert len(embedding) == 1536  # Default embedding size
         service.embedding_service.embed.assert_called_once_with("test text")
+
+    def test_infer_content_type_hint_uses_metadata_hint(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_wordpress_content.metadata["content_type_hint"] = "Product Catalogue Listing Page"
+
+        assert service._infer_content_type_hint(sample_wordpress_content) == "Product Catalogue Listing Page"
+
+    @patch("src.services.matching.detect_content_type", return_value="Product Catalogue Listing Page")
+    def test_infer_content_type_hint_from_url_path(
+        self,
+        mock_detect: Mock,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_wordpress_content.metadata.pop("content_type_hint", None)
+        sample_wordpress_content.url = "https://example.com/lista-de-productos/"
+
+        assert service._infer_content_type_hint(sample_wordpress_content) == "Product Catalogue Listing Page"
+        mock_detect.assert_called_once()
+
+    def test_priority_boost_adds_content_type_bonus(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.content_type = "Product Catalogue Listing Page"
+        sample_wordpress_content.metadata.pop("content_type_hint", None)
+        base_bonus = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        sample_wordpress_content.metadata["content_type_hint"] = "Product Catalogue Listing Page"
+        boosted = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        assert boosted - base_bonus >= 0.02
+
+    def test_priority_boost_respects_content_type_flag(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.content_type = "Product Catalogue Listing Page"
+        sample_wordpress_content.metadata["content_type_hint"] = "Product Catalogue Listing Page"
+
+        with_flag = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        mock_settings.enable_content_type_hinting = False
+        without_flag = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        assert with_flag - without_flag >= 0.02
 
     def test_match_taxonomy_to_content(
         self,

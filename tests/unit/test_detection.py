@@ -31,7 +31,7 @@ def test_detection_terms_loaded_from_config() -> None:
     """Verify terms are loaded from external config."""
     # Should have expanded terms from config file
     assert "ganaderia extensiva" in AUDIENCE_TERMS["producers"]
-    assert "tutores de mascotas" in AUDIENCE_TERMS["pet_owners"]
+    assert "tutores de mascotas" in AUDIENCE_TERMS["pet owners"]
     assert "profesionales veterinarios" in AUDIENCE_TERMS["veterinarians"]
 
     assert "aves acuaticas" in SPECIES_TERMS["poultry"]

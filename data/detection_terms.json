@@ -1,5 +1,174 @@
 {
   "audience_terms": {
+    "all": [
+      "all",
+      "todos",
+      "todas",
+      "publico general",
+      "público general",
+      "para todos",
+      "dirigido a todos"
+    ],
+    "consultants": [
+      "consultor",
+      "consultora",
+      "consultores",
+      "consultants",
+      "asesor",
+      "asesores"
+    ],
+    "corporate": [
+      "corporate",
+      "corporativo",
+      "corporativa",
+      "empresa",
+      "empresarial",
+      "institucional"
+    ],
+    "employees": [
+      "employees",
+      "employee",
+      "empleado",
+      "empleados",
+      "colaborador",
+      "colaboradores",
+      "personal interno"
+    ],
+    "farmers": [
+      "farmer",
+      "farmers",
+      "ganadero",
+      "ganaderos",
+      "agricultor",
+      "agricultores",
+      "sector agropecuario"
+    ],
+    "general public": [
+      "general public",
+      "publico general",
+      "público general",
+      "sociedad",
+      "ciudadania"
+    ],
+    "horse owners": [
+      "horse owners",
+      "propietarios de caballos",
+      "dueños de caballos",
+      "tutores de caballos"
+    ],
+    "industry": [
+      "industry",
+      "industria",
+      "sector industrial",
+      "sector"
+    ],
+    "industry professionals": [
+      "industry professionals",
+      "profesionales de la industria",
+      "profesionales del sector"
+    ],
+    "investors": [
+      "investor",
+      "investors",
+      "inversionista",
+      "inversionistas",
+      "gerente",
+      "director",
+      "management",
+      "responsable"
+    ],
+    "job seekers": [
+      "job seekers",
+      "job seeker",
+      "buscadores de empleo",
+      "buscador de empleo",
+      "busca trabajo",
+      "busqueda laboral",
+      "candidatos"
+    ],
+    "journalists": [
+      "journalists",
+      "journalist",
+      "periodista",
+      "periodistas",
+      "reportero",
+      "reporteros"
+    ],
+    "legal/compliance": [
+      "legal",
+      "compliance",
+      "legal/compliance",
+      "juridico",
+      "jurídico",
+      "regulatorio",
+      "cumplimiento"
+    ],
+    "media": [
+      "media",
+      "press",
+      "prensa",
+      "medios",
+      "medios de comunicacion",
+      "periodicos",
+      "newsroom"
+    ],
+    "pet owners": [
+      "pet owner",
+      "pet owners",
+      "propietario",
+      "propietarios",
+      "dueño",
+      "dueños",
+      "tutor",
+      "tutores de mascotas",
+      "familia"
+    ],
+    "producers": [
+      "producer",
+      "producers",
+      "productor",
+      "productores",
+      "industria productora",
+      "ganadero",
+      "ganaderos",
+      "ganaderia",
+      "ganaderia extensiva"
+    ],
+    "ranchers": [
+      "rancher",
+      "ranchers",
+      "ganadero",
+      "ganaderos",
+      "criador",
+      "criadores"
+    ],
+    "students": [
+      "student",
+      "students",
+      "estudiante",
+      "estudiantes",
+      "alumno",
+      "alumnos"
+    ],
+    "suppliers": [
+      "supplier",
+      "suppliers",
+      "proveedor",
+      "proveedores",
+      "partner comercial",
+      "suministrador",
+      "suministradores"
+    ],
+    "vet nurses": [
+      "vet nurse",
+      "vet nurses",
+      "enfermera veterinaria",
+      "enfermeras veterinarias",
+      "auxiliar veterinario",
+      "auxiliares veterinarios",
+      "auxiliar tecnico veterinario",
+      "atv"
+    ],
     "veterinarians": [
       "veterinario",
       "veterinaria",
@@ -11,63 +180,68 @@
       "profesionales veterinarios",
       "clinica veterinaria"
     ],
-    "producers": [
-      "ganadero",
-      "ganaderos",
-      "ganaderia",
-      "farmer",
-      "producers",
-      "agricultor",
-      "producer",
-      "industria porcina",
-      "avicultor",
-      "ganaderia extensiva",
-      "explotacion ganadera",
-      "granja"
-    ],
-    "pet_owners": [
-      "propietario",
-      "dueño",
-      "tutor",
-      "pet owner",
-      "familia",
-      "hogar",
-      "tutores de mascotas",
-      "propietarios de animales"
-    ],
-    "investors": [
-      "gerente",
-      "director",
-      "management",
-      "inversionista",
-      "responsable"
+    "vets/farmers": [
+      "vets/farmers",
+      "veterinarios y ganaderos",
+      "vet y farmer",
+      "profesionales veterinarios y ganaderos"
     ]
   },
   "species_terms": {
-    "swine": [
-      "porcino",
-      "porcina",
-      "porcinos",
-      "porcinas",
-      "cerdo",
-      "cerdos",
-      "swine",
-      "hog",
-      "lechon",
-      "lechones",
-      "ganaderia porcina",
-      "sector porcino"
+    "aqua": [
+      "acuicultura",
+      "aqua",
+      "pez",
+      "piscicultura",
+      "piscifactoria",
+      "piscifactorias",
+      "acuatico"
     ],
-    "bovine": [
-      "bovino",
-      "vaca",
-      "vacuno",
-      "ganado",
+    "beef cattle": [
+      "beef cattle",
+      "ganado de carne",
+      "bovino de carne",
+      "reses de carne"
+    ],
+    "canine": [
+      "canine",
+      "canino",
+      "perro",
+      "perros",
+      "dog",
+      "dogs"
+    ],
+    "cattle": [
       "cattle",
-      "novilla",
-      "ternero",
-      "ganaderia bovina",
-      "explotacion vacuna"
+      "ganado",
+      "vacuno",
+      "reses"
+    ],
+    "companion": [
+      "mascota",
+      "mascotas",
+      "companion animal",
+      "companion animals",
+      "pet",
+      "pets"
+    ],
+    "dairy cattle": [
+      "dairy cattle",
+      "ganado lechero",
+      "bovino lechero",
+      "vacas lecheras"
+    ],
+    "equine": [
+      "equino",
+      "equine",
+      "caballo",
+      "caballos"
+    ],
+    "feline": [
+      "feline",
+      "felino",
+      "gato",
+      "gatos"
     ],
     "poultry": [
       "avicola",
@@ -85,26 +259,37 @@
       "pato",
       "pavo"
     ],
-    "companion": [
-      "mascota",
-      "perro",
-      "gato",
-      "pet",
-      "companion animal"
+    "sheep": [
+      "oveja",
+      "ovejas",
+      "sheep",
+      "ovino"
     ],
-    "equine": [
-      "equino",
-      "caballo",
-      "equine"
+    "small companion animals": [
+      "small companion animals",
+      "pequeños animales de compania",
+      "pequenos animales de compania",
+      "pequeñas mascotas",
+      "small pets"
     ],
-    "aqua": [
-      "acuicultura",
-      "aqua",
-      "pez",
-      "piscicultura",
-      "piscifactoria",
-      "piscifactorias",
-      "acuatico"
+    "small animals": [
+      "small animals",
+      "animales pequeños",
+      "animales pequenos"
+    ],
+    "swine": [
+      "porcino",
+      "porcina",
+      "porcinos",
+      "porcinas",
+      "cerdo",
+      "cerdos",
+      "swine",
+      "hog",
+      "lechon",
+      "lechones",
+      "ganaderia porcina",
+      "sector porcino"
     ]
   },
   "url_path_patterns": {
@@ -120,7 +305,7 @@
         "productores",
         "granja"
       ],
-      "pet_owners": [
+      "pet owners": [
         "mascotas",
         "tutores-de-mascotas",
         "propietarios"
@@ -132,7 +317,7 @@
         "porcina",
         "cerdo"
       ],
-      "bovine": [
+      "cattle": [
         "bovino",
         "vaca",
         "vacuno"
@@ -148,5 +333,176 @@
         "gato"
       ]
     }
+  },
+  "content_type_terms": {
+    "Article": [
+      "articulo",
+      "articulos",
+      "article",
+      "noticia",
+      "blog"
+    ],
+    "Campaign Page": [
+      "campana",
+      "campanas",
+      "campaign",
+      "promo",
+      "promocion"
+    ],
+    "Condition Page": [
+      "condicion",
+      "condiciones",
+      "condition",
+      "enfermedad",
+      "disease"
+    ],
+    "FAQ page": [
+      "faq",
+      "preguntas-frecuentes",
+      "preguntasfrecuentes",
+      "questions",
+      "ayuda"
+    ],
+    "Farmer Content Listing Page": [
+      "ganadero",
+      "ganaderos",
+      "farmer",
+      "agricultor",
+      "contenido-ganadero"
+    ],
+    "Farmer Event Listing Page": [
+      "eventos-ganaderos",
+      "feria-ganadera",
+      "farmer-events",
+      "agenda-ganadera",
+      "agro-eventos"
+    ],
+    "Generic Content Page": [
+      "contenido",
+      "informacion",
+      "generic-page",
+      "recursos",
+      "informacion-general"
+    ],
+    "Generic Listing Page": [
+      "listado",
+      "listing",
+      "indice",
+      "directorio",
+      "indice-general"
+    ],
+    "Homepage": [
+      "home",
+      "homepage",
+      "inicio",
+      "portada",
+      "raiz"
+    ],
+    "Landing Page": [
+      "landing",
+      "registro",
+      "formulario",
+      "inscripcion",
+      "lp-"
+    ],
+    "Legal Page": [
+      "legal",
+      "aviso-legal",
+      "privacy",
+      "terminos",
+      "compliance"
+    ],
+    "Pet Owner Landing Page": [
+      "mascotas",
+      "pet-owner",
+      "propietarios",
+      "tutores",
+      "cuidadores"
+    ],
+    "Press Release": [
+      "nota-de-prensa",
+      "press-release",
+      "comunicado",
+      "news",
+      "noticias"
+    ],
+    "Press Release Listing Page": [
+      "sala-de-prensa",
+      "press-room",
+      "noticias",
+      "comunicados",
+      "press"
+    ],
+    "Product Catalogue Listing Page": [
+      "lista-de-productos",
+      "listado-de-productos",
+      "catalogo",
+      "catalogue",
+      "product-catalog",
+      "productos"
+    ],
+    "Product Feature Page": [
+      "caracteristicas",
+      "features",
+      "beneficios",
+      "product-feature",
+      "ventajas"
+    ],
+    "Product Hub": [
+      "hub",
+      "product-hub",
+      "centro-de-productos",
+      "portal-productos",
+      "ecosistema-productos"
+    ],
+    "Product Landing Page": [
+      "producto",
+      "landing",
+      "descarga",
+      "registro-producto",
+      "lanzamiento"
+    ],
+    "Product Page": [
+      "producto",
+      "product",
+      "ficha",
+      "detalle",
+      "sku"
+    ],
+    "Section Landing Page": [
+      "seccion",
+      "section",
+      "categoria",
+      "area",
+      "segmento"
+    ],
+    "Species Landing Pages": [
+      "especies",
+      "species",
+      "caninos",
+      "felinos",
+      "bovino"
+    ],
+    "Technal Product Detail Page": [
+      "tecnica",
+      "technical",
+      "detalle-tecnico",
+      "ficha-tecnica",
+      "spec"
+    ],
+    "Testimonial Listing Page": [
+      "testimonios",
+      "casos-de-exito",
+      "testimonials",
+      "historias",
+      "clientes"
+    ],
+    "Tools & Resources": [
+      "herramientas",
+      "tools",
+      "recursos",
+      "resource-center",
+      "utilidades"
+    ]
   }
 }

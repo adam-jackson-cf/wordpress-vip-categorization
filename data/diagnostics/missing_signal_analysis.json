@@ -1,0 +1,399 @@
+[
+  {
+    "id": "46b8d54d-8a3a-4e50-ada3-a168e2cdef29",
+    "url": "https://www.msd-animal-health.es/iii-jornada-grupo-piensos-costa-2025/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience",
+      "species"
+    ],
+    "stored_audiences": [],
+    "stored_species": [],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 1162,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "f1dd0703-00d2-4aca-8bec-5a7f34c7e7d4",
+    "url": "https://www.msd-animal-health.es/anembe/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "species"
+    ],
+    "stored_audiences": [
+      "producers"
+    ],
+    "stored_species": [],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [
+      "producers",
+      "veterinarians"
+    ],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [
+      "producers",
+      "veterinarians"
+    ],
+    "late_species": [],
+    "content_length": 5945,
+    "snippets": {
+      "audiences": {
+        "producers": "acidos) tuvo diarrea leve. Redujo en un 100% las visitas veterinarias para la administración de sueroterapia. Ahorró al ganadero 35 horas por paridera en tratamientos (28 terneros x 75 min). Estudio completo . ¿Cómo impactó la vacunación al",
+        "veterinarians": "a por M. haemolytica en las vacas de leche? Se describen 5 brotes que hemos seguido en el último año para alertar a los veterinarios de la importancia de incluirlo en sus diagnósticos diferenciales y trabajar tanto en los factores de riesgo"
+      },
+      "species": {}
+    }
+  },
+  {
+    "id": "4555bc5a-2962-43a7-966b-276058df4cb0",
+    "url": "https://www.msd-animal-health.es/2025/10/01/msd-animal-health-y-weforest-celebran-10-anos-comprometidos-con-la-creacion-de-impacto-plantando-mas-de-297-mil-arboles-en-tres-continentes/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience"
+    ],
+    "stored_audiences": [],
+    "stored_species": [
+      "aqua",
+      "poultry"
+    ],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 4563,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "50d6319c-0038-4c23-8569-274fd678d979",
+    "url": "https://www.msd-animal-health.es/2025/09/19/internet-de-las-cosas-big-data-y-la-inteligencia-artificial-para-salud-animal/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "species"
+    ],
+    "stored_audiences": [
+      "producers",
+      "veterinarians"
+    ],
+    "stored_species": [],
+    "preview_detected_audiences": [
+      "producers",
+      "veterinarians"
+    ],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [
+      "producers",
+      "veterinarians"
+    ],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 9450,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "e65b9693-f828-4e7b-a80d-2a4e4d2aa665",
+    "url": "https://www.msd-animal-health.es/2025/09/03/msd-animal-health-nombra-a-sandra-castillo-como-directora-del-equipo-de-animales-de-compania-en-espana-para-continuar-impulsando-la-innovacion-y-los-recientes-lanzamientos/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "species"
+    ],
+    "stored_audiences": [
+      "veterinarians"
+    ],
+    "stored_species": [],
+    "preview_detected_audiences": [
+      "veterinarians"
+    ],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [
+      "veterinarians"
+    ],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 5603,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "100cae57-94ff-4baa-b5ba-cc5b34a31203",
+    "url": "https://www.msd-animal-health.es/pildora-borja-castelar/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience",
+      "species"
+    ],
+    "stored_audiences": [],
+    "stored_species": [],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 1094,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "04a653b4-2175-4527-810b-7a8479dece8c",
+    "url": "https://www.msd-animal-health.es/gracias-por-tu-interes-2/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience",
+      "species"
+    ],
+    "stored_audiences": [],
+    "stored_species": [],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 1163,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "1265c063-f345-4fef-8eb4-864e78adf59e",
+    "url": "https://www.msd-animal-health.es/vet-talks/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "species"
+    ],
+    "stored_audiences": [
+      "veterinarians"
+    ],
+    "stored_species": [],
+    "preview_detected_audiences": [
+      "veterinarians"
+    ],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [
+      "investors",
+      "veterinarians"
+    ],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [
+      "investors"
+    ],
+    "late_species": [],
+    "content_length": 3400,
+    "snippets": {
+      "audiences": {
+        "investors": "diomas. Vet Talk: Escucha activa, conversaciones difíciles. Borja Castelar. Instructor Oficial de LinkedIn Learning, Ex Director LinkedIn Talent Solutions Formador Soft Skills. Borja Castelar es un exejecutivo de LinkedIn, reconocido como e"
+      },
+      "species": {}
+    }
+  },
+  {
+    "id": "eb5cfc74-355a-472e-94d1-b7972f0abf93",
+    "url": "https://www.msd-animal-health.es/reunion-vallcompanys-2025/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience",
+      "species"
+    ],
+    "stored_audiences": [],
+    "stored_species": [],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 1162,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  },
+  {
+    "id": "c51a9792-08e4-49cd-a885-f598d70ce2f7",
+    "url": "https://www.msd-animal-health.es/allflex/",
+    "site_url": "https://www.msd-animal-health.es/",
+    "missing_fields": [
+      "audience"
+    ],
+    "stored_audiences": [],
+    "stored_species": [
+      "bovine",
+      "swine"
+    ],
+    "preview_detected_audiences": [],
+    "preview_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "full_detected_audiences": [],
+    "full_detected_species": [
+      "aqua",
+      "bovine",
+      "companion",
+      "equine",
+      "poultry",
+      "swine"
+    ],
+    "late_audiences": [],
+    "late_species": [],
+    "content_length": 3222,
+    "snippets": {
+      "audiences": {},
+      "species": {}
+    }
+  }
+]

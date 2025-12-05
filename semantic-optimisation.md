@@ -39,7 +39,7 @@ Recent semantic runs still leave **964/1000** content rows below the 0.70 cosine
 - [ ] **Analyze gaps**: run `scripts/generate_report.py` to quantify `primary_only empty_detection` counts; capture baseline in `results/semantic_match_analysis_<date>.md`.
 - [ ] **Heuristic enrichment** (`src/services/detection.py` + `src/connectors/wordpress_vip.py`):
   - [ ] Expand `AUDIENCE_TERMS`/`SPECIES_TERMS` with domain-specific synonyms gleaned from Spain taxonomy (e.g., `ganaderia extensiva`, `aves acuaticas`).
-  - [ ] Add site/URL-path heuristics (e.g., if URL contains `/tutores-de-mascotas/`, infer `pet_owners`).
+  - [ ] Add site/URL-path heuristics (e.g., if URL contains `/tutores-de-mascotas/`, infer `pet owners`).
   - [ ] Store inferred values in `WordPressContent.metadata` with provenance (e.g., `inferred_from_path`).
 - [ ] **Validation**: add unit tests in `tests/unit/test_detection.py` + `tests/unit/test_full_pipeline_mock.py` to ensure new synonyms trigger detections.
 
@@ -79,4 +79,3 @@ Recent semantic runs still leave **964/1000** content rows below the 0.70 cosine
 | Scoring & DSPy | `src/services/matching.py`, `src/optimization/dspy_optimizer.py`, `semantic-improvements.md` |
 | Reporting | `scripts/generate_report.py`, `README.md`, `docs/SETUP.md` |
 | Validation | `tests/unit/*`, `tests/integration/*`, CLI commands |
-

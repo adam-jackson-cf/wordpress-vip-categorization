@@ -137,6 +137,16 @@ class Settings(BaseSettings):
     enable_llm_categorization: bool = Field(
         default=True, description="Enable LLM categorization fallback stage"
     )
+    enable_content_type_hinting: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_CONTENT_TYPE_HINTING"),
+        description="Apply metadata/URL-derived content-type hint bonuses during semantic scoring",
+    )
+    enable_url_stage_zero: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_URL_STAGE_ZERO"),
+        description="Enable Stage-0 URL reference matching before semantic scoring",
+    )
 
     url_checker_category_ids: tuple[int, ...] = Field(
         default=(),

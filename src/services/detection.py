@@ -13,19 +13,28 @@ logger = logging.getLogger(__name__)
 
 # Minimal fallback terms (used if config file missing)
 _DEFAULT_AUDIENCE_TERMS: dict[str, tuple[str, ...]] = {
-    "veterinarians": ("veterinario", "vet", "veterinarian"),
-    "producers": ("ganadero", "farmer", "producer"),
-    "pet_owners": ("propietario", "pet owner"),
-    "investors": ("inversionista", "investor"),
+    "veterinarians": ("veterinario", "veterinaria", "vet", "veterinarian", "profesionales veterinarios"),
+    "producers": ("producer", "producers", "productor", "productores", "ganadero", "ganaderos"),
+    "pet owners": ("pet owner", "pet owners", "propietario", "propietarios", "tutores de mascotas"),
+    "investors": ("investor", "investors", "inversionista", "inversionistas"),
+    "farmers": ("farmers", "farmer", "ganadero", "ganaderos", "agricultor", "agricultores"),
+    "general public": ("general public", "publico general", "público general"),
+    "media": ("media", "prensa", "press", "medios"),
+    "students": ("students", "student", "estudiantes", "alumnos"),
 }
 
 _DEFAULT_SPECIES_TERMS: dict[str, tuple[str, ...]] = {
-    "swine": ("porcino", "cerdo", "swine"),
-    "bovine": ("bovino", "vaca", "cattle"),
-    "poultry": ("avicola", "pollo", "poultry"),
-    "companion": ("mascota", "perro", "gato", "pet"),
+    "swine": ("porcino", "porcina", "cerdo", "swine"),
+    "cattle": ("cattle", "ganado", "vacuno", "reses"),
+    "beef cattle": ("beef cattle", "ganado de carne", "bovino de carne"),
+    "dairy cattle": ("dairy cattle", "ganado lechero", "vacas lecheras"),
+    "poultry": ("avicola", "avícola", "pollo", "poultry"),
     "equine": ("equino", "caballo", "equine"),
+    "canine": ("canino", "perro", "dog", "canine"),
+    "feline": ("felino", "gato", "feline"),
     "aqua": ("acuicultura", "aqua", "pez"),
+    "sheep": ("oveja", "ovejas", "sheep", "ovino"),
+    "small companion animals": ("small companion animals", "pequeños animales de compania", "small pets"),
 }
 
 

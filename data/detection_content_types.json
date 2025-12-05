@@ -1,0 +1,88 @@
+{
+  "defaults": {
+    "bonus": 0.02
+  },
+  "content_types": {
+    "Article": {
+      "keywords": ["articulo", "articulos", "article", "noticia", "blog"]
+    },
+    "Campaign Page": {
+      "keywords": ["campana", "campanas", "campaign", "promo", "promocion"]
+    },
+    "Condition Page": {
+      "keywords": ["condicion", "condiciones", "condition", "enfermedad", "disease"]
+    },
+    "FAQ page": {
+      "keywords": ["faq", "preguntas-frecuentes", "preguntasfrecuentes", "questions", "ayuda"]
+    },
+    "Farmer Content Listing Page": {
+      "keywords": ["ganadero", "ganaderos", "farmer", "agricultor", "contenido-ganadero"],
+      "bonus": 0.025
+    },
+    "Farmer Event Listing Page": {
+      "keywords": ["eventos-ganaderos", "feria-ganadera", "farmer-events", "agenda-ganadera", "agro-eventos"],
+      "bonus": 0.025
+    },
+    "Generic Content Page": {
+      "keywords": ["contenido", "informacion", "generic-page", "recursos", "informacion-general"]
+    },
+    "Generic Listing Page": {
+      "keywords": ["listado", "listing", "indice", "directorio", "indice-general"]
+    },
+    "Homepage": {
+      "keywords": ["home", "homepage", "inicio", "portada", "raiz"]
+    },
+    "Landing Page": {
+      "keywords": ["landing", "registro", "formulario", "inscripcion", "lp-"]
+    },
+    "Legal Page": {
+      "keywords": ["legal", "aviso-legal", "privacy", "terminos", "compliance"]
+    },
+    "Pet Owner Landing Page": {
+      "keywords": ["mascotas", "pet-owner", "propietarios", "tutores", "cuidadores"],
+      "bonus": 0.025
+    },
+    "Press Release": {
+      "keywords": ["nota-de-prensa", "press-release", "comunicado", "news", "noticias"]
+    },
+    "Press Release Listing Page": {
+      "keywords": ["sala-de-prensa", "press-room", "noticias", "comunicados", "press"]
+    },
+    "Product Catalogue Listing Page": {
+      "keywords": ["lista-de-productos", "listado-de-productos", "catalogo", "catalogue", "product-catalog", "productos"],
+      "bonus": 0.03
+    },
+    "Product Feature Page": {
+      "keywords": ["caracteristicas", "features", "beneficios", "product-feature", "ventajas"],
+      "bonus": 0.025
+    },
+    "Product Hub": {
+      "keywords": ["hub", "product-hub", "centro-de-productos", "portal-productos", "ecosistema-productos"],
+      "bonus": 0.025
+    },
+    "Product Landing Page": {
+      "keywords": ["producto", "landing", "descarga", "registro-producto", "lanzamiento"],
+      "bonus": 0.025
+    },
+    "Product Page": {
+      "keywords": ["producto", "product", "ficha", "detalle", "sku"]
+    },
+    "Section Landing Page": {
+      "keywords": ["seccion", "section", "categoria", "area", "segmento"]
+    },
+    "Species Landing Pages": {
+      "keywords": ["especies", "species", "caninos", "felinos", "bovino"],
+      "bonus": 0.025
+    },
+    "Technal Product Detail Page": {
+      "keywords": ["tecnica", "technical", "detalle-tecnico", "ficha-tecnica", "spec"],
+      "bonus": 0.03
+    },
+    "Testimonial Listing Page": {
+      "keywords": ["testimonios", "casos-de-exito", "testimonials", "historias", "clientes"]
+    },
+    "Tools & Resources": {
+      "keywords": ["herramientas", "tools", "recursos", "resource-center", "utilidades"]
+    }
+  }
+}

@@ -9,11 +9,12 @@ AI-powered workflow that ingests content from WordPress VIP, stores it in Supaba
 3. **LLM batch fallback (rubric-gated)** – For any content whose semantic score falls below the floor, enqueue the items via the OpenAI Batch API (chat completions) so the rubric-judged fallback runs asynchronously. The pipeline automatically waits for completion during `match` runs, but you can also submit/poll/apply batches manually. The Batch prompt is sourced from the latest DSPy/GEPA-optimized matcher (instructions + demonstrations), so rerunning the optimizer and promoting the artifact immediately updates production prompts.
 4. **Human review** – Export content rows that still lack an accepted taxonomy so analysts can triage the backlog.
 
-Toggle any stage with `ENABLE_SEMANTIC_MATCHING` / `ENABLE_LLM_CATEGORIZATION` or CLI flags; adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
+Toggle any stage with `ENABLE_SEMANTIC_MATCHING`, `ENABLE_LLM_CATEGORIZATION`, the new `ENABLE_CONTENT_TYPE_HINTING` (turns the content-type bonus on/off), or `ENABLE_URL_STAGE_ZERO` (turns reference-source URL matching on/off). Adjust thresholds via `SIMILARITY_THRESHOLD` and rubric settings: `LLM_RUBRIC_TOPIC_MIN`, `LLM_RUBRIC_INTENT_MIN`, `LLM_RUBRIC_ENTITY_MIN`, optional `LLM_CONSENSUS_VOTES`.
 
 ### Regulatory Compliance Signals
 
 - **Detector-backed metadata** – During ingestion every WordPress page runs through `src/services/detection.py`, storing multilingual `detected_audiences` / `detected_species` sets in both the Supabase columns and the JSON metadata. These cues are always embedded in the content vectors (`MatchingService.create_content_text`).
+- **Content-type hints** – Structural hints (catalogue pages, news hubs, legal content, etc.) now live in `data/detection_content_types.json`. Each taxonomy `content_type` has bilingual keywords (Spanish + English) so WordPress slugs in any language still trigger the rule; add both variants whenever you onboard a new market.
 - **Taxonomy cues** – `create_taxonomy_text` now emits explicit `Primary Audience`, `Secondary Audience`, and `Species` lines even when the fields are blank so embeddings can learn the absence of a secondary audience (which means “primary-only” compliance).
 - **Semantic gating** – Before any cosine candidate survives, the matching service enforces the regulatory rules: taxonomy rows with only a primary audience require an exact detector match, dual-audience rows accept either, and species lists must be a subset of detected species. Compliant pairs get a micro boost so they float to the top of the candidate list.
 - **LLM visibility** – The LLM fallback prompt now includes the detector output in the content section, so rubric decisions can explicitly reason about audience/species alignment instead of inferring it from the raw article.
@@ -90,7 +91,7 @@ Detection metadata (audiences and species) is externalized in `data/detection_te
 
 - **Text-based detection**: Scans content for multilingual synonyms (e.g., `veterinario`, `ganadero`, `porcino`, `bovino`) and stores detected audiences/species in Supabase columns.
 - **URL path inference**: When text signals are weak, the detector examines URL slugs for patterns like `/porcino/`, `/veterinaria/`, `/mascotas/` to infer regulatory context.
-- **Adding new terms**: Extend `audience_terms`, `species_terms`, or `url_path_patterns` in `data/detection_terms.json` and rerun ingestion to apply the updated dictionary.
+- **Adding new terms**: Extend `audience_terms`, `species_terms`, `url_path_patterns`, and the `content_type_terms` entries in `data/detection_terms.json`, then mirror those keywords (plus the desired bonus values) in `data/detection_content_types.json`. Always include both Spanish and English variants for new markets so slug/path detection remains reliable.
 
 **Example**:
 ```json

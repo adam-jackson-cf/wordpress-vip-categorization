@@ -17,6 +17,7 @@ from tenacity import (
 from tqdm import tqdm
 
 from src.models import WordPressContent
+from src.services.content_type_detector import detect_content_type
 from src.services.detection import detect_audiences, detect_species
 
 logger = logging.getLogger(__name__)
@@ -288,11 +289,15 @@ class WordPressVIPConnector:
         combined_audiences = sorted(set(detected_audiences + url_audiences))
         combined_species = sorted(set(detected_species + url_species))
 
+        content_type_hint = detect_content_type(item.get("link", ""), item.get("slug"))
+
         # Store both in metadata for transparency
         metadata["detected_audiences"] = combined_audiences
         metadata["detected_species"] = combined_species
         metadata["url_inferred_audiences"] = url_audiences
         metadata["url_inferred_species"] = url_species
+        if content_type_hint:
+            metadata["content_type_hint"] = content_type_hint
 
         return WordPressContent(
             url=cast(HttpUrl, item.get("link", "")),
@@ -304,6 +309,11 @@ class WordPressVIPConnector:
             detected_audiences=combined_audiences,
             detected_species=combined_species,
         )
+
+    @staticmethod
+    # Legacy helper retained for backwards compatibility with older tests.
+    def _infer_content_type_hint(link: str | None, slug: str | None) -> str | None:
+        return detect_content_type(link, slug)
 
     def fetch_all_posts(
         self,
