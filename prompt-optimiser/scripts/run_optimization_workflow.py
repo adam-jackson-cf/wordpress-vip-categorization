@@ -1,9 +1,11 @@
 """GEPA optimization workflow.
 
 Runs the thorough GEPA optimizer against the provided dataset and saves
-versioned artifacts. Use scripts/run_quick_optimization_test.py for the fast
+versioned artifacts. Use prompt-optimiser/scripts/run_quick_optimization_test.py for the fast
 bootstrap smoke test before invoking this workflow.
 """
+
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
 
 import logging
 import sys
@@ -12,8 +14,9 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient

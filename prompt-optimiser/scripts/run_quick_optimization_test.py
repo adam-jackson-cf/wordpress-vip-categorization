@@ -7,6 +7,7 @@ running the longer GEPA workflow. Artifacts are overwritten using *_test names.
 
 from __future__ import annotations
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
 import argparse
 import json
 import logging
@@ -15,8 +16,9 @@ import time
 from copy import deepcopy
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient

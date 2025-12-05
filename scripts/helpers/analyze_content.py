@@ -3,8 +3,8 @@
 
 import json
 import re
-from pathlib import Path
 from html import unescape
+from pathlib import Path
 from typing import Any
 
 try:
@@ -109,10 +109,10 @@ def analyze_page(page_num: int, content_dir: Path) -> dict[str, Any]:
     meta_file = content_dir / f"page_{page_num}_meta.json"
     html_file = content_dir / f"page_{page_num}.html"
 
-    with open(meta_file, "r", encoding="utf-8") as f:
+    with open(meta_file, encoding="utf-8") as f:
         metadata = json.load(f)
 
-    with open(html_file, "r", encoding="utf-8") as f:
+    with open(html_file, encoding="utf-8") as f:
         html_content = f.read()
 
     # Extract text

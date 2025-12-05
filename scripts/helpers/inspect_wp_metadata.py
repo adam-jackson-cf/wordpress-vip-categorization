@@ -1,13 +1,21 @@
 """Inspect metadata available from a WordPress VIP site."""
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
+
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
 import requests
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import Settings
 from src.connectors.wordpress_vip import WordPressVIPConnector
@@ -31,7 +39,8 @@ def _pretty(obj: Any) -> str:
 
 
 def _extract_inline_json(html: str, var_name: str) -> str | None:
-    pattern = rf"var\s+{var_name}\s*=\s*(\{{.*?\}});"
+    escaped_name = re.escape(var_name)
+    pattern = r"var\s+{}\s*=\s*(\{{.*?\}});".format(escaped_name)  # noqa: UP032
     match = re.search(pattern, html, re.S)
     if not match:
         return None
@@ -41,7 +50,9 @@ def _extract_inline_json(html: str, var_name: str) -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect metadata for a WordPress VIP site")
-    parser.add_argument("--site", required=True, help="Base site URL, e.g. https://www.msd-animal-health.es")
+    parser.add_argument(
+        "--site", required=True, help="Base site URL, e.g. https://www.msd-animal-health.es"
+    )
     parser.add_argument(
         "--token",
         help="Optional token override. Defaults to lookup in WORDPRESS_VIP_SITE_TOKENS",
@@ -68,7 +79,9 @@ def main() -> None:
 
     items, _ = fetcher(page=1, per_page=args.limit)
     if not items:
-        print("No items returned from the WordPress API. Try lowering limit or checking credentials.")
+        print(
+            "No items returned from the WordPress API. Try lowering limit or checking credentials."
+        )
         return
 
     print(f"Fetched {len(items)} {args.content_type} from {args.site}\n")
@@ -87,8 +100,9 @@ def main() -> None:
             print("Selected taxonomy/meta fields:")
             print(_pretty(tax_fields))
 
-        parsed = connector._parse_wordpress_item(item,  # type: ignore[attr-defined]
-                                                 "post" if args.content_type == "posts" else "page")
+        parsed = connector._parse_wordpress_item(
+            item, "post" if args.content_type == "posts" else "page"  # type: ignore[attr-defined]
+        )
         print("Parsed WordPressContent metadata:")
         print(_pretty(parsed.metadata))
 
