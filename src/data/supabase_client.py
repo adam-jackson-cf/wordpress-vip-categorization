@@ -554,10 +554,7 @@ class SupabaseClient:
         for i in range(0, len(matchings), chunk_size):
             chunk = matchings[i : i + chunk_size]
             self._demote_content_records([item.content_id for item in chunk if item.content_id])
-            payload = [
-                self._prepare_matching_payload(item)
-                for item in chunk
-            ]
+            payload = [self._prepare_matching_payload(item) for item in chunk]
 
             def _exec_insert(data: list[dict[str, Any]] = payload) -> Any:
                 return (

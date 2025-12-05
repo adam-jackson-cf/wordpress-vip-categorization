@@ -59,7 +59,10 @@ class TestWordPressVIPConnector:
         assert "<p>" not in text
         assert "<strong>" not in text
 
-    @patch("src.connectors.wordpress_vip.detect_content_type", return_value="Product Catalogue Listing Page")
+    @patch(
+        "src.connectors.wordpress_vip.detect_content_type",
+        return_value="Product Catalogue Listing Page",
+    )
     def test_parse_wordpress_item(self, mock_detect: Mock) -> None:
         """Test parsing WordPress API response."""
         connector = WordPressVIPConnector("https://example.com")

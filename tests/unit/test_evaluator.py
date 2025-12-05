@@ -37,7 +37,10 @@ def _make_matching(
 ):
     if content_id is None:
         content_id = uuid4()
-    if taxonomy_id is None and match_stage in {MatchStage.SEMANTIC_MATCHED, MatchStage.LLM_CATEGORIZED}:
+    if taxonomy_id is None and match_stage in {
+        MatchStage.SEMANTIC_MATCHED,
+        MatchStage.LLM_CATEGORIZED,
+    }:
         taxonomy_id = uuid4()
     return MatchingResult(
         taxonomy_id=taxonomy_id,

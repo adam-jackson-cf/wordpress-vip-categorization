@@ -9,16 +9,15 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 import click
 
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.data.supabase_client import SupabaseClient
 from src.exporters.csv_exporter import CSVExporter
 from src.models import MatchStage, TaxonomyPage, WordPressContent
-from src.optimization.dspy_optimizer import DSPyOptimizer, MODELS_DIR
+from src.optimization.dspy_optimizer import MODELS_DIR, DSPyOptimizer
 from src.services.ingestion import IngestionService
 from src.services.matching import MatchingService
 from src.services.workflow import WorkflowService
@@ -128,7 +127,7 @@ def _parse_uuid_list(raw: str) -> list[UUID]:
     return values
 
 
-def _describe_config(settings) -> None:
+def _describe_config(settings: Settings) -> None:
     click.echo(
         f"- Semantic matching: {'enabled' if settings.enable_semantic_matching else 'disabled'} "
         f"(threshold: {settings.similarity_threshold})"
@@ -140,8 +139,7 @@ def _describe_config(settings) -> None:
 
 def execute_match(options: MatchCommandOptions) -> None:
     filters_selected = sum(
-        bool(flag)
-        for flag in [options.taxonomy_ids, options.taxonomy_file, options.only_unmatched]
+        bool(flag) for flag in [options.taxonomy_ids, options.taxonomy_file, options.only_unmatched]
     )
     if filters_selected > 1:
         raise click.UsageError("Use at most one of --taxonomy-ids/--taxonomy-file/--only-unmatched")
@@ -229,7 +227,7 @@ def execute_match(options: MatchCommandOptions) -> None:
     click.echo(f"✓ Semantic matched: {stats['semantic_matched']}")
     click.echo(f"✓ LLM categorized: {stats['llm_categorized']}")
     click.echo(f"⚠ Needs review: {stats['needs_review']}")
-    total = stats['semantic_matched'] + stats['llm_categorized'] + stats['needs_review']
+    total = stats["semantic_matched"] + stats["llm_categorized"] + stats["needs_review"]
     click.echo(f"Total processed: {total}")
     if batch_ids := stats.get("llm_batch_ids"):
         click.echo(f"Batch job IDs: {', '.join(batch_ids)}")
@@ -250,7 +248,9 @@ def execute_full_run(options: FullRunOptions) -> None:
     site_tokens = resolve_site_tokens_override(options.sites, default_sites)
     click.echo(f"[2/4] Ingesting content from {len(site_tokens)} site(s)...")
     if options.resume and options.since:
-        click.echo("    ⚠ Both --resume and --since provided; --since takes precedence for all sites.")
+        click.echo(
+            "    ⚠ Both --resume and --since provided; --since takes precedence for all sites."
+        )
     ingested = ingestion_service.ingest_wordpress_sites(
         site_tokens,
         max_pages=options.max_pages,
@@ -292,7 +292,9 @@ def execute_optimize_dataset(options: OptimizeDatasetOptions) -> None:
         raise click.BadParameter("Train split must be between 0 and 1", param_hint="--train-split")
 
     if options.optimizer.lower() == "gepa":
-        budget_count = sum(bool(x) for x in [options.budget, options.max_full_evals, options.max_metric_calls])
+        budget_count = sum(
+            bool(x) for x in [options.budget, options.max_full_evals, options.max_metric_calls]
+        )
         if budget_count > 1:
             raise click.UsageError(
                 "For GEPA optimizer, provide exactly one of: --budget, --max-full-evals, or --max-metric-calls"
@@ -325,7 +327,9 @@ def execute_optimize_dataset(options: OptimizeDatasetOptions) -> None:
     click.echo(
         f"Optimizing with {len(training_data)} examples using {options.optimizer} optimizer..."
     )
-    click.echo("⚠ This process is expensive by nature (multiple iterations, metric evaluations, LLM calls).")
+    click.echo(
+        "⚠ This process is expensive by nature (multiple iterations, metric evaluations, LLM calls)."
+    )
 
     optimizer_kwargs: dict[str, int | str | None] = {}
     if options.budget:

@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import openai
@@ -160,8 +160,12 @@ class CategorizationService:
 
         try:
             context: PromptContext = self.dspy_optimizer.get_prompt_context()
-            self.prompt_instructions = context.instructions.strip() if context.instructions else None
-            self.prompt_demonstrations = [demo.strip() for demo in context.demonstrations if demo.strip()]
+            self.prompt_instructions = (
+                context.instructions.strip() if context.instructions else None
+            )
+            self.prompt_demonstrations = [
+                demo.strip() for demo in context.demonstrations if demo.strip()
+            ]
         except Exception as exc:  # pragma: no cover - diagnostic only
             logger.warning("Failed to extract DSPy prompt context: %s", exc)
             self.prompt_instructions = None
@@ -463,9 +467,7 @@ Respond with a JSON object in this exact format:
             semantic_taxonomy_id = decision.taxonomy_id
 
         llm_topic_score = (
-            _clamp(decision.topic_alignment)
-            if decision.topic_alignment is not None
-            else None
+            _clamp(decision.topic_alignment) if decision.topic_alignment is not None else None
         )
 
         failed_at_stage = None
@@ -503,7 +505,10 @@ Respond with a JSON object in this exact format:
                 text = str(content or "")
             if not text.strip():
                 return None
-            return json.loads(text)
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+            return None
         except (KeyError, ValueError, TypeError, json.JSONDecodeError):
             return None
 
@@ -536,11 +541,13 @@ Respond with a JSON object in this exact format:
             candidates = candidate_map.get(content.id, [])
             prompt_sections: list[str] = []
             if demos_block:
-                prompt_sections.extend([
-                    "Reference these rubric examples:",
-                    demos_block,
-                    "",
-                ])
+                prompt_sections.extend(
+                    [
+                        "Reference these rubric examples:",
+                        demos_block,
+                        "",
+                    ]
+                )
             prompt_sections.extend(
                 [
                     "Content to categorize:",
@@ -602,8 +609,7 @@ Respond with a JSON object in this exact format:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "total_requests": len(requests),
             "files": [
-                {"file": artifact.path.name, "count": artifact.count}
-                for artifact in artifacts
+                {"file": artifact.path.name, "count": artifact.count} for artifact in artifacts
             ],
         }
         (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -632,10 +638,14 @@ Respond with a JSON object in this exact format:
             file_response = self.client.files.create(file=f, purpose="batch")
 
         # Create batch
+        completion_window_value = self.settings.llm_batch_completion_window
+        if completion_window_value != "24h":
+            raise ValueError("llm_batch_completion_window must be '24h' for OpenAI Batch jobs")
+        completion_window: Literal["24h"] = "24h"
         batch = self.client.batches.create(
             input_file_id=file_response.id,
             endpoint="/v1/chat/completions",
-            completion_window=self.settings.llm_batch_completion_window,
+            completion_window=completion_window,
             metadata={"description": description} if description else {},
         )
 
@@ -878,17 +888,32 @@ Respond with a JSON object in this exact format:
         """Run the LLM fallback exclusively through the OpenAI Batch API."""
 
         if not content_items:
-            return {"matched": 0, "below_threshold": 0, "total": 0, "batch_ids": []}
+            return {
+                "matched": 0,
+                "below_threshold": 0,
+                "total": 0,
+                "batch_ids": [],
+                "needs_review": 0,
+            }
 
         candidate_map = candidate_map or {}
         semantic_results = semantic_results or {}
         if fallback_taxonomy is None:
             fallback_taxonomy = self.db.get_all_taxonomy()
 
-        requests = self.prepare_llm_fallback_requests(content_items, candidate_map, semantic_results)
+        requests = self.prepare_llm_fallback_requests(
+            content_items, candidate_map, semantic_results
+        )
         artifacts = self._write_llm_request_files(requests)
+        total_items = len(content_items)
         if not artifacts:
-            return {"matched": 0, "below_threshold": 0, "total": len(content_items), "batch_ids": []}
+            return {
+                "matched": 0,
+                "below_threshold": 0,
+                "total": total_items,
+                "batch_ids": [],
+                "needs_review": 0,
+            }
 
         taxonomy_lookup: dict[UUID, TaxonomyPage] = {
             taxonomy.id: taxonomy for taxonomy in fallback_taxonomy
@@ -899,7 +924,9 @@ Respond with a JSON object in this exact format:
 
         content_lookup = {content.id: content for content in content_items}
 
-        stats = {"matched": 0, "below_threshold": 0, "total": len(content_items), "batch_ids": []}
+        matched = 0
+        below_threshold = 0
+        batch_ids: list[str] = []
 
         for chunk_index, artifact in enumerate(artifacts, start=1):
             description = (
@@ -907,7 +934,7 @@ Respond with a JSON object in this exact format:
                 f"({artifact.count} content items)"
             )
             batch_id = self.submit_batch(str(artifact.path), description=description)
-            stats["batch_ids"].append(batch_id)
+            batch_ids.append(batch_id)
             logger.info(
                 "Submitted batch %s for %s unmatched items (file=%s)",
                 batch_id,
@@ -927,23 +954,29 @@ Respond with a JSON object in this exact format:
                 semantic_results=semantic_results,
                 content_lookup=content_lookup,
             )
-            stats["matched"] += chunk_stats.matched
-            stats["below_threshold"] += chunk_stats.needs_review
+            matched += chunk_stats.matched
+            below_threshold += chunk_stats.needs_review
 
         if wait_for_completion:
             logger.info(
                 "LLM batch categorization complete: %s matched, %s need review",
-                stats["matched"],
-                stats["below_threshold"],
+                matched,
+                below_threshold,
             )
         else:
             logger.info(
                 "Submitted %s batch job(s); call batch apply/status commands to finalize results",
-                len(stats["batch_ids"]),
+                len(batch_ids),
             )
 
-        stats["needs_review"] = stats["below_threshold"]
-        return stats
+        result = {
+            "matched": matched,
+            "below_threshold": below_threshold,
+            "total": total_items,
+            "batch_ids": batch_ids,
+            "needs_review": below_threshold,
+        }
+        return result
 
     def apply_llm_batch_results(
         self,

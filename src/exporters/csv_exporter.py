@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from src.data.supabase_client import SupabaseClient
-from src.models import ExportRow, MatchStage, MatchingResult
+from src.models import ExportRow, MatchingResult, MatchStage, TaxonomyPage
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +23,8 @@ class CSVExporter:
         logger.info("Initialized CSV exporter")
 
     @staticmethod
-    def _resolve_target_url(taxonomy, match: MatchingResult | None) -> str:
-        if (
-            match
-            and match.match_stage == MatchStage.URL_MATCHING
-            and taxonomy.reference_source
-        ):
+    def _resolve_target_url(taxonomy: TaxonomyPage, match: MatchingResult | None) -> str:
+        if match and match.match_stage == MatchStage.URL_MATCHING and taxonomy.reference_source:
             return taxonomy.reference_source
         return str(taxonomy.destination_url)
 

@@ -4,8 +4,8 @@ import csv
 import json
 import logging
 import shutil
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -185,7 +185,8 @@ class DSPyOptimizer:
             m
             for m in all_matchings
             if m.content_id is not None
-            and m.match_stage in (
+            and m.match_stage
+            in (
                 MatchStage.URL_MATCHING,
                 MatchStage.SEMANTIC_MATCHED,
                 MatchStage.LLM_CATEGORIZED,
@@ -200,6 +201,12 @@ class DSPyOptimizer:
 
         for matching in successful_matchings:
             try:
+                if matching.taxonomy_id is None:
+                    logger.warning(
+                        "Matching %s missing taxonomy_id; skipping",
+                        matching.id,
+                    )
+                    continue
                 # Load taxonomy page
                 taxonomy = self.db.get_taxonomy_by_id(matching.taxonomy_id)
                 if not taxonomy:
@@ -385,6 +392,7 @@ class DSPyOptimizer:
                     if value not in (None, ""):
                         return str(value)
             return None
+
         try:
             # Try to extract instructions from the predict module
             if hasattr(model, "predict") and hasattr(model.predict, "instructions"):

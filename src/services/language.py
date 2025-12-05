@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Callable, cast
+from collections.abc import Callable
+from typing import cast
 
-from langdetect import DetectorFactory, LangDetectException, detect
+from langdetect import DetectorFactory, LangDetectException, detect  # type: ignore[import-untyped]
 
 # langdetect uses a global PRNG; seed it for deterministic results in tests.
 DetectorFactory.seed = 42

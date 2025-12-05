@@ -1,6 +1,5 @@
 """Command-line interface for WordPress VIP categorization."""
 
-import csv
 import logging
 import sys
 from datetime import datetime
@@ -14,7 +13,7 @@ from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient
 from src.exporters.csv_exporter import CSVExporter
-from src.models import MatchStage, MatchingResult, WordPressContent
+from src.models import MatchingResult, MatchStage, WordPressContent
 from src.optimization.dspy_optimizer import MODELS_DIR, DSPyOptimizer
 from src.optimization.evaluator import Evaluator
 from src.services.categorization import CategorizationService
@@ -70,6 +69,7 @@ def _setup_file_logging(command_name: str, log_file: Path | None = None) -> Path
     logger.info(f"Logging to file: {log_file}")
     return log_file
 
+
 _sql_retryer = Retrying(
     retry=retry_if_exception_type(httpx.HTTPError),
     stop=stop_after_attempt(5),
@@ -95,7 +95,6 @@ def _post_schema_sql_with_retry(url: str, headers: dict[str, str], query: str) -
 def cli() -> None:
     """WordPress VIP Content Categorization CLI."""
     pass
-
 
 
 @cli.command(name="init-db")
@@ -267,6 +266,7 @@ def categorize(batch: bool, wait: bool) -> None:
     else:
         click.echo(f"✓ Batch submitted: {batch_id}")
         click.echo(f"Check status with: python -m src.cli batch status --id {batch_id}")
+
 
 @cli.group()
 def batch() -> None:

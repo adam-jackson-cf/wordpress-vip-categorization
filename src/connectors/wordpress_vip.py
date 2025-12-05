@@ -207,7 +207,7 @@ class WordPressVIPConnector:
             return [], []
 
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             patterns = data.get("url_path_patterns", {})

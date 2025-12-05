@@ -323,13 +323,7 @@ class TestCategorizationService:
         results = [
             {
                 "custom_id": str(sample_wordpress_content.id),
-                "response": {
-                    "body": {
-                        "choices": [
-                            {"message": {"content": json.dumps(payload)}}
-                        ]
-                    }
-                },
+                "response": {"body": {"choices": [{"message": {"content": json.dumps(payload)}}]}},
             }
         ]
 
@@ -407,13 +401,7 @@ class TestCategorizationService:
         results = [
             {
                 "custom_id": str(sample_wordpress_content.id),
-                "response": {
-                    "body": {
-                        "choices": [
-                            {"message": {"content": json.dumps(payload)}}
-                        ]
-                    }
-                },
+                "response": {"body": {"choices": [{"message": {"content": json.dumps(payload)}}]}},
             }
         ]
 
@@ -449,7 +437,9 @@ class TestCategorizationService:
         )
         service.submit_batch = Mock(return_value="batch-123")
         service.wait_for_batch_completion = Mock()
-        service.retrieve_batch_results = Mock(return_value=[{"custom_id": str(sample_wordpress_content.id)}])
+        service.retrieve_batch_results = Mock(
+            return_value=[{"custom_id": str(sample_wordpress_content.id)}]
+        )
         service.apply_llm_batch_results = Mock(
             return_value=LLMBatchStats(matched=1, needs_review=0, total=1)
         )

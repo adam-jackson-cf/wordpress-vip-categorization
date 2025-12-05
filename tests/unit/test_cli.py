@@ -5,11 +5,10 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import click
-
 from click.testing import CliRunner
 
 from src.cli import cli
-from src.models import MatchStage, MatchingResult, TaxonomyPage, WordPressContent
+from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.categorization import LLMBatchStats
 
 runner = CliRunner()
@@ -130,7 +129,9 @@ def test_batch_submit_invokes_categorization(
 
     mock_db = Mock()
     mock_db.get_matchings_by_stage.return_value = [backlog_match]
-    mock_db.get_content_by_ids.return_value = {sample_wordpress_content.id: sample_wordpress_content}
+    mock_db.get_content_by_ids.return_value = {
+        sample_wordpress_content.id: sample_wordpress_content
+    }
     mock_db.get_all_taxonomy.return_value = [sample_taxonomy_page]
     mocker.patch("src.cli.SupabaseClient", return_value=mock_db)
 
@@ -225,9 +226,11 @@ def test_optimize_dataset_success(mocker, tmp_path) -> None:
     assert mock_execute.called
 
 
-def test_optimize_dataset_file_not_found(mocker) -> None:
-    """Test optimize-dataset command with file errors bubbled from helper."""
+def test_optimize_dataset_helper_error_bubbles(mocker, tmp_path: Path) -> None:
+    """Test optimize-dataset command when helper raises a ClickException."""
 
+    dataset_file = tmp_path / "nonexistent.csv"
+    dataset_file.write_text("taxonomy_category\n", encoding="utf-8")
     mock_execute = mocker.patch(
         "src.cli.execute_optimize_dataset", side_effect=click.ClickException("fail")
     )
@@ -237,7 +240,7 @@ def test_optimize_dataset_file_not_found(mocker) -> None:
         [
             "optimize-dataset",
             "--dataset",
-            "nonexistent.csv",
+            str(dataset_file),
         ],
     )
 
@@ -245,7 +248,7 @@ def test_optimize_dataset_file_not_found(mocker) -> None:
     assert mock_execute.called
 
 
-def test_optimize_dataset_file_not_found() -> None:
+def test_optimize_dataset_missing_dataset_file() -> None:
     """Test optimize-dataset command with non-existent dataset file."""
     result = runner.invoke(
         cli,

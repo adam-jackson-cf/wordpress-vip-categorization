@@ -14,7 +14,6 @@ from src.data.supabase_client import SupabaseClient
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
 from src.services.content_type_detector import (
     CONTENT_TYPE_RULES,
-    ContentTypeRule,
     detect_content_type,
 )
 from src.services.embeddings import EmbeddingService
@@ -176,9 +175,7 @@ class MatchingService:
         )
 
     def _priority_boost(
-        self,
-        taxonomy: TaxonomyPage,
-        content: WordPressContent | None = None
+        self, taxonomy: TaxonomyPage, content: WordPressContent | None = None
     ) -> float:
         """Calculate priority boost for taxonomy-content pairs.
 
@@ -203,13 +200,14 @@ class MatchingService:
         # Enhanced bonuses when content is provided
         if content:
             # Combined compliance bonus: reward when BOTH audience AND species align
-            if (self._audience_compatible(taxonomy, content) and
-                self._species_compatible(taxonomy, content)):
+            if self._audience_compatible(taxonomy, content) and self._species_compatible(
+                taxonomy, content
+            ):
                 bonus += 0.05
                 logger.debug(
                     "Compliance bonus +0.05 applied for %s → %s",
                     content.url,
-                    taxonomy.destination_url
+                    taxonomy.destination_url,
                 )
 
             # URL token overlap bonus
@@ -224,7 +222,7 @@ class MatchingService:
                         "URL overlap bonus +0.03 applied for %s → %s (overlap=%.2f)",
                         content.url,
                         taxonomy.destination_url,
-                        overlap_ratio
+                        overlap_ratio,
                     )
 
             content_type_hint = self._infer_content_type_hint(content)
@@ -343,25 +341,24 @@ class MatchingService:
             # Priority Field 1: Destination URL (duplicate for emphasis)
             f"Priority Field - Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
             f"Destination Path: {self._tokenize_url_path(str(taxonomy.destination_url))}",
-
             # Priority Field 2: Local Page Name (duplicate for emphasis)
-            f"Priority Field - Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
+            (
+                f"Priority Field - Local Name: {taxonomy.local_page_name}"
+                if taxonomy.local_page_name
+                else None
+            ),
             f"Local Name: {taxonomy.local_page_name}" if taxonomy.local_page_name else None,
-
             # Priority Field 3: Key Topics (duplicate for weight)
             f"Key Topics (Primary): {topics_emphasized}" if topics_emphasized else None,
             f"Key Topics (Secondary): {', '.join(key_topics_list)}" if key_topics_list else None,
-
             # Priority Field 4: Audiences (duplicate for alignment with content)
             f"Priority Field - Primary Audience: {primary_audience}",
             f"Primary Audience: {primary_audience}",
             f"Priority Field - Secondary Audience: {secondary_audience}",
             f"Secondary Audience: {secondary_audience}",
-
             # Priority Field 5: Species (duplicate for alignment with content)
             f"Priority Field - Species: {species_sentence}",
             f"Species: {species_sentence}",
-
             # Summary last (previously dominant, now deprioritized)
             f"Summary: {taxonomy.semantic_summary}",
         ]
@@ -402,21 +399,17 @@ class MatchingService:
             # Priority Field 1: Title (duplicate for weight)
             f"Title (Primary): {content.title}",
             f"Title (Secondary): {content.title}",
-
             # Priority Field 2: URL Path (duplicate with emphasis)
             f"Priority Field - URL Path: {self._tokenize_url_path(str(content.url))}",
             f"URL Path: {self._tokenize_url_path(str(content.url))}",
-
             # Priority Field 3: Slug (duplicate for weight)
             f"Slug (Primary): {slug}" if slug else None,
             f"Slug (Secondary): {slug}" if slug else None,
-
             # Priority Field 4: Detection Signals (duplicate for emphasis)
             f"Priority Field - Detected Audiences: {detected_audiences}",
             f"Detected Audiences: {detected_audiences}",
             f"Priority Field - Detected Species: {detected_species}",
             f"Detected Species: {detected_species}",
-
             # Supporting metadata
             f"Site: {content.site_url}",
             f"Detected Language: {language_code}",
@@ -428,7 +421,6 @@ class MatchingService:
                 if content.published_date
                 else None
             ),
-
             # Content preview last (truncated to 1000 chars)
             f"Content Preview: {preview}",
         ]
@@ -610,9 +602,15 @@ class MatchingService:
                 min_threshold=self.settings.llm_candidate_min_score,
                 taxonomy_pool=taxonomy_lookup,
             )
-            filtered = [taxonomy for taxonomy, score in matches if score >= self.settings.llm_candidate_min_score]
+            filtered = [
+                taxonomy
+                for taxonomy, score in matches
+                if score >= self.settings.llm_candidate_min_score
+            ]
             if not filtered:
-                filtered = [taxonomy for taxonomy, _ in matches][: self.settings.llm_candidate_limit]
+                filtered = [taxonomy for taxonomy, _ in matches][
+                    : self.settings.llm_candidate_limit
+                ]
             if not filtered and taxonomy_pages:
                 filtered = taxonomy_pages[: self.settings.llm_candidate_limit]
             candidate_map[content.id] = filtered
@@ -874,7 +872,9 @@ class MatchingService:
             if target_taxonomy_ids is not None:
                 existing_record = existing_matches_lookup.get(content.id)
                 candidate_id = candidate_taxonomy.id if candidate_taxonomy else None
-                if not self._content_relates_to_targets(candidate_id, existing_record, target_taxonomy_ids):
+                if not self._content_relates_to_targets(
+                    candidate_id, existing_record, target_taxonomy_ids
+                ):
                     logger.debug(
                         "Skipping content %s; no overlap with targeted taxonomy subset",
                         content.url,

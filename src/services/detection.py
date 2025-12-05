@@ -6,14 +6,20 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 logger = logging.getLogger(__name__)
 
 # Minimal fallback terms (used if config file missing)
 _DEFAULT_AUDIENCE_TERMS: dict[str, tuple[str, ...]] = {
-    "veterinarians": ("veterinario", "veterinaria", "vet", "veterinarian", "profesionales veterinarios"),
+    "veterinarians": (
+        "veterinario",
+        "veterinaria",
+        "vet",
+        "veterinarian",
+        "profesionales veterinarios",
+    ),
     "producers": ("producer", "producers", "productor", "productores", "ganadero", "ganaderos"),
     "pet owners": ("pet owner", "pet owners", "propietario", "propietarios", "tutores de mascotas"),
     "investors": ("investor", "investors", "inversionista", "inversionistas"),
@@ -34,7 +40,11 @@ _DEFAULT_SPECIES_TERMS: dict[str, tuple[str, ...]] = {
     "feline": ("felino", "gato", "feline"),
     "aqua": ("acuicultura", "aqua", "pez"),
     "sheep": ("oveja", "ovejas", "sheep", "ovino"),
-    "small companion animals": ("small companion animals", "pequeños animales de compania", "small pets"),
+    "small companion animals": (
+        "small companion animals",
+        "pequeños animales de compania",
+        "small pets",
+    ),
 }
 
 
@@ -44,28 +54,23 @@ def _load_detection_terms() -> tuple[dict[str, tuple[str, ...]], dict[str, tuple
 
     if not config_path.exists():
         logger.warning(
-            "Detection terms config not found at %s, using minimal defaults",
-            config_path
+            "Detection terms config not found at %s, using minimal defaults", config_path
         )
         return _DEFAULT_AUDIENCE_TERMS, _DEFAULT_SPECIES_TERMS
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
 
-        audience_terms = {
-            k: tuple(v) for k, v in data.get("audience_terms", {}).items()
-        }
-        species_terms = {
-            k: tuple(v) for k, v in data.get("species_terms", {}).items()
-        }
+        audience_terms = {k: tuple(v) for k, v in data.get("audience_terms", {}).items()}
+        species_terms = {k: tuple(v) for k, v in data.get("species_terms", {}).items()}
 
         logger.info(
             "Loaded detection terms: %d audience categories (%d total terms), %d species categories (%d total terms)",
             len(audience_terms),
             sum(len(v) for v in audience_terms.values()),
             len(species_terms),
-            sum(len(v) for v in species_terms.values())
+            sum(len(v) for v in species_terms.values()),
         )
         return audience_terms, species_terms
 

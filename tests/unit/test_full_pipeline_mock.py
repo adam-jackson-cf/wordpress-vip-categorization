@@ -85,19 +85,13 @@ class TestFullPipeline:
 
         def get_best_match_for_taxonomy(taxonomy_id, min_score=0.0):
             for m in mock_db._matchings:
-                if (
-                    m.taxonomy_id == taxonomy_id
-                    and m.semantic_similarity_score >= min_score
-                ):
+                if m.taxonomy_id == taxonomy_id and m.semantic_similarity_score >= min_score:
                     return m
             return None
 
         def get_best_match_for_content(content_id, min_score=0.0):
             for m in mock_db._matchings:
-                if (
-                    m.content_id == content_id
-                    and m.semantic_similarity_score >= min_score
-                ):
+                if m.content_id == content_id and m.semantic_similarity_score >= min_score:
                     return m
             return None
 
@@ -194,8 +188,8 @@ class TestFullPipeline:
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
             "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source\n"
-            "TAX-1,https://example.com/page1,News Page,Pagina de Noticias,News,All,Media,,News articles,\"wordpress, updates, news\",https://example.com/page1\n"
-            "TAX-2,https://example.com/page2,Swine Article,Articulo Porcino,Veterinary Guidance,Veterinarians,Producers,Swine,Consejos para granjas porcinas,\"bioseguridad, porcino, manejo\",https://example.com/page2\n"
+            'TAX-1,https://example.com/page1,News Page,Pagina de Noticias,News,All,Media,,News articles,"wordpress, updates, news",https://example.com/page1\n'
+            'TAX-2,https://example.com/page2,Swine Article,Articulo Porcino,Veterinary Guidance,Veterinarians,Producers,Swine,Consejos para granjas porcinas,"bioseguridad, porcino, manejo",https://example.com/page2\n'
         )
 
         ingestion_service = IngestionService(mock_settings, mock_db_client)
@@ -225,7 +219,7 @@ class TestFullPipeline:
         taxonomy_csv = tmp_path / "test_taxonomy.csv"
         taxonomy_csv.write_text(
             "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source\n"
-            "TAX-3,https://example.com/wordpress-news,WordPress News,Noticias de WordPress,News,All,Media,,WordPress news and updates,\"wordpress, news, updates, announcements\",https://example.com/wordpress-news\n"
+            'TAX-3,https://example.com/wordpress-news,WordPress News,Noticias de WordPress,News,All,Media,,WordPress news and updates,"wordpress, news, updates, announcements",https://example.com/wordpress-news\n'
         )
         ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
 
@@ -272,8 +266,8 @@ class TestFullPipeline:
         taxonomy_csv = tmp_path / "taxonomy.csv"
         taxonomy_csv.write_text(
             "UID,Destination_URL,English_Page Name,Local_Page_Name,Content_Type,Primary_Audiance,Secondary_Audiance,Species,Semantic_Summary,Key_Topics,Reference_Source\n"
-            "TAX-4,https://example.com/wp-news,Veterinary News,Noticias Veterinarias,News,Veterinarians,Producers,,WordPress announcements,\"wordpress, release, update, announcement\",https://example.com/wp-news\n"
-            "TAX-5,https://example.com/porcino,Bioseguridad,Bioseguridad Porcina,Veterinary Guidance,Veterinarians,Producers,Swine,Artículos sobre bioseguridad,\"bioseguridad, porcino, protocolos\",https://example.com/porcino\n"
+            'TAX-4,https://example.com/wp-news,Veterinary News,Noticias Veterinarias,News,Veterinarians,Producers,,WordPress announcements,"wordpress, release, update, announcement",https://example.com/wp-news\n'
+            'TAX-5,https://example.com/porcino,Bioseguridad,Bioseguridad Porcina,Veterinary Guidance,Veterinarians,Producers,Swine,Artículos sobre bioseguridad,"bioseguridad, porcino, protocolos",https://example.com/porcino\n'
         )
         taxonomy_count = ingestion_service.load_taxonomy_from_csv(taxonomy_csv)
         assert taxonomy_count == 2

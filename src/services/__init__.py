@@ -1,5 +1,7 @@
 """Services for content processing."""
 
+from typing import Any
+
 # Keep exports lightweight to avoid circular imports at module import time.
 __all__ = [
     "CategorizationService",
@@ -8,7 +10,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):  # pragma: no cover - module-level lazy loading
+def __getattr__(name: str) -> Any:  # pragma: no cover - module-level lazy loading
     if name == "CategorizationService":
         from src.services.categorization import CategorizationService
 

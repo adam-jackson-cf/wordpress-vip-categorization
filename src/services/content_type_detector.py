@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,14 @@ def _load_content_type_rules() -> dict[str, ContentTypeRule]:
     default_bonus = float(payload.get("defaults", {}).get("bonus", 0.02))
     content_types: dict[str, ContentTypeRule] = {}
     for name, raw_rule in payload.get("content_types", {}).items():
-        keywords = tuple((raw_rule.get("keywords") or []))
+        keywords = tuple(raw_rule.get("keywords") or [])
         if not keywords:
             logger.warning("Content-type rule %s has no keywords; skipping", name)
             continue
         bonus = float(raw_rule.get("bonus", default_bonus))
-        content_types[name] = ContentTypeRule(keywords=tuple(k.lower() for k in keywords), bonus=bonus)
+        content_types[name] = ContentTypeRule(
+            keywords=tuple(k.lower() for k in keywords), bonus=bonus
+        )
     return content_types
 
 

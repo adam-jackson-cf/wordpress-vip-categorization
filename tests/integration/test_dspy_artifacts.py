@@ -22,14 +22,16 @@ def test_prompt_context_includes_demonstrations_from_versioned_artifact(
 ) -> None:
     """Ensure legacy matcher artifacts still yield prompt context demos."""
 
-    with open(ARTIFACT_PATH, "r", encoding="utf-8") as f:
+    with open(ARTIFACT_PATH, encoding="utf-8") as f:
         artifact = json.load(f)
 
     demos_data = artifact.get("predict.predict", {}).get("demos", [])
     assert demos_data, "Artifact must contain serialized demos"
 
     demo_namespaces = [SimpleNamespace(**demo) for demo in demos_data]
-    legacy_model = SimpleNamespace(predict=SimpleNamespace(instructions=None, demos=demo_namespaces))
+    legacy_model = SimpleNamespace(
+        predict=SimpleNamespace(instructions=None, demos=demo_namespaces)
+    )
 
     with patch("src.optimization.dspy_optimizer.dspy.LM") as mock_lm:
         mock_lm.return_value = Mock()

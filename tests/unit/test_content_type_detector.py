@@ -1,7 +1,6 @@
 """Tests for content type detector helpers."""
 
 from src.services.content_type_detector import (
-    CONTENT_TYPE_RULES,
     ContentTypeRule,
     detect_content_type,
     get_content_type_rules,

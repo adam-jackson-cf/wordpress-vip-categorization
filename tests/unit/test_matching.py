@@ -222,9 +222,14 @@ class TestMatchingService:
         service = MatchingService(mock_settings, mock_supabase_client)
         sample_wordpress_content.metadata["content_type_hint"] = "Product Catalogue Listing Page"
 
-        assert service._infer_content_type_hint(sample_wordpress_content) == "Product Catalogue Listing Page"
+        assert (
+            service._infer_content_type_hint(sample_wordpress_content)
+            == "Product Catalogue Listing Page"
+        )
 
-    @patch("src.services.matching.detect_content_type", return_value="Product Catalogue Listing Page")
+    @patch(
+        "src.services.matching.detect_content_type", return_value="Product Catalogue Listing Page"
+    )
     def test_infer_content_type_hint_from_url_path(
         self,
         mock_detect: Mock,
@@ -236,7 +241,10 @@ class TestMatchingService:
         sample_wordpress_content.metadata.pop("content_type_hint", None)
         sample_wordpress_content.url = "https://example.com/lista-de-productos/"
 
-        assert service._infer_content_type_hint(sample_wordpress_content) == "Product Catalogue Listing Page"
+        assert (
+            service._infer_content_type_hint(sample_wordpress_content)
+            == "Product Catalogue Listing Page"
+        )
         mock_detect.assert_called_once()
 
     def test_priority_boost_adds_content_type_bonus(

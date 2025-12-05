@@ -9,7 +9,6 @@ import pytest
 
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
-
 from src.models import (
     CategorizationResult,
     MatchingResult,
@@ -140,7 +139,9 @@ def mock_openai_client(mocker) -> Mock:  # type: ignore[misc]
     # Mock chat completions
     mock_completion_response = mocker.Mock()
     mock_completion_response.choices = [
-        mocker.Mock(message=mocker.Mock(content='{"category": "Veterinary Guidance", "reasoning": "test"}'))
+        mocker.Mock(
+            message=mocker.Mock(content='{"category": "Veterinary Guidance", "reasoning": "test"}')
+        )
     ]
     mock_client.chat.completions.create.return_value = mock_completion_response
 

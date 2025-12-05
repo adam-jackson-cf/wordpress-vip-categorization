@@ -1,7 +1,7 @@
 """Unit tests for WorkflowService."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -108,9 +108,7 @@ def sample_content_items() -> list[WordPressContent]:
     ]
 
 
-def test_workflow_service_initialization(
-    mock_settings: Settings, mock_db: MagicMock
-) -> None:
+def test_workflow_service_initialization(mock_settings: Settings, mock_db: MagicMock) -> None:
     """Test workflow service initialization."""
     service = WorkflowService(mock_settings, mock_db)
 
@@ -177,9 +175,7 @@ def test_workflow_both_stages_enabled(
     mock_categorization_service.categorize_for_matching.assert_called_once()
     _, kwargs = mock_categorization_service.categorize_for_matching.call_args
     assert kwargs["content_items"] == [sample_content_items[1]]
-    assert kwargs["candidate_map"] == {
-        sample_content_items[1].id: [sample_taxonomy_pages[1]]
-    }
+    assert kwargs["candidate_map"] == {sample_content_items[1].id: [sample_taxonomy_pages[1]]}
     assert kwargs["semantic_results"] == match_results
     assert stats["semantic_matched"] == 1
     assert stats["llm_categorized"] == 1

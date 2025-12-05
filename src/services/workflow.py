@@ -8,8 +8,8 @@ from uuid import UUID
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import (
-    MatchStage,
     MatchingResult,
+    MatchStage,
     TaxonomyPage,
     WordPressContent,
     WorkflowRun,
@@ -168,7 +168,9 @@ class WorkflowService:
                 if content_id not in excluded_ids
             }
             unmatched_content = [
-                c for c in content_items if c.id in processed_ids and c.id not in matched_content_ids
+                c
+                for c in content_items
+                if c.id in processed_ids and c.id not in matched_content_ids
             ]
 
             stats["skipped"] += len(excluded_ids)
