@@ -97,16 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_matching_stage ON matching_results(match_stage);
 CREATE OR REPLACE VIEW export_results AS
 SELECT
     wc.url AS source_url,
-    COALESCE(
-        CASE
-            WHEN mr.match_stage = 'url_matching'
-                 AND tp.reference_source IS NOT NULL
-                 AND tp.reference_source <> ''
-            THEN tp.reference_source
-            ELSE tp.destination_url
-        END,
-        ''
-    ) AS target_url,
+    COALESCE(tp.destination_url, '') AS target_url,
     COALESCE(tp.content_type, '') AS content_type,
     COALESCE(mr.semantic_similarity_score, 0.0) AS similarity_score,
     mr.match_stage,
