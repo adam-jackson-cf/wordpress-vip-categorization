@@ -163,16 +163,21 @@ class SupabaseClient:
             return WordPressContent.model_validate(result.data[0])
         return None
 
-    def get_all_content(self, limit: int | None = None) -> list[WordPressContent]:
+    def get_all_content(
+        self, limit: int | None = None, exclude_filtered: bool = True
+    ) -> list[WordPressContent]:
         """Get all WordPress content.
 
         Args:
             limit: Optional limit on number of records.
+            exclude_filtered: If True, exclude rows marked with exclude=True.
 
         Returns:
             List of WordPress content.
         """
         query = self.client.table("wordpress_content").select("*")
+        if exclude_filtered:
+            query = query.eq("exclude", False)
         if limit:
             query = query.limit(limit)
         result = self._with_retry(query.execute)

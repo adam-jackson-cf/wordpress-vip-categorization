@@ -35,9 +35,23 @@ class CSVExporter:
         rows = []
 
         # Get all content items (now the primary list)
-        content_items = self.db.get_all_content()
+        # Include excluded items in export for reporting, but mark them
+        content_items = self.db.get_all_content(exclude_filtered=False)
 
         for content in content_items:
+            # Skip excluded items from matching results, but include in export with reason
+            if content.exclude:
+                row = ExportRow(
+                    source_url=str(content.url),
+                    target_url="",
+                    category="",
+                    similarity_score=0.0,
+                    match_stage=f"excluded: {content.exclude_reason or 'unknown'}",
+                    failed_at_stage=None,
+                )
+                rows.append(row)
+                continue
+
             # Get best match for this content item
             match = self.db.get_best_match_for_content(content.id, min_score=0.0)
 

@@ -46,12 +46,17 @@ def sample_wordpress_content() -> WordPressContent:
         id=uuid4(),
         url="https://example.com/porcine-biosecurity",
         title="Prácticas de bioseguridad en porcino",
-        content="Articulo detallando protocolos veterinarios para reducir brotes respiratorios en granjas porcinas.",
+        content=(
+            "Articulo detallando protocolos veterinarios para reducir brotes respiratorios en granjas porcinas. "
+            "Incluye guias para personal de campo, procedimientos de limpieza profunda, monitoreo mensual, "
+            "y recomendaciones de vacunacion coordinada con los equipos regionales."
+        ),
         site_url="https://example.com",
         published_date=datetime(2024, 1, 1, 12, 0, 0),
         metadata={
             "type": "post",
             "wp_id": 123,
+            "excerpt": "Resumen corto de protocolos de bioseguridad para porcino.",
             "detected_audiences": ["veterinarians"],
             "detected_species": ["swine"],
         },

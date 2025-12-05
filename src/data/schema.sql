@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS wordpress_content (
     detected_species JSONB DEFAULT '[]'::jsonb,
     content_embedding VECTOR(1536),
     embedding_updated_at TIMESTAMP WITH TIME ZONE,
+    content_length INTEGER,
+    exclude BOOLEAN DEFAULT FALSE,
+    exclude_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -114,6 +117,7 @@ SELECT
 FROM wordpress_content wc
 LEFT JOIN matching_results mr ON wc.id = mr.content_id AND mr.is_current IS TRUE
 LEFT JOIN taxonomy_pages tp ON mr.taxonomy_id = tp.id
+WHERE wc.exclude IS NULL OR wc.exclude IS FALSE
 ORDER BY wc.site_url, wc.url;
 
 -- Vector similarity helper for Supabase RPC usage
@@ -141,6 +145,7 @@ SELECT
     1 - (wc.content_embedding <=> query_embedding) as similarity
 FROM wordpress_content wc
 WHERE wc.content_embedding IS NOT NULL
+  AND (wc.exclude IS NULL OR wc.exclude IS FALSE)
   AND 1 - (wc.content_embedding <=> query_embedding) >= match_threshold
 ORDER BY wc.content_embedding <=> query_embedding
 LIMIT match_count;

@@ -112,3 +112,61 @@ def detect_species(text: str) -> set[str]:
         if _find_matches(text, synonyms):
             detected.add(species)
     return detected
+
+
+def extract_entities(text: str) -> dict[str, list[str]]:
+    """Extract product names, conditions, and other entities from text.
+
+    This is a basic implementation that can be extended with more sophisticated
+    NER or dictionary-based extraction.
+
+    Args:
+        text: Text to extract entities from.
+
+    Returns:
+        Dictionary with keys 'products', 'conditions', 'technologies' containing lists of found entities.
+    """
+    entities: dict[str, list[str]] = {
+        "products": [],
+        "conditions": [],
+        "technologies": [],
+    }
+
+    # Basic product name patterns (can be extended with a dictionary)
+    # Look for trademark symbols and common product naming patterns
+    product_patterns = [
+        r"\b([A-Z][a-z]+(?:®|™|®))\b",  # ProductName®
+        r"\b([A-Z][a-z]+(?:®|™)?\s+[A-Z][a-z]+)\b",  # Product Name
+    ]
+
+    # Common condition/disease patterns
+    condition_patterns = [
+        r"\b(ileítis|leishmaniosis|criptosporidiosis|rinotraqueítis)\b",
+        r"\b(ileitis|leishmaniasis|cryptosporidiosis|rhinotracheitis)\b",
+    ]
+
+    # Technology patterns
+    tech_patterns = [
+        r"\b(IDAL|intradermal|monitorización|monitoring)\b",
+    ]
+
+    normalized_text = _normalize_text(text)
+
+    for pattern in product_patterns:
+        # Keep case-sensitive matching so we only capture deliberate product-style capitalization.
+        matches = re.findall(pattern, text)
+        entities["products"].extend([m.strip() for m in matches if m.strip()])
+
+    for pattern in condition_patterns:
+        matches = re.findall(pattern, normalized_text, re.IGNORECASE)
+        entities["conditions"].extend([m.strip() for m in matches if m.strip()])
+
+    for pattern in tech_patterns:
+        matches = re.findall(pattern, normalized_text, re.IGNORECASE)
+        entities["technologies"].extend([m.strip() for m in matches if m.strip()])
+
+    # Deduplicate
+    for key in entities:
+        entities[key] = sorted(set(entities[key]))
+
+    return entities

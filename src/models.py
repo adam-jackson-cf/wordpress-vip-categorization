@@ -43,6 +43,11 @@ class WordPressContent(BaseModel):
     detected_species: list[str] = Field(default_factory=list)
     content_embedding: list[float] | None = Field(default=None)
     embedding_updated_at: datetime | None = None
+    content_length: int | None = Field(default=None, description="Character count of content")
+    exclude: bool = Field(
+        default=False, description="Whether this content should be excluded from matching"
+    )
+    exclude_reason: str | None = Field(default=None, description="Reason for exclusion if excluded")
     created_at: datetime = Field(default_factory=_utcnow)
 
     @field_validator("detected_audiences", "detected_species", mode="before")

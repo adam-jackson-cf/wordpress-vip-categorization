@@ -43,7 +43,7 @@ class TestFullPipeline:
                 upsert_content(item)
             return contents
 
-        def get_all_content(limit=None):
+        def get_all_content(limit=None, exclude_filtered=True):
             if limit:
                 return mock_db._content[:limit]
             return mock_db._content[:]

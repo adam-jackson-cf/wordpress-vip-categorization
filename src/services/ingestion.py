@@ -4,7 +4,7 @@ import csv
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from pydantic import HttpUrl
@@ -42,9 +42,100 @@ class IngestionService:
         logger.info("Initialized ingestion service")
 
     @staticmethod
+    def _should_exclude_content(content: WordPressContent) -> tuple[bool, str | None]:
+        """Determine if content should be excluded from matching.
+
+        Args:
+            content: WordPress content to evaluate.
+
+        Returns:
+            Tuple of (should_exclude, reason).
+        """
+        content_length = len(content.content)
+        content_lower = content.content.lower()
+        url_lower = str(content.url).lower()
+        slug = (content.metadata or {}).get("slug", "").lower()
+
+        # Check content length
+        if content_length < 200:
+            return True, "content_too_short"
+
+        # Check for thank you / form submission patterns
+        exclusion_patterns = [
+            r"gracias.*contacto",
+            r"thank.*you",
+            r"form.*submit",
+            r"submission.*confirm",
+        ]
+        import re
+
+        for pattern in exclusion_patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                return True, "form_confirmation_page"
+
+        # Check URL/slug patterns
+        url_exclusion_patterns = [
+            r"/(contacto|contact)-confirmation",
+            r"/gracias",
+            r"/thank-you",
+            r"/form-submitted",
+        ]
+        for pattern in url_exclusion_patterns:
+            if re.search(pattern, url_lower) or re.search(pattern, slug):
+                return True, "utility_page_url"
+
+        return False, None
+
+    @staticmethod
     def _render_content_embedding_text(content: WordPressContent) -> str:
-        preview = content.content[:1000]
-        return f"Title: {content.title}\n\nContent: {preview}"
+        """Build embedding text from enriched content fields.
+
+        Uses title (duplicated), Yoast description, excerpt, headings,
+        first 1-1.5k body chars, and detected entities/audiences/species.
+        Explicitly excludes UUIDs from the text payload.
+        """
+        metadata = content.metadata or {}
+        yoast_desc = metadata.get("yoast_description", "")
+        excerpt = metadata.get("excerpt", "")
+        headings = metadata.get("headings", "")
+        body_preview = content.content[:1500]
+
+        # Get detected signals
+        audiences = (
+            ", ".join(sorted(content.detected_audiences))
+            if content.detected_audiences
+            else "unknown"
+        )
+        species = (
+            ", ".join(sorted(content.detected_species)) if content.detected_species else "unknown"
+        )
+        entities = metadata.get("entities", {})
+
+        parts = [
+            f"Title: {content.title}",
+            f"Title: {content.title}",  # Duplicate for weight
+        ]
+        if yoast_desc:
+            parts.append(f"Meta Description: {yoast_desc}")
+        if excerpt:
+            parts.append(f"Excerpt: {excerpt}")
+        if headings:
+            parts.append(f"Headings: {headings}")
+        parts.append(f"Content Preview: {body_preview}")
+        parts.append(f"Detected Audiences: {audiences}")
+        parts.append(f"Detected Species: {species}")
+
+        # Add extracted entities if available
+        if entities:
+            product_names = entities.get("products", [])
+            conditions = entities.get("conditions", [])
+            if product_names:
+                parts.append(f"Products: {', '.join(product_names)}")
+            if conditions:
+                parts.append(f"Conditions: {', '.join(conditions)}")
+
+        # Note: UUIDs are explicitly excluded from embedding text
+        return "\n".join(parts)
 
     @staticmethod
     def _render_taxonomy_embedding_text(taxonomy: TaxonomyPage) -> str:
@@ -140,28 +231,51 @@ class IngestionService:
 
             # Fetch and store content
             site_count = 0
+            excluded_count = 0
             for content in connector.fetch_all_content(
                 max_pages=max_pages,
                 show_progress=True,
                 modified_after=site_since,
             ):
                 try:
-                    enriched = content
-                    if self.embedding_service:
-                        try:
-                            embedding = self.embedding_service.embed(
-                                self._render_content_embedding_text(content)
-                            )
-                            enriched = content.model_copy(
-                                update={
-                                    "content_embedding": embedding,
-                                    "embedding_updated_at": datetime.now(timezone.utc),
-                                }
-                            )
-                        except Exception as exc:  # pragma: no cover - external API
-                            logger.warning(
-                                "Embedding generation failed for %s: %s", content.url, exc
-                            )
+                    # Compute content length and check exclusion
+                    content_length = len(content.content)
+                    should_exclude, exclude_reason = self._should_exclude_content(content)
+
+                    # Prepare enriched content with computed fields
+                    update_fields: dict[str, Any] = {
+                        "content_length": content_length,
+                        "exclude": should_exclude,
+                        "exclude_reason": exclude_reason,
+                    }
+
+                    if should_exclude:
+                        excluded_count += 1
+                        logger.debug(
+                            "Excluding content %s: %s (length: %d)",
+                            content.url,
+                            exclude_reason,
+                            content_length,
+                        )
+                    else:
+                        # Only generate embeddings for non-excluded content
+                        if self.embedding_service:
+                            try:
+                                embedding = self.embedding_service.embed(
+                                    self._render_content_embedding_text(content)
+                                )
+                                update_fields.update(
+                                    {
+                                        "content_embedding": embedding,
+                                        "embedding_updated_at": datetime.now(timezone.utc),
+                                    }
+                                )
+                            except Exception as exc:  # pragma: no cover - external API
+                                logger.warning(
+                                    "Embedding generation failed for %s: %s", content.url, exc
+                                )
+
+                    enriched = content.model_copy(update=update_fields)
 
                     content_url = str(enriched.url)
                     if content_url in self._seen_content_urls:
@@ -193,7 +307,7 @@ class IngestionService:
                 except Exception as e:
                     logger.error(f"Error storing content {content.url}: {e}")
 
-            logger.info(f"Ingested {site_count} items from {site_url}")
+            logger.info(f"Ingested {site_count} items from {site_url} ({excluded_count} excluded)")
             total_ingested += site_count
 
         if self._content_buffer:

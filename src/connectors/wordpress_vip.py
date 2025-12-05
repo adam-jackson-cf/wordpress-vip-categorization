@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from src.models import WordPressContent
 from src.services.content_type_detector import detect_content_type
-from src.services.detection import detect_audiences, detect_species
+from src.services.detection import detect_audiences, detect_species, extract_entities
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,32 @@ class WordPressVIPConnector:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
+    def _extract_headings(self, html_content: str) -> str:
+        """Extract H1-H3 headings from HTML content.
+
+        Args:
+            html_content: HTML content string.
+
+        Returns:
+            Concatenated headings text.
+        """
+        import re
+
+        # Extract h1, h2, h3 tags
+        heading_pattern = r"<h[1-3][^>]*>(.*?)</h[1-3]>"
+        headings = re.findall(heading_pattern, html_content, re.IGNORECASE | re.DOTALL)
+        if not headings:
+            return ""
+
+        # Clean each heading
+        cleaned_headings = []
+        for heading in headings:
+            cleaned = self._extract_text_content(heading)
+            if cleaned:
+                cleaned_headings.append(cleaned)
+
+        return " ".join(cleaned_headings)
+
     def _infer_from_url(self, url: str) -> tuple[list[str], list[str]]:
         """Infer audiences and species from URL path patterns."""
         import json
@@ -248,6 +274,15 @@ class WordPressVIPConnector:
         title = item.get("title", {}).get("rendered", "Untitled")
         title_text = self._extract_text_content(title)
 
+        # Extract Yoast metadata
+        yoast_head = item.get("yoast_head_json", {})
+        yoast_description = yoast_head.get("description", "") or yoast_head.get(
+            "og_description", ""
+        )
+
+        # Extract headings for enhanced detection
+        headings_text = self._extract_headings(content_html)
+
         # Parse published date
         published_date = None
         date_str = item.get("date_gmt")
@@ -258,29 +293,39 @@ class WordPressVIPConnector:
                 pass
 
         # Extract metadata
+        excerpt_text = self._extract_text_content(item.get("excerpt", {}).get("rendered", ""))
         metadata = {
             "type": content_type,
             "wp_id": item.get("id"),
             "slug": item.get("slug"),
-            "excerpt": self._extract_text_content(item.get("excerpt", {}).get("rendered", "")),
+            "excerpt": excerpt_text,
             "author": item.get("author"),
             "categories": item.get("categories", []),
             "tags": item.get("tags", []),
+            "yoast_description": yoast_description,
+            "headings": headings_text,
+            "body_preview_4k": content_text[:4000],  # First 4k chars for detectors
         }
 
+        # Use ~4k chars for detection (title + yoast + excerpt + headings + first 4k body)
         preview_text = " ".join(
             filter(
                 None,
                 [
                     title_text,
-                    metadata.get("excerpt"),
-                    content_text[:1500],
+                    yoast_description,
+                    excerpt_text,
+                    headings_text,
+                    content_text[:4000],
                 ],
             )
         )
         # Text-based detection
         detected_audiences = sorted(detect_audiences(preview_text))
         detected_species = sorted(detect_species(preview_text))
+
+        # Extract entities (products, conditions, technologies)
+        entities = extract_entities(preview_text)
 
         # URL-based inference
         url_audiences, url_species = self._infer_from_url(item.get("link", ""))
@@ -296,6 +341,7 @@ class WordPressVIPConnector:
         metadata["detected_species"] = combined_species
         metadata["url_inferred_audiences"] = url_audiences
         metadata["url_inferred_species"] = url_species
+        metadata["entities"] = entities
         if content_type_hint:
             metadata["content_type_hint"] = content_type_hint
 

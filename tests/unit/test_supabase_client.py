@@ -126,6 +126,7 @@ def test_get_all_content_returns_list(
 ) -> None:
     table = mocker.Mock()
     table.select.return_value = table
+    table.eq.return_value = table
     table.execute.return_value = SimpleNamespace(
         data=[sample_wordpress_content.model_dump(mode="json")]
     )

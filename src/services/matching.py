@@ -17,7 +17,6 @@ from src.services.content_type_detector import (
     detect_content_type,
 )
 from src.services.embeddings import EmbeddingService
-from src.services.language import detect_language_code
 
 logger = logging.getLogger(__name__)
 
@@ -418,8 +417,9 @@ class MatchingService:
     def create_content_text(self, content: WordPressContent) -> str:
         """Create text representation of content for embedding.
 
-        URL path, title, slug, and detection signals are emphasized through
-        duplication to align better with reweighted taxonomy embeddings.
+        Uses enriched fields: title (duplicated), Yoast description, excerpt,
+        headings, first 1-1.5k body chars, entities, and detected audiences/species.
+        Explicitly excludes UUIDs from the text payload.
 
         Args:
             content: WordPress content.
@@ -428,54 +428,65 @@ class MatchingService:
             Combined text for embedding.
         """
         metadata = content.metadata or {}
+        yoast_desc = metadata.get("yoast_description", "")
+        excerpt = metadata.get("excerpt", "")
+        headings = metadata.get("headings", "")
+        entities = metadata.get("entities", {})
         slug = metadata.get("slug")
-        categories = [str(value) for value in (metadata.get("categories") or [])]
-        tags = [str(value) for value in (metadata.get("tags") or [])]
 
-        # Optimize excerpt length
-        excerpt = (metadata.get("excerpt") or "").strip()
-        primary_excerpt = excerpt or content.content[:400]
-        excerpt_line = f"Excerpt: {primary_excerpt[:400]}" if primary_excerpt else None
-
-        # Truncate preview to 4000 chars to retain more catalog copy for detection cues
-        preview = content.content[:4000]
-        language_code = detect_language_code(preview or content.title)
+        # Use first 1-1.5k chars of body for embedding (full body available but truncated for embedding)
+        body_preview = content.content[:1500]
 
         detected_audiences = ", ".join(sorted(self._get_content_audiences(content))) or "unknown"
         detected_species = ", ".join(sorted(self._get_content_species(content))) or "unknown"
+
+        url_path = self._tokenize_url_path(str(content.url))
 
         # Priority-first ordering with duplication
         parts = [
             # Priority Field 1: Title (duplicate for weight)
             f"Title (Primary): {content.title}",
             f"Title (Secondary): {content.title}",
-            # Priority Field 2: URL Path (duplicate with emphasis)
-            f"Priority Field - URL Path: {self._tokenize_url_path(str(content.url))}",
-            f"URL Path: {self._tokenize_url_path(str(content.url))}",
-            # Priority Field 3: Slug (duplicate for weight)
-            f"Slug (Primary): {slug}" if slug else None,
-            f"Slug (Secondary): {slug}" if slug else None,
-            # Priority Field 4: Detection Signals (duplicate for emphasis)
-            f"Priority Field - Detected Audiences: {detected_audiences}",
-            f"Detected Audiences: {detected_audiences}",
-            f"Priority Field - Detected Species: {detected_species}",
-            f"Detected Species: {detected_species}",
-            # Supporting metadata
-            f"Site: {content.site_url}",
-            f"Detected Language: {language_code}",
-            excerpt_line,
-            f"Categories: {', '.join(categories)}" if categories else None,
-            f"Tags: {', '.join(tags)}" if tags else None,
-            (
-                f"Published: {content.published_date.date().isoformat()}"
-                if content.published_date
-                else None
-            ),
-            # Content preview last (truncated to 1000 chars)
-            f"Content Preview: {preview}",
+            # Priority Field 2: URL path emphasis
+            f"Priority Field - URL Path: {url_path}",
+            f"URL Path: {url_path}",
         ]
+        if yoast_desc:
+            parts.append(f"Meta Description: {yoast_desc}")
+        if excerpt:
+            parts.append(f"Excerpt: {excerpt}")
+        if headings:
+            parts.append(f"Headings: {headings}")
+        if slug:
+            parts.append(f"Slug: {slug}")
 
-        return "\n".join(part for part in parts if part)
+        # Detection signals (duplicate for emphasis)
+        parts.extend(
+            [
+                f"Priority Field - Detected Audiences: {detected_audiences}",
+                f"Detected Audiences: {detected_audiences}",
+                f"Priority Field - Detected Species: {detected_species}",
+                f"Detected Species: {detected_species}",
+            ]
+        )
+
+        # Entity lists
+        if entities:
+            products = entities.get("products", [])
+            conditions = entities.get("conditions", [])
+            technologies = entities.get("technologies", [])
+            if products:
+                parts.append(f"Products: {', '.join(products)}")
+            if conditions:
+                parts.append(f"Conditions: {', '.join(conditions)}")
+            if technologies:
+                parts.append(f"Technologies: {', '.join(technologies)}")
+
+        # Content preview (first 1.5k chars)
+        parts.append(f"Content Preview: {body_preview}")
+
+        # Note: UUIDs are explicitly excluded from embedding text
+        return "\n".join(parts)
 
     def compute_similarity(self, embedding1: list[float], embedding2: list[float]) -> float:
         """Compute cosine similarity between two embeddings.
@@ -834,8 +845,11 @@ class MatchingService:
             except Exception as exc:  # pragma: no cover - monitoring only
                 logger.warning("Failed to load existing matchings for subset filtering: %s", exc)
 
-        # Get all content items if not provided
-        content_items = content_items or self.db.get_all_content()
+        # Get all content items if not provided (exclude filtered items)
+        content_items = content_items or self.db.get_all_content(exclude_filtered=True)
+        # Additional filtering for provided items
+        if content_items:
+            content_items = [c for c in content_items if not c.exclude]
         logger.info(
             "Matching %s content items via stored embeddings",
             len(content_items),
