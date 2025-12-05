@@ -21,6 +21,11 @@ from src.services.language import detect_language_code
 
 logger = logging.getLogger(__name__)
 
+SINGLE_AUDIENCE_BONUS = 0.04
+SINGLE_SPECIES_BONUS = 0.04
+REGULATORY_COMBO_BONUS = 0.05
+REGULATORY_AUDIENCES = {"veterinarians", "pet owners"}
+
 
 class MatchingService:
     """Service for semantic matching between taxonomy and content.
@@ -95,21 +100,8 @@ class MatchingService:
     def _should_run_url_checker(self, content: WordPressContent) -> bool:
         if not self.settings.enable_url_stage_zero:
             return False
-        if not self.settings.url_checker_category_ids:
-            return False
-        metadata = content.metadata or {}
-        categories = metadata.get("categories") or []
-        if not categories:
-            return False
-        normalized: set[int] = set()
-        for entry in categories:
-            try:
-                normalized.add(int(entry))
-            except (TypeError, ValueError):
-                continue
-        if not normalized:
-            return False
-        return bool(normalized & set(self.settings.url_checker_category_ids))
+        # TODO: Reinstate category gating if Stage-0 should be restricted to specific items again.
+        return True
 
     def _match_reference_source(
         self,
@@ -224,6 +216,64 @@ class MatchingService:
                         taxonomy.destination_url,
                         overlap_ratio,
                     )
+
+            content_audiences = self._get_content_audiences(content)
+            content_species = self._get_content_species(content)
+            single_audience_bonus_applied = False
+            single_species_bonus_applied = False
+
+            required_audiences = {
+                token
+                for token in (
+                    self._normalize_token(taxonomy.primary_audiance),
+                    self._normalize_token(taxonomy.secondary_audiance),
+                )
+                if token
+            }
+            if (
+                required_audiences
+                and len(content_audiences) == 1
+                and (audience_value := next(iter(content_audiences))) in required_audiences
+                and audience_value in REGULATORY_AUDIENCES
+            ):
+                bonus += SINGLE_AUDIENCE_BONUS
+                single_audience_bonus_applied = True
+                logger.debug(
+                    "Single-audience bonus +%.3f applied for %s → %s (%s)",
+                    SINGLE_AUDIENCE_BONUS,
+                    content.url,
+                    taxonomy.destination_url,
+                    audience_value,
+                )
+
+            required_species = {
+                self._normalize_token(value)
+                for value in (taxonomy.species or [])
+                if value and value.lower() not in {"n/a", "none"}
+            }
+            if (
+                required_species
+                and len(content_species) == 1
+                and (species_value := next(iter(content_species))) in required_species
+            ):
+                bonus += SINGLE_SPECIES_BONUS
+                single_species_bonus_applied = True
+                logger.debug(
+                    "Single-species bonus +%.3f applied for %s → %s (%s)",
+                    SINGLE_SPECIES_BONUS,
+                    content.url,
+                    taxonomy.destination_url,
+                    species_value,
+                )
+
+            if single_audience_bonus_applied and single_species_bonus_applied:
+                bonus += REGULATORY_COMBO_BONUS
+                logger.debug(
+                    "Regulatory combo bonus +%.3f applied for %s → %s",
+                    REGULATORY_COMBO_BONUS,
+                    content.url,
+                    taxonomy.destination_url,
+                )
 
             content_type_hint = self._infer_content_type_hint(content)
             if (
@@ -792,7 +842,7 @@ class MatchingService:
         )
 
         reference_lookup: dict[str, TaxonomyPage] = {}
-        if self.settings.enable_url_stage_zero and self.settings.url_checker_category_ids:
+        if self.settings.enable_url_stage_zero:
             reference_rows = taxonomy_pages
             if reference_rows is None:
                 try:
@@ -838,26 +888,10 @@ class MatchingService:
                             flush_pending()
                     results[content.id] = matching_result
                     continue
-                matching_result = MatchingResult(
-                    taxonomy_id=None,
-                    content_id=content.id,
-                    semantic_taxonomy_id=None,
-                    semantic_similarity_score=0.0,
-                    match_stage=MatchStage.URL_CHECKER_EXCLUDED,
-                    failed_at_stage="url_check_excluded",
-                    updated_at=datetime.now(timezone.utc),
-                )
-                logger.info(
-                    "URL check excluded %s (categories=%s)",
+                logger.debug(
+                    "URL checker miss for %s; proceeding with semantic stage",
                     content.url,
-                    content.metadata.get("categories"),
                 )
-                if store_results:
-                    pending.append(matching_result)
-                    if len(pending) >= self.settings.matching_batch_size:
-                        flush_pending()
-                results[content.id] = matching_result
-                continue
 
             # Ensure content embedding exists for semantic stage
             self._ensure_content_embedding(content)

@@ -1,0 +1,104 @@
+{
+  "tool": "quality:jscpd",
+  "analyzer_type": "performance",
+  "success": true,
+  "exit_code": 0,
+  "started_at": "2025-12-05T11:34:26.072696+00:00",
+  "completed_at": "2025-12-05T11:34:44.690021+00:00",
+  "duration_ms": 18617,
+  "target": "/Users/adamjackson/Projects/wordpress-vip-categorization",
+  "findings": [],
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 50,
+    "info": 0
+  },
+  "metadata": {
+    "analyzer_type": "quality",
+    "target_path": ".",
+    "files_analyzed": 152,
+    "files_processed": 0,
+    "files_skipped": 0,
+    "processing_errors": 0,
+    "total_findings": 50,
+    "severity_breakdown": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 50,
+      "info": 0
+    },
+    "analyzer_config": {
+      "max_files": null,
+      "max_file_size_mb": 5,
+      "extensions_count": 26,
+      "skip_patterns_count": 23
+    },
+    "name": "JSCPD Duplication Analyzer",
+    "version": "1.0.0",
+    "description": "Universal copy/paste detection using jscpd",
+    "category": "quality",
+    "priority": "medium",
+    "jscpd_min_tokens": 60,
+    "jscpd_mode": "mild",
+    "clone_pairs_last_run": 25,
+    "clone_fragments_last_run": 50
+  },
+  "stats": {
+    "execution_time_seconds": 18.616874933242798
+  },
+  "errors": [],
+  "raw": {
+    "analysis_type": "performance",
+    "script_name": "quality_analyzer.py",
+    "target_path": "/Users/adamjackson/Projects/wordpress-vip-categorization",
+    "timestamp": "2025-12-05T11:34:26.072703",
+    "execution_time": 18.617,
+    "success": true,
+    "error_message": null,
+    "summary": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 50,
+      "info": 0
+    },
+    "findings": [],
+    "metadata": {
+      "analyzer_type": "quality",
+      "target_path": ".",
+      "files_analyzed": 152,
+      "files_processed": 0,
+      "files_skipped": 0,
+      "processing_errors": 0,
+      "total_findings": 50,
+      "severity_breakdown": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 50,
+        "info": 0
+      },
+      "analyzer_config": {
+        "max_files": null,
+        "max_file_size_mb": 5,
+        "extensions_count": 26,
+        "skip_patterns_count": 23
+      },
+      "name": "JSCPD Duplication Analyzer",
+      "version": "1.0.0",
+      "description": "Universal copy/paste detection using jscpd",
+      "category": "quality",
+      "priority": "medium",
+      "jscpd_min_tokens": 60,
+      "jscpd_mode": "mild",
+      "clone_pairs_last_run": 25,
+      "clone_fragments_last_run": 50
+    },
+    "min_severity_filter": "high",
+    "total_findings_before_filter": 50,
+    "total_findings_after_filter": 0
+  }
+}

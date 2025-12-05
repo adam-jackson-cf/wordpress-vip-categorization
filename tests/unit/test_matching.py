@@ -7,7 +7,12 @@ import pytest
 
 from src.config import Settings
 from src.models import MatchingResult, MatchStage, TaxonomyPage, WordPressContent
-from src.services.matching import MatchingService
+from src.services.matching import (
+    REGULATORY_COMBO_BONUS,
+    SINGLE_AUDIENCE_BONUS,
+    SINGLE_SPECIES_BONUS,
+    MatchingService,
+)
 
 
 class TestMatchingService:
@@ -118,37 +123,14 @@ class TestMatchingService:
         assert match.taxonomy_id == sample_taxonomy_page.id
         mock_supabase_client.match_taxonomy_by_embedding.assert_not_called()
 
-    def test_url_checker_excludes_when_no_reference_hit(
+    def test_url_checker_falls_back_when_no_reference_hit(
         self,
         mock_settings: Settings,
         mock_supabase_client: Mock,
         sample_taxonomy_page: TaxonomyPage,
         sample_wordpress_content: WordPressContent,
     ) -> None:
-        sample_wordpress_content.metadata["categories"] = [274]
         sample_taxonomy_page.reference_source = "https://taxonomy.com/nope"
-
-        service = MatchingService(mock_settings, mock_supabase_client)
-
-        results = service.match_all_taxonomy(
-            taxonomy_pages=[sample_taxonomy_page],
-            content_items=[sample_wordpress_content],
-            store_results=True,
-        )
-
-        match = results[sample_wordpress_content.id]
-        assert match.match_stage == MatchStage.URL_CHECKER_EXCLUDED
-        assert match.taxonomy_id is None
-        assert match.failed_at_stage == "url_check_excluded"
-
-    def test_url_checker_ignores_other_categories(
-        self,
-        mock_settings: Settings,
-        mock_supabase_client: Mock,
-        sample_taxonomy_page: TaxonomyPage,
-        sample_wordpress_content: WordPressContent,
-    ) -> None:
-        sample_wordpress_content.metadata["categories"] = [123]
         service = MatchingService(mock_settings, mock_supabase_client)
         service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.91))
 
@@ -169,7 +151,6 @@ class TestMatchingService:
         sample_wordpress_content: WordPressContent,
     ) -> None:
         mock_settings.enable_url_stage_zero = False
-        sample_wordpress_content.metadata["categories"] = [274]
         service = MatchingService(mock_settings, mock_supabase_client)
         service.find_best_match = Mock(return_value=(sample_taxonomy_page, 0.88))  # type: ignore[attr-defined]
 
@@ -281,6 +262,77 @@ class TestMatchingService:
         without_flag = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
 
         assert with_flag - without_flag >= 0.02
+
+    def test_priority_boost_single_vet_audience_bonus(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.primary_audiance = "Veterinarians"
+        sample_taxonomy_page.secondary_audiance = None
+        sample_taxonomy_page.species = []
+
+        sample_wordpress_content.detected_audiences = ["veterinarians", "producers"]
+        sample_wordpress_content.metadata["detected_audiences"] = ["veterinarians", "producers"]
+        sample_wordpress_content.detected_species = []
+        sample_wordpress_content.metadata["detected_species"] = []
+        base = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        sample_wordpress_content.detected_audiences = ["veterinarians"]
+        sample_wordpress_content.metadata["detected_audiences"] = ["veterinarians"]
+        boosted = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        assert boosted - base >= SINGLE_AUDIENCE_BONUS
+
+    def test_priority_boost_single_species_bonus(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.species = ["Swine"]
+        sample_wordpress_content.detected_species = ["swine", "bovine"]
+        sample_wordpress_content.metadata["detected_species"] = ["swine", "bovine"]
+        base = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        sample_wordpress_content.detected_species = ["swine"]
+        sample_wordpress_content.metadata["detected_species"] = ["swine"]
+        boosted = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        assert boosted - base >= SINGLE_SPECIES_BONUS
+
+    def test_priority_boost_regulatory_combo_bonus(
+        self,
+        mock_settings: Settings,
+        mock_supabase_client: Mock,
+        sample_taxonomy_page: TaxonomyPage,
+        sample_wordpress_content: WordPressContent,
+    ) -> None:
+        service = MatchingService(mock_settings, mock_supabase_client)
+        sample_taxonomy_page.primary_audiance = "Veterinarians"
+        sample_taxonomy_page.secondary_audiance = None
+        sample_taxonomy_page.species = ["Swine"]
+
+        sample_wordpress_content.detected_audiences = ["veterinarians", "producers"]
+        sample_wordpress_content.metadata["detected_audiences"] = ["veterinarians", "producers"]
+        sample_wordpress_content.detected_species = ["swine", "bovine"]
+        sample_wordpress_content.metadata["detected_species"] = ["swine", "bovine"]
+        base = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        sample_wordpress_content.detected_audiences = ["veterinarians"]
+        sample_wordpress_content.metadata["detected_audiences"] = ["veterinarians"]
+        sample_wordpress_content.detected_species = ["swine"]
+        sample_wordpress_content.metadata["detected_species"] = ["swine"]
+        boosted = service._priority_boost(sample_taxonomy_page, sample_wordpress_content)
+
+        assert boosted - base >= (
+            SINGLE_AUDIENCE_BONUS + SINGLE_SPECIES_BONUS + REGULATORY_COMBO_BONUS
+        )
 
     def test_match_taxonomy_to_content(
         self,

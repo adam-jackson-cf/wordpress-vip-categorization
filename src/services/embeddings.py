@@ -122,9 +122,13 @@ class EmbeddingService:
                 logger.error(error_msg, exc_info=True)
                 raise RuntimeError(error_msg) from exc
 
-        # Multiple chunks: process in parallel
-        chunk_tasks = [asyncio.to_thread(self._embed_chunk, chunk) for chunk in chunks]
-        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        # Multiple chunks: process sequentially via background threads to preserve order
+        chunk_results: list[list[list[float]] | Exception] = []
+        for chunk in chunks:
+            try:
+                chunk_results.append(await asyncio.to_thread(self._embed_chunk, chunk))
+            except Exception as exc:  # pragma: no cover - handled below
+                chunk_results.append(exc)
 
         # Reassemble results in original order, handling failures
         all_embeddings: list[list[float] | None] = [None] * len(texts)

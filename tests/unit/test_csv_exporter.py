@@ -44,7 +44,7 @@ class TestCSVExporter:
         assert row.category == "Veterinary Guidance"
         assert row.similarity_score == 0.85
 
-    def test_url_matching_uses_reference_source(
+    def test_url_matching_uses_destination_url(
         self,
         mock_supabase_client: Mock,
         sample_taxonomy_page,
@@ -62,7 +62,7 @@ class TestCSVExporter:
         rows = exporter.prepare_export_rows()
 
         assert len(rows) == 1
-        assert rows[0].target_url == sample_taxonomy_page.reference_source
+        assert rows[0].target_url == str(sample_taxonomy_page.destination_url)
 
     def test_export_to_csv(
         self,
