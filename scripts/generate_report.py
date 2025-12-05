@@ -1,33 +1,141 @@
 #!/usr/bin/env python3
 """Generate comprehensive analysis report from content analysis."""
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
+
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.analyze_missing_signals import analyze as analyze_missing_signals
 from src.config import Settings
 from src.data.supabase_client import SupabaseClient
 from src.models import MatchingResult, TaxonomyPage, WordPressContent
-from src.services.detection import (
-    AUDIENCE_TERMS,
-    SPECIES_TERMS,
-    detect_audiences,
-    detect_species,
-)
+from src.services.detection import detect_audiences, detect_species
 
 
-AUDIENCE_WILDCARDS = {"", "all", "general", "todos", "todas", "poblacion", "publico"}
-SPECIES_WILDCARDS = {"", "n/a", "none", "all"}
+@dataclass(frozen=True)
+class DetectionConfig:
+    audience_terms: dict[str, tuple[str, ...]]
+    species_terms: dict[str, tuple[str, ...]]
+    audience_wildcards: set[str]
+    species_wildcards: set[str]
+
+
+@dataclass(frozen=True)
+class ContentTypeBoostRule:
+    name: str
+    keywords: tuple[str, ...]
+    bonus: float
+
+
+DEFAULT_AUDIENCE_WILDCARDS = {
+    "",
+    "all",
+    "general",
+    "todos",
+    "todas",
+    "poblacion",
+    "publico",
+    "publico general",
+    "público general",
+}
+DEFAULT_SPECIES_WILDCARDS = {"", "n/a", "none", "all"}
+
+
+def _load_detection_terms_config(
+    config_path: Path = Path("data/detection_terms.json"),
+) -> DetectionConfig:
+    if not config_path.exists():
+        from src.services.detection import AUDIENCE_TERMS as DEFAULT_AUDIENCE_TERMS
+        from src.services.detection import SPECIES_TERMS as DEFAULT_SPECIES_TERMS
+
+        return DetectionConfig(
+            audience_terms=DEFAULT_AUDIENCE_TERMS,
+            species_terms=DEFAULT_SPECIES_TERMS,
+            audience_wildcards=set(DEFAULT_AUDIENCE_WILDCARDS),
+            species_wildcards=set(DEFAULT_SPECIES_WILDCARDS),
+        )
+
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:  # pragma: no cover - operational safeguard
+        print(f"⚠️ Failed to read detection terms at {config_path}: {exc}")
+        from src.services.detection import AUDIENCE_TERMS as DEFAULT_AUDIENCE_TERMS
+        from src.services.detection import SPECIES_TERMS as DEFAULT_SPECIES_TERMS
+
+        return DetectionConfig(
+            audience_terms=DEFAULT_AUDIENCE_TERMS,
+            species_terms=DEFAULT_SPECIES_TERMS,
+            audience_wildcards=set(DEFAULT_AUDIENCE_WILDCARDS),
+            species_wildcards=set(DEFAULT_SPECIES_WILDCARDS),
+        )
+
+    def _convert(mapping: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
+        return {key: tuple(value) for key, value in mapping.items()}
+
+    audience_terms = _convert(payload.get("audience_terms", {}))
+    species_terms = _convert(payload.get("species_terms", {}))
+    audience_wildcards = set(payload.get("audience_wildcards", [])) or set(
+        DEFAULT_AUDIENCE_WILDCARDS
+    )
+    species_wildcards = set(payload.get("species_wildcards", [])) or set(DEFAULT_SPECIES_WILDCARDS)
+
+    return DetectionConfig(
+        audience_terms=audience_terms,
+        species_terms=species_terms,
+        audience_wildcards=audience_wildcards,
+        species_wildcards=species_wildcards,
+    )
+
+
+def _load_content_type_rules(
+    config_path: Path = Path("data/detection_content_types.json"),
+) -> list[ContentTypeBoostRule]:
+    if not config_path.exists():
+        return []
+
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:  # pragma: no cover - operational safeguard
+        print(f"⚠️ Failed to read content type config at {config_path}: {exc}")
+        return []
+
+    default_bonus = float(payload.get("defaults", {}).get("bonus", 0.02))
+    rules: list[ContentTypeBoostRule] = []
+    for name, raw_rule in payload.get("content_types", {}).items():
+        keywords = tuple(raw_rule.get("keywords") or [])
+        if not keywords:
+            continue
+        bonus = float(raw_rule.get("bonus", default_bonus))
+        rules.append(
+            ContentTypeBoostRule(
+                name=name, keywords=tuple(k.lower() for k in keywords), bonus=bonus
+            )
+        )
+    return rules
+
+
+DETECTION_CONFIG = _load_detection_terms_config()
+CONTENT_TYPE_RULES = _load_content_type_rules()
+
+AUDIENCE_TERMS = DETECTION_CONFIG.audience_terms
+SPECIES_TERMS = DETECTION_CONFIG.species_terms
+AUDIENCE_WILDCARDS = DETECTION_CONFIG.audience_wildcards
+SPECIES_WILDCARDS = DETECTION_CONFIG.species_wildcards
 
 
 def _match_terms(token: str, terms: dict[str, tuple[str, ...]]) -> str:
@@ -63,6 +171,124 @@ def canonicalize_species_list(raw_value: str | None) -> set[str]:
             continue
         normalized.add(_match_terms(lowered, SPECIES_TERMS))
     return {value for value in normalized if value}
+
+
+def format_detection_config_summary(
+    config: DetectionConfig,
+    content_rules: list[ContentTypeBoostRule],
+) -> str:
+    audience_category_count = len(config.audience_terms)
+    species_category_count = len(config.species_terms)
+    audience_term_total = sum(len(v) for v in config.audience_terms.values())
+    species_term_total = sum(len(v) for v in config.species_terms.values())
+
+    lines = [
+        "## Detection Signals & Boosting Reference",
+        "",
+        (
+            f"- Audience taxonomy: {audience_category_count} categories / {audience_term_total} aliases"
+        ),
+        (f"- Species taxonomy: {species_category_count} categories / {species_term_total} aliases"),
+        (f"- Wildcard audiences handled: {', '.join(sorted(config.audience_wildcards))}"),
+    ]
+
+    if content_rules:
+        top_rules = sorted(content_rules, key=lambda rule: rule.bonus, reverse=True)[:5]
+        lines.extend(
+            [
+                "",
+                "### Top Content-Type Boosts",
+                "",
+                "| Content Type | Bonus | Keywords |",
+                "|--------------|-------|----------|",
+            ]
+        )
+        for rule in top_rules:
+            keywords = ", ".join(rule.keywords[:5]) + ("…" if len(rule.keywords) > 5 else "")
+            lines.append(f"| {rule.name} | +{rule.bonus:.3f} | {keywords} |")
+
+        lines.extend(
+            [
+                "",
+                "```python",
+                "if content_type_hint and taxonomy.content_type == content_type_hint:",
+                "    rule = CONTENT_TYPE_RULES.get(content_type_hint)",
+                "    if rule:",
+                "        boosted_score = min(1.0, score + rule.bonus)",
+                "```",
+            ]
+        )
+
+    return "\n".join(lines)
+
+
+def format_missing_signal_summary(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return "## Missing Signal Diagnostics\n\n*No pages analyzed.*"
+
+    missing_audience = sum("audience" in row.get("missing_fields", []) for row in results)
+    missing_species = sum("species" in row.get("missing_fields", []) for row in results)
+    late_audience_hits = sum(len(row.get("late_audiences", [])) for row in results)
+    late_species_hits = sum(len(row.get("late_species", [])) for row in results)
+    avg_length = sum(row.get("content_length", 0) for row in results) / max(len(results), 1)
+
+    lines = [
+        "## Missing Signal Diagnostics",
+        "",
+        f"- Rows inspected: {len(results)}",
+        f"- Missing audience detections: {missing_audience}",
+        f"- Missing species detections: {missing_species}",
+        f"- Late-found audiences (full fetch vs preview): {late_audience_hits}",
+        f"- Late-found species (full fetch vs preview): {late_species_hits}",
+        f"- Avg. content length: {avg_length:.0f} characters",
+        "",
+        "| Field | Missing | Late Recovery |",
+        "|-------|---------|---------------|",
+        f"| Audience | {missing_audience} | {late_audience_hits} |",
+        f"| Species | {missing_species} | {late_species_hits} |",
+        "",
+    ]
+
+    illustrative = next(
+        (
+            row
+            for row in results
+            if row.get("snippets", {}).get("audiences") or row.get("snippets", {}).get("species")
+        ),
+        None,
+    )
+    if illustrative:
+        snippet_section: list[str] = []
+        aud_snippets = illustrative.get("snippets", {}).get("audiences", {})
+        spc_snippets = illustrative.get("snippets", {}).get("species", {})
+        if aud_snippets:
+            label, snippet = next(iter(aud_snippets.items()))
+            snippet_section.extend(
+                ["**Audience snippet**:", f"> {snippet.strip()}", f"Detected: `{label}`"]
+            )
+        if spc_snippets:
+            label, snippet = next(iter(spc_snippets.items()))
+            if snippet_section:
+                snippet_section.append("")
+            snippet_section.extend(
+                ["**Species snippet**:", f"> {snippet.strip()}", f"Detected: `{label}`"]
+            )
+        if snippet_section:
+            lines.extend(snippet_section)
+
+    return "\n".join(lines)
+
+
+def run_missing_signal_analysis(limit: int, output_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    try:
+        results = analyze_missing_signals(limit=limit, content_ids=None, output=output_path)
+    except Exception as exc:  # pragma: no cover - diagnostic helper
+        return (
+            f"## Missing Signal Diagnostics\n\n*Error running analysis: {exc}*",
+            [],
+        )
+
+    return format_missing_signal_summary(results), results
 
 
 def _normalize_token(value: str | None) -> str:
@@ -130,9 +356,7 @@ def _is_species_compatible(taxonomy: TaxonomyPage, content: WordPressContent) ->
 
     # Filter out wildcards
     required = {
-        _normalize_token(sp)
-        for sp in taxonomy.species
-        if sp and sp.lower() not in {"n/a", "none"}
+        _normalize_token(sp) for sp in taxonomy.species if sp and sp.lower() not in {"n/a", "none"}
     }
 
     # No valid requirements after filtering
@@ -147,7 +371,7 @@ def _is_species_compatible(taxonomy: TaxonomyPage, content: WordPressContent) ->
 
 def load_analysis() -> list[dict[str, Any]]:
     """Load content analysis JSON."""
-    with open("data/examples/content_analysis.json", "r", encoding="utf-8") as f:
+    with open("data/examples/content_analysis.json", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -155,7 +379,7 @@ def load_taxonomy() -> dict[str, dict[str, str]]:
     """Load taxonomy data keyed by destination URL."""
 
     taxonomy: dict[str, dict[str, str]] = {}
-    with open("data/Spain_New.csv", "r", encoding="utf-8") as f:
+    with open("data/Spain_New.csv", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             url = (row.get("Destination_URL") or "").strip()
@@ -275,9 +499,7 @@ def compute_compliant_score_distribution(
 
     # Count above threshold
     above_threshold = sum(
-        buckets[label]
-        for label, min_score, _ in bucket_ranges
-        if min_score >= 0.70
+        buckets[label] for label, min_score, _ in bucket_ranges if min_score >= 0.70
     )
 
     return {
@@ -327,7 +549,9 @@ def compute_alignment_metrics(
         if not target_url:
             metrics["skipped_no_taxonomy"] += 1
             continue
-        taxonomy_row = taxonomy_lookup.get(target_url) or taxonomy_lookup.get(target_url.rstrip("/"))
+        taxonomy_row = taxonomy_lookup.get(target_url) or taxonomy_lookup.get(
+            target_url.rstrip("/")
+        )
         if taxonomy_row is None:
             metrics["skipped_no_taxonomy"] += 1
             continue
@@ -393,14 +617,10 @@ def format_compliance_score_table(distribution: dict[str, Any]) -> str:
 
     # Summary stats
     compliance_rate = (
-        f"{(total_compliant / total_evaluated * 100):.1f}%"
-        if total_evaluated > 0
-        else "n/a"
+        f"{(total_compliant / total_evaluated * 100):.1f}%" if total_evaluated > 0 else "n/a"
     )
     above_threshold_pct = (
-        f"{(above_threshold / total_compliant * 100):.1f}%"
-        if total_compliant > 0
-        else "n/a"
+        f"{(above_threshold / total_compliant * 100):.1f}%" if total_compliant > 0 else "n/a"
     )
     below_threshold_pct = (
         f"{((total_compliant - above_threshold) / total_compliant * 100):.1f}%"
@@ -408,27 +628,29 @@ def format_compliance_score_table(distribution: dict[str, Any]) -> str:
         else "n/a"
     )
     empty_detection_pct = (
-        f"{(empty_detection_count / total_compliant * 100):.1f}%"
-        if total_compliant > 0
-        else "n/a"
+        f"{(empty_detection_count / total_compliant * 100):.1f}%" if total_compliant > 0 else "n/a"
     )
 
-    lines.extend([
-        f"**Total Matches Evaluated**: {total_evaluated}",
-        f"**Total Compliant Matches**: {total_compliant} ({compliance_rate})",
-        f"**Above 0.70 Threshold**: {above_threshold} ({above_threshold_pct})",
-        f"**Below 0.70 Threshold**: {total_compliant - above_threshold} ({below_threshold_pct})",
-        f"**Empty Detection Gaps**: {empty_detection_count} ({empty_detection_pct})",
-        "",
-    ])
+    lines.extend(
+        [
+            f"**Total Matches Evaluated**: {total_evaluated}",
+            f"**Total Compliant Matches**: {total_compliant} ({compliance_rate})",
+            f"**Above 0.70 Threshold**: {above_threshold} ({above_threshold_pct})",
+            f"**Below 0.70 Threshold**: {total_compliant - above_threshold} ({below_threshold_pct})",
+            f"**Empty Detection Gaps**: {empty_detection_count} ({empty_detection_pct})",
+            "",
+        ]
+    )
 
     # Distribution table
-    lines.extend([
-        "### Score Distribution",
-        "",
-        "| Score Range | Count | Percentage |",
-        "|-------------|-------|------------|",
-    ])
+    lines.extend(
+        [
+            "### Score Distribution",
+            "",
+            "| Score Range | Count | Percentage |",
+            "|-------------|-------|------------|",
+        ]
+    )
 
     for bucket_label in ["0.50-0.60", "0.60-0.70", "0.70-0.80", "0.80-0.90", "0.90-1.00"]:
         count = buckets[bucket_label]
@@ -443,7 +665,9 @@ def format_metrics(metrics: dict[str, Any], score_ranges: dict[str, Any]) -> str
     primary = metrics["primary_only"]
     dual = metrics["dual_audience"]
     species = metrics["species"]
-    score_summary = ", ".join(f"{bucket}: {len(entries)}" for bucket, entries in score_ranges.items())
+    score_summary = ", ".join(
+        f"{bucket}: {len(entries)}" for bucket, entries in score_ranges.items()
+    )
 
     lines = [
         "### Compliance Snapshot",
@@ -475,6 +699,8 @@ def generate_report(
     results: list[dict[str, Any]],
     taxonomy: dict[str, dict[str, str]],
     include_supabase_analysis: bool = True,
+    detection_section: str | None = None,
+    missing_signal_section: str | None = None,
 ) -> str:
     """Generate markdown report.
 
@@ -834,26 +1060,78 @@ Implementing these changes should raise the similarity score threshold from ~0.7
 **Match snapshot**: `results/match_snapshot_20251203_151502.csv`
 """
     if "## Executive Summary" in report:
-        report = report.replace("## Executive Summary\n\n", f"## Executive Summary\n\n{metrics_section}\n\n", 1)
+        report = report.replace(
+            "## Executive Summary\n\n", f"## Executive Summary\n\n{metrics_section}\n\n", 1
+        )
 
     # Insert compliance distribution section before Appendix
     if compliance_section and "## Appendix:" in report:
         report = report.replace("## Appendix:", f"{compliance_section}\n\n---\n\n## Appendix:", 1)
     elif compliance_section:
-        # Fallback: insert before conclusion if no appendix found
         report = report.replace("## Conclusion", f"{compliance_section}\n\n---\n\n## Conclusion", 1)
+
+    insertion_sections = [
+        section for section in (detection_section, missing_signal_section) if section
+    ]
+    if insertion_sections:
+        combined = "\n\n".join(insertion_sections) + "\n\n"
+        report = report.replace("## 1. Fields", f"{combined}## 1. Fields", 1)
 
     return report
 
 
 def main() -> None:
     """Generate and save report."""
+
+    parser = argparse.ArgumentParser(description="Generate semantic match analysis report")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Optional explicit output path (defaults to results/semantic_match_analysis_<date>.md)",
+    )
+    parser.add_argument(
+        "--missing-limit",
+        type=int,
+        default=5,
+        help="Number of content rows to inspect when summarizing missing signals",
+    )
+    parser.add_argument(
+        "--missing-output",
+        type=Path,
+        default=Path("data/diagnostics/missing_signal_analysis.json"),
+        help="Where to store the JSON payload from missing-signal diagnostics",
+    )
+    parser.add_argument(
+        "--skip-missing-analysis",
+        action="store_true",
+        help="Skip on-the-fly missing-signal analysis",
+    )
+    parser.add_argument(
+        "--skip-supabase",
+        action="store_true",
+        help="Skip Supabase compliance snapshot (useful when offline)",
+    )
+    args = parser.parse_args()
+
     results = load_analysis()
     taxonomy = load_taxonomy()
 
-    report = generate_report(results, taxonomy)
+    detection_section = format_detection_config_summary(DETECTION_CONFIG, CONTENT_TYPE_RULES)
+    missing_section = ""
+    if not args.skip_missing_analysis:
+        missing_section, _ = run_missing_signal_analysis(args.missing_limit, args.missing_output)
 
-    output_file = Path(f"results/semantic_match_analysis_{datetime.now().strftime('%Y%m%d')}.md")
+    report = generate_report(
+        results,
+        taxonomy,
+        include_supabase_analysis=not args.skip_supabase,
+        detection_section=detection_section,
+        missing_signal_section=missing_section or None,
+    )
+
+    output_file = args.output or Path(
+        f"results/semantic_match_analysis_{datetime.now().strftime('%Y%m%d')}.md"
+    )
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_file, "w", encoding="utf-8") as f:
