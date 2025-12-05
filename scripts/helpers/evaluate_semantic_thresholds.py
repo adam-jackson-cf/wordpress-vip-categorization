@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 """Compute semantic coverage metrics for various similarity thresholds."""
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
+
 from __future__ import annotations
 
 import math
+import sys
 from collections import Counter
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import get_settings
 from src.data.supabase_client import SupabaseClient

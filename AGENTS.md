@@ -105,4 +105,28 @@ def full_run() -> None:
     2. Ingest WordPress content: `uv run python -m src.cli ingest --sites <comma-sites> --max-pages N`
     3. Run matching: `uv run python -m src.cli match --threshold T` (run inside tmux for long jobs)
     4. Export snapshot CSV: `uv run python -m src.cli export --output results/<file>.csv`
-    5. DSPy/GEPA optimization: `uv run python -m src.cli optimize-dataset --dataset data/dspy_training_dataset.csv --optimizer gepa --budget medium`, then promote with `uv run python scripts/promote_optimized_model.py`
+    5. DSPy/GEPA optimization: `uv run python -m src.cli optimize-dataset --dataset data/dspy_training_dataset.csv --optimizer gepa --budget medium`, then promote with `uv run python prompt-optimiser/scripts/promote_optimized_model.py`
+
+## Development Helpers
+
+### When I need to analyse data quality
+
+Run `scripts/data_quality_orchestrate.sh` to sequence analysis tasks, they can also be run directly:
+- Evaluate semantic similarity thresholds (`scripts/helpers/evaluate_semantic_thresholds.py`)
+- Analyze missing detection signals (`scripts/helpers/analyze_missing_signals.py`)
+- Extract sample matches for review (`scripts/helpers/extract_sample_matches.py`)
+- Generate comprehensive analysis report (`scripts/helpers/generate_report.py`)
+
+### When I need to set up or reset infrastructure
+
+Run `scripts/setup_orchestrate.sh` to sequence setup tasks:
+- Test setup and configuration (`scripts/helpers/test_setup.py`)
+- Initialize/reset Supabase schema (`scripts/helpers/reset_supabase_local.py`)
+
+### When I need to run DSPy/GEPA optimization
+
+Run `prompt-optimiser/scripts/orchestrate.sh` to sequence the optimization workflow, they can also be run:
+- Generate training dataset (`prompt-optimiser/scripts/generate_dspy_dataset.py` or `prompt-optimiser/scripts/build_dspy_dataset.py`)
+- Run bootstrap smoke test (`prompt-optimiser/scripts/run_quick_optimization_test.py`)
+- Run full GEPA optimization (`prompt-optimiser/scripts/run_optimization_workflow.py`)
+- Promote optimized model (`prompt-optimiser/scripts/promote_optimized_model.py`)

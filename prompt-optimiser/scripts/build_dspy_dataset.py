@@ -102,7 +102,9 @@ def tokenize(text: str) -> list[str]:
     return [token for token in re.split(r"[^a-zA-ZÀ-ÿ0-9]+", text.lower()) if token]
 
 
-def score_candidate(topics: Sequence[str], summary: str, title: str, url: str, content_type: str) -> int:
+def score_candidate(
+    topics: Sequence[str], summary: str, title: str, url: str, content_type: str
+) -> int:
     tokens = tokenize(" ".join([summary, title, url]))
     topic_tokens = [topic.lower() for topic in topics]
     score = sum(tokens.count(topic) for topic in topic_tokens)
@@ -128,7 +130,7 @@ def main() -> None:
         pages_by_site[page["Site"]].append(page)
 
     sampled_pages: list[dict[str, str]] = []
-    for site, rows in pages_by_site.items():
+    for _site, rows in pages_by_site.items():
         sampled_pages.extend(rows[: args.max_pages_per_site])
 
     page_cache: dict[str, dict[str, str]] = {}
@@ -152,7 +154,9 @@ def main() -> None:
 
         scored: list[tuple[int, str]] = []
         for url, metadata in page_cache.items():
-            score = score_candidate(topics, metadata["preview"], metadata["title"], url, content_type)
+            score = score_candidate(
+                topics, metadata["preview"], metadata["title"], url, content_type
+            )
             scored.append((score, url))
 
         scored.sort(key=lambda pair: pair[0], reverse=True)
@@ -194,5 +198,5 @@ def main() -> None:
         writer.writerows(examples)
 
 
-+if __name__ == "__main__":
-+    main()
+if __name__ == "__main__":
+    main()

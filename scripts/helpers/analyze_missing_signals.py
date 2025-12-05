@@ -1,16 +1,23 @@
 """Analyze WordPress pages that lack detected audience/species signals."""
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import requests
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import Settings
 from src.connectors.wordpress_vip import WordPressVIPConnector
@@ -22,17 +29,15 @@ from src.services.detection import (
     detect_species,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
-def _fetch_rows(client: SupabaseClient, limit: int, content_ids: list[str] | None) -> list[dict[str, Any]]:
+def _fetch_rows(
+    client: SupabaseClient, limit: int, content_ids: list[str] | None
+) -> list[dict[str, Any]]:
     if content_ids:
         result = (
-            client.client.table("wordpress_content")
-            .select("*")
-            .in_("id", content_ids)
-            .execute()
+            client.client.table("wordpress_content").select("*").in_("id", content_ids).execute()
         )
         return result.data
 
@@ -57,7 +62,11 @@ def _fetch_rows(client: SupabaseClient, limit: int, content_ids: list[str] | Non
 
 def _extract_text(url: str) -> str:
     parsed = urlparse(url)
-    base = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://example.com"
+    base = (
+        f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme and parsed.netloc
+        else "https://example.com"
+    )
     connector = WordPressVIPConnector(site_url=base)
     verify = os.environ.get("REQUESTS_CA_BUNDLE") or True
     resp = requests.get(url, timeout=30, verify=verify)

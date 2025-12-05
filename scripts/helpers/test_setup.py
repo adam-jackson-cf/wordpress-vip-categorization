@@ -1,11 +1,14 @@
 """Test script to verify setup and configuration."""
 
+# ruff: noqa: E402  # requires sys.path mutation before importing project modules
+
 import logging
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import get_settings
 from src.connectors.wordpress_vip import WordPressVIPConnector

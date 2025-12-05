@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Extract random sample of semantic matches for analysis."""
 
+import argparse
 import csv
 import random
 from pathlib import Path
@@ -25,7 +26,7 @@ def extract_sample_matches(
     # Read and filter matching rows
     filtered_rows = []
 
-    with open(input_file, "r", encoding="utf-8") as f:
+    with open(input_file, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row["match_stage"] == "semantic_matched":
@@ -59,9 +60,50 @@ def extract_sample_matches(
 
 
 if __name__ == "__main__":
-    random.seed(42)  # Reproducible sampling
+    parser = argparse.ArgumentParser(description="Extract random sample of semantic matches")
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Path to match snapshot CSV",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="data/examples/sample_matches.csv",
+        help="Path to output sample CSV (default: data/examples/sample_matches.csv)",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=0.5,
+        help="Minimum similarity score (default: 0.5)",
+    )
+    parser.add_argument(
+        "--max-score",
+        type=float,
+        default=0.75,
+        help="Maximum similarity score (default: 0.75)",
+    )
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=50,
+        help="Number of rows to sample (default: 50)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
+    args = parser.parse_args()
 
-    input_file = "results/match_snapshot_20251203_151502.csv"
-    output_file = "data/examples/sample_matches.csv"
-
-    extract_sample_matches(input_file, output_file)
+    random.seed(args.seed)
+    extract_sample_matches(
+        args.input,
+        args.output,
+        min_score=args.min_score,
+        max_score=args.max_score,
+        sample_size=args.sample_size,
+    )
