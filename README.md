@@ -91,7 +91,7 @@ Detection metadata (audiences and species) is externalized in `data/detection_te
 
 - **Text-based detection**: Scans content for multilingual synonyms (e.g., `veterinario`, `ganadero`, `porcino`, `bovino`) and stores detected audiences/species in Supabase columns.
 - **URL path inference**: When text signals are weak, the detector examines URL slugs for patterns like `/porcino/`, `/veterinaria/`, `/mascotas/` to infer regulatory context.
-- **Adding new terms**: Extend `audience_terms`, `species_terms`, `url_path_patterns`, and the `content_type_terms` entries in `data/detection_terms.json`, then mirror those keywords (plus the desired bonus values) in `data/detection_content_types.json`. Always include both Spanish and English variants for new markets so slug/path detection remains reliable.
+- **Adding new terms**: Extend `audience_terms`, `species_terms`, and `url_path_patterns` in `data/detection_terms.json`, then mirror any new/updated content-type keywords (plus their bonus) inside `data/detection_content_types.json`. Always include both Spanish and English variants for new markets so slug/path detection remains reliable.
 
 **Example**:
 ```json
